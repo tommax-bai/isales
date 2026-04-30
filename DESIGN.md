@@ -221,7 +221,7 @@
 | 裁判 LLM (×N×M) | 仅 `reply` 字段 | 合规审查 | 通过 / 不通过 |
 | 润色 LLM | 通过的候选集合 | 选优 + 拟人化改写 `reply` | 1 份最终结果，**标记字段从被选中候选直接继承** |
 
-> 单角色误报目标达成的风险由"角色 prompt 设计 + 收尾期间用户的反应"两层兜底，不在润色层做投票合并（决策见 §17）。
+> 单角色误报目标达成的风险由"角色 prompt 设计 + 收尾期间用户的反应"两层兜底，不在润色层做投票合并（决策见 §18）。
 
 ### 收尾模式（WRAPPING_UP 状态）
 
@@ -250,10 +250,12 @@
 - **worker** 的 `summarize_call` **不再做目标判定**，只做：
   - 摘要生成
   - 把最后一轮的 `goal_achieved` / `goal_type` / `extracted` 写入 `call_summary`
-- **worker** 的 `process_callbacks` 匹配 `callback_config.trigger`：
-  ```
-  trigger 表达式可引用 goal_achieved 和 extracted.* 字段
-  例：goal_achieved == true && goal_type == "appointment"
+- **worker** 的 `process_callbacks` 匹配 `callback_config.trigger`（JsonLogic 表达式，详见 §14）。例：
+  ```json
+  {"and": [
+    {"==": [{"var": "goal_achieved"}, true]},
+    {"==": [{"var": "goal_type"}, "appointment"]}
+  ]}
   ```
 
 ---
@@ -607,7 +609,7 @@ v1 选择自研 USB GSM modem 方案，**不引入 SIP/PBX 设施**，因此**�
 
 > AI 在通话中识别需要人工介入 → AI 礼貌告知用户「稍后专员会主动联系您」 → AI 主动结束通话 → 系统派发待回拨任务给坐席 → 坐席从 Web UI 主动回拨用户
 
-实时 SIP 桥接 / GSM 呼叫转接 (AT+CHLD) / 自研 SIP 软话机 三种实时桥接方案列入 §18 v2 计划。
+实时 SIP 桥接 / GSM 呼叫转接 (AT+CHLD) / 自研 SIP 软话机 三种实时桥接方案列入 §19 v2 计划。
 
 ### 9.2 触发机制：4 种独立开关，OR 关系
 
@@ -883,7 +885,7 @@ OSS / S3:
 
 ### 11.6 PII 与脱敏（v1 不做）
 
-电话号码、姓名、地址等敏感信息 v1 直接明文存 transcript / pipeline_trace。脱敏 / 加密 / 留存策略列入 §18 v1 范围外。
+电话号码、姓名、地址等敏感信息 v1 直接明文存 transcript / pipeline_trace。脱敏 / 加密 / 留存策略列入 §19 v1 范围外。
 
 ---
 
@@ -900,7 +902,7 @@ OSS / S3:
 
 ### 12.2 重试策略
 
-**进入重试的条件**（来自 modem-controller 上报的 `hangup_cause`，由 GSM cause 映射，详见 §14.8）：
+**进入重试的条件**（来自 modem-controller 上报的 `hangup_cause`，由 GSM cause 映射，详见 §15.8）：
 
 | 重试 | 不重试 |
 |---|---|
@@ -1041,7 +1043,7 @@ Campaign 配置 N 个时间窗口，每个窗口指定星期几 + 起止时间�
 **统一服务器时区**（部署侧设定，如 `Asia/Shanghai`）。
 - 所有窗口判定、节假日、`next_call_at` 均按服务器时区解读
 - 不引入 lead 级时区
-- 跨时区场景（海外用户）列入 §18
+- 跨时区场景（海外用户）列入 §19
 
 ### 13.3 节假日
 
@@ -1086,16 +1088,165 @@ scheduler 扫描到 lead `next_call_at <= now` 但当前不在任何窗口内时
 
 ---
 
-## 14. 通话设备硬件层
+## 14. Webhook 回调
 
-### 14.1 总体形态
+### 14.1 总体流程
+
+通话结束 → worker 异步处理：
+
+```
+worker 队列收到「通话结束」消息 (call_record_id)
+   │
+   ▼
+1. summarize_call 任务
+   - LLM 摘要 + 二次校验 / 过滤角色 LLM 抽取的 extracted_fields
+   - 写 call_summary（含 goal_achieved, goal_type, extracted_fields）
+   │
+   ▼
+2. process_callbacks 任务（立即派发）
+   │
+   ▼
+对该 Campaign 启用的每个 callback_config：
+   ├─ 评估 trigger（JsonLogic）
+   │     ├─ 解析失败 → 记 callback_log.status=failed_render，跳过
+   │     ├─ 成功且 false → 不触发，跳过
+   │     └─ 成功且 true → 下一步
+   │
+   ├─ 渲染 payload_template（Jinja2 sandbox）
+   │     └─ 失败 → 记 callback_log.status=failed_render，跳过
+   │
+   ├─ 计算签名（HMAC-SHA256）
+   │
+   └─ 异步 HTTP 请求 → 失败按 retry_policy 重试
+```
+
+> **触发时机选择 summarize_call 之后**：避免在通话期间实时触发后，用户在收尾期间反悔造成误报回调；摘要这一步还可二次校验 extracted_fields。
+
+### 14.2 trigger 表达式（JsonLogic）
+
+`callback_config.trigger` 存为 JsonLogic JSON。可引用字段：
+
+| 字段 | 来源 |
+|---|---|
+| `goal_achieved` (bool), `goal_type` (string) | call_summary |
+| `extracted.*` | call_summary.extracted_fields |
+| `lead.name`, `lead.phone`, `lead.source`, `lead.status`, `lead.custom_data.*` | lead |
+| `call.duration`, `call.started_at`, `call.transfer_status`, `call.hangup_cause` | call_record |
+
+**示例：**
+
+```json
+{
+  "and": [
+    {"==": [{"var": "goal_achieved"}, true]},
+    {"==": [{"var": "goal_type"}, "appointment"]},
+    {"!=": [{"var": "extracted.appointment_time"}, ""]}
+  ]
+}
+```
+
+意为「目标达成 ∧ 类型为 appointment ∧ 提取了非空的预约时间」。
+
+**评估失败：** DSL 解析错误 / 引用不存在字段 / 类型不匹配 → 记 `callback_log.status=failed_render`，错误信息写入 `error_message`，**不重试**（视为配置 bug，重试无意义）。
+
+### 14.3 payload 模板（Jinja2 sandbox）
+
+`callback_config.payload_template` 存为 text，Jinja2 模板字符串。
+
+**示例：**
+
+```jinja
+{
+  "lead_id": "{{ lead.id }}",
+  "phone": "{{ lead.phone }}",
+  "appointment": {
+    "time": "{{ extracted.appointment_time }}",
+    "location": "{{ extracted.location | default('未指定') }}"
+  },
+  "summary": {{ call_summary.summary_text | tojson }},
+  "duration_seconds": {{ call.duration }}
+}
+```
+
+可用 Jinja2 完整特性：变量、条件、循环、过滤器。
+
+**Sandbox：** `jinja2.sandbox.SandboxedEnvironment` —— 禁用文件 IO、import、eval 等危险能力，仅暴露白名单过滤器。
+
+**渲染失败：** 同 trigger 失败处理（status=failed_render，不重试）。
+
+### 14.4 签名机制（HMAC-SHA256）
+
+每个 callback_config 在创建时由系统生成 `signing_secret`（加密存储）。
+
+**请求头：**
+```
+X-Isales-Signature: sha256=<hex_digest>
+X-Isales-Timestamp: 1714435200
+Content-Type: application/json
+```
+
+**签名内容：** `timestamp + "." + body_bytes`，HMAC-SHA256 用 signing_secret。
+
+**接收方验证：**
+1. 检查 `X-Isales-Timestamp` 与当前时间偏差 < 5 分钟（防重放最低限度）
+2. 重算 HMAC，常量时间比对 `X-Isales-Signature`
+
+> v1 不引入 nonce 防重放（需要接收方维护去重表）；timestamp 窗口足够覆盖一般威胁模型。严格防重放列入 §19。
+
+### 14.5 重试策略
+
+`callback_config.retry_policy`（JSONB）：
+
+```json
+{
+  "intervals_seconds": [60, 300, 1800],
+  "max_attempts": 3
+}
+```
+
+- 第 N 次重试间隔 = `intervals_seconds[N-1]`，超出长度时使用最后一项
+- 累计尝试次数 ≥ `max_attempts` → `callback_log.status=exhausted`
+- **触发重试**：5xx / timeout / 连接失败
+- **不重试**：4xx（客户端配置错误）、`failed_render`
+
+### 14.6 HTTP 超时
+
+| 配置 | 默认 | 覆盖 |
+|---|---|---|
+| 全局 `webhook_default_timeout_seconds` | 部署时设定（如 10） | 系统配置 |
+| `callback_config.timeout_seconds` | null（继承全局） | 单条 callback 可单独配 |
+
+### 14.7 数据模型变更
+
+`callback_config` 增加字段：
+- `signing_secret` (text, 加密存储)
+- `timeout_seconds` (int, nullable, 覆盖全局)
+
+`callback_config.payload_template` 类型从 JSONB 改为 **text**（Jinja2 模板）。
+
+`callback_log` 增加字段：
+- `status` 枚举：`pending` / `success` / `failed_render` / `failed_http_4xx` / `failed_http_5xx` / `pending_retry` / `exhausted`
+- `error_message` (text) —— 失败详情
+- `attempt_at` (timestamp) —— 每次尝试时间，与 `next_retry_at` 配合
+
+### 14.8 与其他模块的交互
+
+- 不影响 engine 通话期间状态机
+- worker 任一回调环节失败**不阻塞** lead 状态流转（lead 状态由 hangup_cause + goal_achieved 决定）
+- "勿打" 命中触发的 `do_not_call_marked` 事件可被 callback_config 订阅（trigger 引用 `lead.status == "do_not_call"`）
+
+---
+
+## 15. 通话设备硬件层
+
+### 15.1 总体形态
 
 - **硬件**：USB GSM Modem（如华为 E1750/E173 等支持 PCM over USB 的型号），每个 modem 插一张 SIM 卡
 - **v1 规模**：单主机 ≤ 8 路并发
 - **不使用** FreeSWITCH / Asterisk / chan_dongle 等开源 PBX —— 自研控制层
 - **承载于 isales-telephony 仓库**，作为独立进程 `modem-controller` 运行（与 `telephony-api` 同仓库不同 deployable）
 
-### 14.2 modem-controller 职责
+### 15.2 modem-controller 职责
 
 ```
 ┌────────────────────────────────────────────────────────────────┐
@@ -1126,7 +1277,7 @@ scheduler 扫描到 lead `next_call_at <= now` 但当前不在任何窗口内时
 └────────────────────────────────────────────────────────────────┘
 ```
 
-### 14.3 device 状态机
+### 15.3 device 状态机
 
 ```
 unknown ──────────► detected ──────► registered ──────► idle ──────► busy
@@ -1153,7 +1304,7 @@ unknown ──────────► detected ──────► registe
 - `flagged` —— 被 worker 标记健康度低
 - `error` —— 初始化失败
 
-### 14.4 SIM 卡资料化管理
+### 15.4 SIM 卡资料化管理
 
 `sim_card` 表覆盖以下属性：
 
@@ -1174,7 +1325,7 @@ unknown ──────────► detected ──────► registe
 - 同一 device 同一时刻只能有一条 `is_active=true`
 - udev 检测到 SIM 变更（比较 ICCID）时自动新增绑定记录
 
-### 14.5 udev 自动检测
+### 15.5 udev 自动检测
 
 modem-controller 启动时：
 1. `pyudev` 监听 USB 设备事件
@@ -1189,7 +1340,7 @@ modem-controller 启动时：
    - 找到对应 device → 状态置 `offline`
    - 关闭 active binding 的 `unbind_at`
 
-### 14.6 engine ↔ modem-controller IPC 协议
+### 15.6 engine ↔ modem-controller IPC 协议
 
 **通道**：Unix socket（单主机部署） + JSON 消息
 
@@ -1211,7 +1362,7 @@ modem-controller 启动时：
 
 > 音频流也走 IPC（v1 简化）。后期可改为单独的 Unix domain socket 流通道（pcm_upstream / pcm_downstream），减少 JSON 编解码开销。
 
-### 14.7 选 device API（telephony-api）
+### 15.7 选 device API（telephony-api）
 
 ```
 POST /devices/select
@@ -1225,7 +1376,7 @@ POST /devices/select
 - 选 `last_call_at` 最早的（保持负载均衡）
 - 没有空闲 → 返回 `503 no_idle_device`
 
-### 14.8 hangup_cause 映射
+### 15.8 hangup_cause 映射
 
 GSM modem 的 hangup cause（从 AT 命令或 CEND 事件获取）映射到 §12.2 的重试场景：
 
@@ -1237,34 +1388,34 @@ GSM modem 的 hangup cause（从 AT 命令或 CEND 事件获取）映射到 §12
 | `normal call clearing` | `normal_clearing` → 走跟进逻辑 |
 | `call rejected` | `call_rejected` → 不重试 |
 
-### 14.9 v1 不做的硬件能力
+### 15.9 v1 不做的硬件能力
 
-- **短信**：v1 不实现 SMS 发送/接收，列入 §18
+- **短信**：v1 不实现 SMS 发送/接收，列入 §19
 - **多主机扩展**：单主机部署，跨主机调度的 device 选择 v2 处理
 - **硬件级负载均衡**：v1 仅按 last_call_at 简单调度
 - **GSM 信道质量自动切换**：信号差只标记 flagged，不自动切其他 device
 
 ---
 
-## 15. 数据模型（核心表）
+## 16. 数据模型（核心表）
 
 | 表 | 关键字段 | 归属服务 |
 |----|---------|---------|
 | `campaign` | name, voice_id, default_replies(JSONB), concurrency, time_windows(JSONB), extraction_fields(JSONB), max_silence_activations, silence_threshold_ms, silence_phrases(JSONB), silence_hangup_phrase, max_no_progress_seconds, wrap_up_max_rounds, wrap_up_max_seconds, wrap_up_closing_phrases(JSONB), interruption_whitelist(JSONB), interruption_min_duration_ms, max_continuous_interruptions, continuous_interruption_strategy, transfer_keyword_enabled, transfer_keywords(JSONB), transfer_intent_enabled, transfer_intent_threshold, transfer_round_enabled, transfer_round_threshold, transfer_llm_enabled, transfer_llm_prompt_version_id, transfer_phrases(JSONB), retry_intervals(JSONB), retry_max_count, follow_up_interval_days, follow_up_max_count, do_not_call_keywords(JSONB), do_not_call_llm_enabled, do_not_call_llm_prompt_version_id, respect_holidays | api |
 | `holiday` | date, name, region | api |
 | `agent` | name, login_user, status (online/offline) | telephony |
-| `handoff_task` | call_record_id, agent_id (nullable), trigger_type, trigger_detail, status (pending/in_progress/completed/dropped), created_at, picked_up_at, completed_at | worker |
+| `handoff_task` | call_record_id, agent_id (nullable), trigger_type, trigger_detail, status (pending/in_progress/completed/dropped), created_at, picked_up_at, completed_at | api（worker 创建，api 提供查询/状态变更） |
 | `role_config` | campaign_id, kind(role/judge/polish), model, current_prompt_version_id, temperature, top_p, ext_params(JSONB), enabled | api |
 | `prompt_version` | scope_type, scope_id, content, created_at, created_by, is_active | api |
 | `pipeline_trace` | call_record_id, turn_id, ts_start, ts_end, user_input, role_candidates(JSONB), judge_results(JSONB), polish_input(JSONB), polish_output, polish_duration_ms, polish_role_config_id, polish_prompt_version_id, final_selected_candidate_index | engine |
 | `lead` | name, phone, source, custom_data(JSONB), status, retry_count, follow_up_count, next_call_at, last_hangup_cause | api |
-| `call_record` | lead_id, campaign_id, caller_id, status, started_at, ended_at, duration, transcript(JSONB), recording_url, transfer_status, transfer_reason, transfer_target, **wrap_up_started_at, prompt_versions(JSONB)** | engine |
+| `call_record` | lead_id, campaign_id, caller_id, status, started_at, ended_at, duration, transcript(JSONB), recording_url, transfer_status, transfer_reason, wrap_up_started_at, prompt_versions(JSONB) | engine |
 | `call_summary` | call_record_id, summary_text, extracted_fields(JSONB), goal_achieved, goal_type | worker |
 | `voice_model` | name, provider, voice_id, sample_url | api |
 | `filler_set` | campaign_id, name, sort_order | api |
 | `filler_phrase` | filler_set_id, phrase, audio_url, generation_status | api |
-| `callback_config` | campaign_id, name, trigger, url, method, headers(JSONB), payload_template(JSONB), retry_policy(JSONB), enabled | api |
-| `callback_log` | callback_config_id, call_record_id, status, request_body, response_code, response_body, retry_count, next_retry_at | worker |
+| `callback_config` | campaign_id, name, trigger(JSONB, JsonLogic), url, method, headers(JSONB), payload_template(text, Jinja2), retry_policy(JSONB), signing_secret(encrypted), timeout_seconds(nullable), enabled | api |
+| `callback_log` | callback_config_id, call_record_id, status (pending/success/failed_render/failed_http_4xx/failed_http_5xx/pending_retry/exhausted), request_body, response_code, response_body, retry_count, attempt_at, next_retry_at, error_message | worker |
 | `device` | name, usb_port, modem_model, imei, status (online/offline/flagged), last_seen_at | telephony |
 | `sim_card` | iccid, imsi, phone_number, carrier, plan, balance, signal_strength, status, last_checked_at | telephony |
 | `device_sim_binding` | device_id, sim_card_id, is_active, bind_at, unbind_at | telephony |
@@ -1274,7 +1425,7 @@ GSM modem 的 hangup cause（从 AT 命令或 CEND 事件获取）映射到 §12
 
 ---
 
-## 16. 服务间通信
+## 17. 服务间通信
 
 | 从 | 到 | 通道 | 用途 |
 |----|-----|------|------|
@@ -1293,7 +1444,7 @@ GSM modem 的 hangup cause（从 AT 命令或 CEND 事件获取）映射到 §12
 
 ---
 
-## 17. 关键决策与权衡（备忘）
+## 18. 关键决策与权衡（备忘）
 
 - **多仓库 vs Monorepo**：选多仓库，因为单仓库代码量在 Claude Code 单会话上下文中难以高效迭代；isales-common 用 pip 包发布到内部 PyPI（或 git 直装）。
 - **AI 管线层数**：3 层（角色 → 裁判 → 润色），不增加更多层以控制延迟。
@@ -1303,13 +1454,13 @@ GSM modem 的 hangup cause（从 AT 命令或 CEND 事件获取）映射到 §12
 - **全局并发计数器在 Redis**：单 engine 进程的本地计数无法跨实例。
 - **engine 单点故障**：短期靠 systemd/supervisor 重启；中期支持多实例 + 会话亲和（Redis hash slot）。
 - **目标判定不在润色层做投票合并**：润色直接继承被选中候选的标记，不对 N 个候选的 `goal_achieved` 做多数投票。理由：实现简单、延迟低；误报由角色 prompt 设计 + 收尾期间用户反应（即使 AI 误以为达成，用户在收尾对话中也会自然纠正）兜底。代价：单次单轮误报概率高于投票方案，需在 prompt 中强约束判定标准。
-- **不用 FreeSWITCH/Asterisk，自研 USB GSM modem 控制层**：硬件方案是 USB modem + SIM 卡直插主机；v1 单主机 ≤8 路。理由：成熟 PBX (Asterisk + chan_dongle) 虽稳定但额外引入 PBX 学习曲线和音频路径复杂度；自研可直接 AT 命令 + ALSA PCM，控制粒度更细。代价：底层硬件控制和音频管道全部自己写，调试成本高；列为 §14 单独章节。
+- **不用 FreeSWITCH/Asterisk，自研 USB GSM modem 控制层**：硬件方案是 USB modem + SIM 卡直插主机；v1 单主机 ≤8 路。理由：成熟 PBX (Asterisk + chan_dongle) 虽稳定但额外引入 PBX 学习曲线和音频路径复杂度；自研可直接 AT 命令 + ALSA PCM，控制粒度更细。代价：底层硬件控制和音频管道全部自己写，调试成本高；列为 §15 单独章节。
 - **modem-controller 与 telephony-api 同仓库不同进程**：减少新仓库带来的部署/CI 复杂度。代价：CI 中两个 entry points 要分别启停。后期若 modem-controller 复杂度上升，再拆出独立仓库 isales-modem-controller。
-- **v1 转人工衰减为「标记 + 通知」，不做实时桥接**：自研 USB GSM 方案下没有 SIP/PBX 设施，实时桥接需引入额外复杂度（自研 SIP 软话机或局部破例引入 FS）。v1 仅做"播衔接话术 → 派发 handoff_task → 主动挂断"，坐席 Web UI 看到任务后从其他业务电话系统手动回拨。三种实时桥接方案（GSM AT+CHLD / 自研 SIP / FS bridge）列入 §18 v2。
+- **v1 转人工衰减为「标记 + 通知」，不做实时桥接**：自研 USB GSM 方案下没有 SIP/PBX 设施，实时桥接需引入额外复杂度（自研 SIP 软话机或局部破例引入 FS）。v1 仅做"播衔接话术 → 派发 handoff_task → 主动挂断"，坐席 Web UI 看到任务后从其他业务电话系统手动回拨。三种实时桥接方案（GSM AT+CHLD / 自研 SIP / FS bridge）列入 §19 v2。
 
 ---
 
-## 18. 已识别但暂不在 v1 范围内
+## 19. 已识别但暂不在 v1 范围内
 
 - 多语言支持（v1 仅普通话）
 - 实时声纹识别（用于打断判定增强）
