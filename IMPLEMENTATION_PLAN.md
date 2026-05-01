@@ -57,7 +57,9 @@
 
 ---
 
-## 阶段 1：isales-common（2~3 天）
+## 阶段 1：isales-common ✅ 已完成（v0.1.0）
+
+> 实施细节迁移到 OpenSpec change `init-isales-common`（已归档于 `openspec/changes/archive/`）；本节保留为历史记录。下游服务的引用样例与版本管理见 `isales-common/README.md`。
 
 **目标：** 所有数据模型、Provider 接口、迁移脚本一次性沉淀，供其他仓库依赖。
 
