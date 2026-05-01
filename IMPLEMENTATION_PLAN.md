@@ -95,6 +95,8 @@
 ## 阶段 2：isales-telephony + isales-api（并行，3~5 天）
 
 > 这两个服务都是 CRUD 重、实时性轻，可由两人/两会话并行推进。
+>
+> 边界澄清见 OpenSpec change `clarify-stage2-boundaries`（已归档）。isales-common v0.1.2 增量需求（`device.last_call_at` 列 + `DeviceSelectRequest/Response` schema + alembic 迁移）由 `impl-telephony` change 承担。
 
 ### 2A. isales-telephony（一仓库两进程）
 

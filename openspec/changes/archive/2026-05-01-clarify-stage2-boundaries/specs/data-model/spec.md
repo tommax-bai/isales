@@ -1,20 +1,4 @@
-## Purpose
-
-汇总 iSales 系统的核心数据表与字段，明确每张表的归属服务。本规范是数据模型的"目录视图"——具体字段含义、约束、状态机 SHALL 在各功能 capability spec 中定义；本 spec 仅承担"全表清单 + 跨服务一致性"职责。
-## Requirements
-### Requirement: 数据模型由 isales-common 统一管理
-
-所有 SQLAlchemy 模型与 Alembic 迁移 SHALL 由 isales-common 管理；其他服务通过依赖 isales-common 间接访问。
-
-#### Scenario: 模型新增 / 修改
-
-- **WHEN** 任何服务需要新表或新字段
-- **THEN** SHALL 在 isales-common 写模型并生成 alembic 迁移；其他服务 MUST NOT 自己写模型或直接 DDL
-
-#### Scenario: 迁移单一来源
-
-- **WHEN** 部署
-- **THEN** alembic 迁移 SHALL 仅由 isales-common 管理；其他服务 MUST NOT 引入独立迁移工具
+## MODIFIED Requirements
 
 ### Requirement: 表归属与全表清单
 
@@ -46,35 +30,3 @@
 | `sim_card` | iccid, imsi, phone_number, carrier, plan, balance, signal_strength, status, last_checked_at | telephony | device-hardware |
 | `device_sim_binding` | device_id, sim_card_id, is_active, bind_at, unbind_at | telephony | device-hardware |
 | `campaign_device` | campaign_id, device_id | api | device-hardware |
-
-### Requirement: 数据库统一为 PostgreSQL
-
-所有持久化数据 SHALL 存于同一 PostgreSQL 实例；MUST NOT 引入其他关系型 DB（除非未来明确需求并经过 change proposal）。
-
-#### Scenario: 单库统一
-
-- **WHEN** 实施
-- **THEN** 所有表 SHALL 在同一 PG 实例 / 同一 schema；跨服务事务用 PG 事务；不引入分布式事务
-
-### Requirement: JSONB 字段约束
-
-JSONB 字段 SHALL 用于半结构化的配置或事件流；任何新引入的 JSONB 字段 MUST 附带 schema 描述并放置在对应 capability spec。
-
-#### Scenario: JSONB 字段需附 schema 文档
-
-- **WHEN** 引入新 JSONB 字段
-- **THEN** 字段对应的 capability spec MUST 描述其 JSON schema（哪些键、值类型、必填可选）
-
-#### Scenario: JSONB 不替代关系建模
-
-- **WHEN** 数据有强结构与外键关系
-- **THEN** SHALL 用独立表 + 外键，MUST NOT 用 JSONB 简化（如 callback_log 不能塞进 callback_config 的 JSONB）
-
-## Cross-Reference
-
-各表的字段语义、约束、状态机 SHALL 在以下 capability spec 中查询：
-
-- 业务行为：`interruption-detection`, `silence-activation`, `goal-achievement`, `filler`, `human-handoff`
-- 输入输出：`role-prompt`, `transcript`, `webhook-callback`
-- 调度与流程：`call-state-machine`, `retry-followup`, `time-window`, `ai-pipeline`
-- 基础设施：`architecture`, `device-hardware`, `service-communication`
