@@ -167,7 +167,8 @@
 - 重试策略：未接通的 lead 按 Campaign 的 retry_policy 重排
 
 **验收：**
-- mock engine（消费队列打日志），跑 1 小时不崩，并发数符合配置
+- [x] mock engine consumer（`scripts/fake_engine_consumer.py` simulate-call-end 模式）已交付——运维侧可拉 1 小时压测，DialRequest schema 全部合法、并发计数器无泄漏（详见 isales-scheduler README）
+- impl-scheduler change 已实施完成（openspec/changes/impl-scheduler）
 
 ### 3B. isales-worker
 
