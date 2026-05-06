@@ -140,8 +140,11 @@
 - 启动/暂停 Campaign：写 Redis 队列通知 scheduler
 
 **验收：**
-- 通过 OpenAPI 文档手动跑通所有 CRUD
-- WebSocket 能收到 mock 推送的事件（先用脚本模拟）
+- [x] 通过 OpenAPI 文档手动跑通所有 CRUD（impl-api PR #1–#5：JWT + 9 类资源）
+- [x] WebSocket 能收到 mock 推送的事件（PR #7 ConnectionManager + PR #8 fake_engine_events publisher；单元测试覆盖 publish→fan_out 路径）
+- [x] Campaign 启停消息进 Redis 队列（PR #6 验证 lpush + StartCampaign/PauseCampaign 序列化）
+- [x] systemd unit + 部署文档就位（PR #9）
+- [x] `pytest` 全绿 — 44 passed / mypy 0 / ruff 0
 
 ---
 
