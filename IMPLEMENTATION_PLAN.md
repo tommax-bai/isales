@@ -117,10 +117,12 @@
 - 启动时从 DB 加载 device 列表，尝试匹配 USB 端口
 
 **验收：**
-- telephony-api 跑通 device / sim_card CRUD
-- modem-controller 启动不报错、能响应 IPC 心跳
-- 插拔一个支持 GSM 的 USB 设备能在日志里看到 udev 事件
-- `pytest` 全绿（mock 硬件层）
+- [x] telephony-api 跑通 device / sim_card CRUD（impl-telephony PR #3）
+- [x] modem-controller 启动不报错、能响应 IPC 心跳（PR #6 status round-trip 测试）
+- [x] 插拔 GSM USB 设备能在日志/DB 里看到 udev 事件（PR #8；macOS 用 fake_events 验证；真实插拔留到 stage 6 / Linux 部署后）
+- [x] `pytest` 全绿（mock 硬件层）— 35 passed / mypy 0 / ruff 0
+- [x] /devices/select 并发安全（PR #4 with FOR UPDATE SKIP LOCKED；并发 11 测试 10 + 1×503）
+- [x] systemd unit + 部署文档就位（PR #9）
 
 ### 2B. isales-api
 
