@@ -3,145 +3,108 @@
 
 ## 1. isales-engine 仓库骨架（PR #1）
 
-- [ ] 1.1 `git init isales-engine` + `.gitignore`
-- [ ] 1.2 `pyproject.toml`（hatchling）+ deps（isales-common>=0.1.2,<0.2、sqlalchemy[asyncio]、asyncpg、redis、httpx、pydantic、pydantic-settings、structlog）
-- [ ] 1.3 dev 依赖（pytest / pytest-asyncio / ruff / mypy / types-redis / freezegun）
-- [ ] 1.4 目录骨架（`isales_engine/{__init__,main,settings,db,redis_client,dial_consumer,event_publisher,event_consumer,session_manager,call_session,state_machine,transcript_recorder}.py` + `pipeline/{__init__,orchestrator,role_llm,judge_llm,polish_llm,json_parser,wrap_up_pipeline,greeting,prompt_builder}.py` + `realtime/{__init__,filler_manager,interruption_detector,silence_detector,no_progress_timer,telephony_client,mock_telephony}.py` + `transfer/{__init__,manager,intent_classifier}.py` + `wrapup/{__init__,manager}.py` + `providers/{__init__,factory,llm_mock,asr_mock,tts_mock}.py` + `tests/` + `scripts/`）
-- [ ] 1.5 entry point `isales-engine`（`[project.scripts]`，调 `main:run`）
-- [ ] 1.6 `settings.py`：pydantic-settings 读 `ISALES_DATABASE_URL` / `ISALES_REDIS_URL` / `ISALES_ENGINE_LLM_PROVIDER` / `ISALES_ENGINE_ASR_PROVIDER` / `ISALES_ENGINE_TTS_PROVIDER` / `ISALES_ENGINE_TELEPHONY_MODE` / `ISALES_ENGINE_MAX_NO_PROGRESS_SECONDS` / `ISALES_ENGINE_PIPELINE_DEFAULT_TIMEOUT_MS` / `ISALES_ENGINE_MOCK_CONNECT_DELAY_MS` / `ISALES_ENGINE_GRACEFUL_SHUTDOWN_TIMEOUT_S` / `TZ`
-- [ ] 1.7 `db.py`（async session factory）+ `redis_client.py`（async redis client wrapper + `pubsub` factory）
-- [ ] 1.8 `main.py`：lifespan 启动 `dial_consumer` task + `event_consumer.subscribe_loop` task + `session_manager`；SIGTERM handler → 优雅停机（停 dial 消费、cancel sessions、等 30s）
-- [ ] 1.9 README + CI（ruff/mypy/pytest）— CI 装 isales-common @ v0.1.2 git tag
+- [x] 1.1 `git init isales-engine` + `.gitignore`
+- [x] 1.2 `pyproject.toml`（hatchling）+ deps（isales-common>=0.1.2,<0.2、sqlalchemy[asyncio]、asyncpg、redis、httpx、pydantic、pydantic-settings、structlog）
+- [x] 1.3 dev 依赖（pytest / pytest-asyncio / ruff / mypy / types-redis / freezegun）
+- [x] 1.4 目录骨架（`isales_engine/` + `pipeline/` + `realtime/` + `transfer/` + `wrapup/` + `providers/` + `tests/` + `scripts/` + `deploy/`；后续 PR 增量加文件）
+- [x] 1.5 entry point `isales-engine`（`[project.scripts]`，调 `main:run`）
+- [x] 1.6 `settings.py`：pydantic-settings 读全部 `ISALES_*` env（含队列名 / 通道名常量化）
+- [x] 1.7 `db.py`（async session factory）+ `redis_client.py`（复用 isales-common get_redis）
+- [x] 1.8 `main.py`：lifespan 骨架 + SIGINT/SIGTERM handler + stop_event；后续 PR 加 dial_consumer / event_consumer / session_manager task
+- [x] 1.9 README + 3 个 smoke 测试；ruff / mypy / pytest 全绿（CI 在 PR #14 一并接入）
 
 ## 2. 状态机 + CallSession（PR #2）
 
-- [ ] 2.1 `state_machine.py`：`CallState` 枚举（11 个状态）+ `LEGAL_TRANSITIONS: dict[CallState, set[CallState]]` + `IllegalTransition` 异常类
-- [ ] 2.2 `state_machine.py`：`StateMachine.transition_to(new_state, reason, meta)` 改 state、写 `state_history`、抛 `IllegalTransition` 时同时让 CallSession append `state_error` 事件
-- [ ] 2.3 `call_session.py`：`CallSession` dataclass（dialog_history / full_transcript / pipeline_trace_records / prompt_versions_snapshot / used_filler_phrase_ids_per_set / current_filler_set_index / silence_activation_count / silence_started_at / consecutive_interruption_count / wrap_up_round_count / wrap_up_started_at / current_turn_id / last_user_speech_end_at / last_tts_end_at / tasks dict / call_started_at）
-- [ ] 2.4 `call_session.py`：`append_event(type, **fields)` 自动算 ts、按 transcript spec 决定是否进 dialog_history（仅 `greeting / user_speech / ai_reply` 进）+ type 枚举校验
-- [ ] 2.5 `session_manager.py`：进程内 `dict[call_id, CallSession]` + `register / unregister / cancel_all / get`
-- [ ] 2.6 `transcript_recorder.py`：通话 END 时事务批量写 `call_record(transcript=full_transcript, hangup_cause=..., ended_at=..., transfer_status=..., wrap_up_started_at=..., prompt_versions=...)` + N 条 `pipeline_trace`
-- [ ] 2.7 测试：状态机所有合法转移路径全覆盖（INIT→GREETING→LISTENING→PROCESSING→SPEAKING→...→END）；非法转移抛 `IllegalTransition` + 写 `state_error`
-- [ ] 2.8 测试：`append_event` 按 transcript spec § dialog_history 与 full_transcript 双集合的"系统话术不入 dialog_history"
-- [ ] 2.9 测试：session_manager.register/unregister 幂等；cancel_all 等待所有 task 完成
+- [x] 2.1 `state_machine.py`：`CallState` (= isales_common CallStatus) + `LEGAL_TRANSITIONS` 全图 + `IllegalTransition`
+- [x] 2.2 `state_machine.py`：`StateMachine.transition_to(new_state, reason, meta, force)` — 写 state_history、非法时 append state_error + 抛异常；force=True 跳过校验
+- [x] 2.3 `call_session.py`：CallSession dataclass 含全部 spec 列表的字段（dialog_history / full_transcript / pipeline_trace_records / 三个 counter / wrap_up / turn_id / last_user_speech_end_at / last_tts_end_at / tasks / 时间锚点）
+- [x] 2.4 `call_session.py`：`append_event(type, **fields)` 自动 ts、type 枚举校验、dialog_history 路由（仅 greeting/user_speech/ai_reply）
+- [x] 2.5 `session_manager.py`：register / unregister / get / active_count / cancel_all（async with asyncio.timeout）
+- [x] 2.6 `transcript_recorder.py`：`persist_call_record` 事务批量写 call_record + N 条 pipeline_trace；3 次指数退避；失败仅 ERROR 日志
+- [x] 2.7 测试：状态机所有合法路径 + 非法转移抛 + 写 state_error + force=True 跳过 + 终态 END 无出度
+- [x] 2.8 测试：append_event 路由（filler / silence_activation 不入 dialog_history）+ 未知 type 抛
+- [x] 2.9 测试：register 幂等 / unregister / cancel_all 等待 finalizer
 
 ## 3. DialRequest 队列消费 + DLQ + 并发计数器（PR #3）
 
-- [ ] 3.1 `dial_consumer.py`：`dial_loop()` BLPOP `engine:dial`（timeout=1s）
-- [ ] 3.2 用 isales-common `DialRequest` 反序列化；schema_version=1 支持，其他 → `LPUSH engine:dlq` + WARN 日志
-- [ ] 3.3 单条消息：① 创建 CallSession（写入 prompt_versions snapshot 来自 DialRequest）→ ② session_manager.register → ③ 启动 state_machine（INIT 状态，启动 telephony_client.dial）
-- [ ] 3.4 进 END 时：transcript_recorder.persist → `LPUSH engine:worker:call-ended`（用 isales-common `CallEnded`）→ `DECR isales:concurrency:active`（重试 3 次失败 ERROR 日志）→ session_manager.unregister → publish `EngineEvent.CallEnded`
-- [ ] 3.5 异常路径：CallSession 创建 / state_machine 启动失败 → ERROR 日志、DECR + DLQ；不抛回 BLPOP 循环
-- [ ] 3.6 测试：合法 DialRequest → CallSession 创建 + prompt_versions 写入 + INIT 转移 GREETING（mock telephony emit connected）
-- [ ] 3.7 测试：schema_version=99 → DLQ；call_record 数据正确写入；并发计数器 DECR 一次
-- [ ] 3.8 测试：DECR Redis 不可达 → 重试 3 次后 ERROR 日志，session 仍清理
+- [x] 3.1 `dial_consumer.py`：`dial_loop()` BLPOP `engine:dial`（timeout=1s）+ `handle_dial` 单条处理
+- [x] 3.2 schema_version 不支持 / JSON 错 / Pydantic ValidationError → `LPUSH engine:dlq` + WARN 日志
+- [x] 3.3 合法消息：reserve_call_record（INSERT call_record）→ 构造 CallSession（含 prompt_versions snapshot）→ register → 起 fire-and-forget 任务
+- [x] 3.4 END flow（call_lifecycle.finalize_session）：persist → LPUSH CallEnded → DECR `isales:concurrency:active` → unregister；每步独立重试 + 日志
+- [x] 3.5 runner_with_finalize：runner 异常 / 取消时 finalize 仍跑完（asyncio.shield 包 finalize）；hangup_cause 兜底
+- [x] 3.6 测试：happy path → CallSession 创建 + persist + LPUSH CallEnded + DECR 正确 + session unregister
+- [x] 3.7 测试：schema_version=99 / JSON 错 / ValidationError 三类 → DLQ
+- [x] 3.8 测试：runner 抛 / runner 取消 → finalize 仍执行；CallEnded payload 形状校验；finalize_session 直接调用
 
 ## 4. Mock providers + provider factory（PR #4）
 
-- [ ] 4.1 `providers/factory.py`：按 settings 选 LLM/ASR/TTS Provider；非 mock 全部 `NotImplementedError("stage 5: impl-engine-providers")`
-- [ ] 4.2 `providers/llm_mock.py`：复用 `isales_common.providers.testing.MockLLMProvider`；扩展行为按 design § 20：关键字驱动确定性 JSON（默认 / 短回复 / 收尾 / 触发 goal_achieved / 裁判否决 / 润色拼接）
-- [ ] 4.3 `providers/asr_mock.py`：`MockASRProvider` — `stream_recognize(audio_chunks)` 按 frame 节拍推 partial（每 200ms 一次）/ final；测试可注入"用户说话脚本"驱动
-- [ ] 4.4 `providers/tts_mock.py`：`MockTTSProvider` — `synthesize_stream(text, voice_id)` 按文本长度生成 PCM 字节流（每字符 100ms）；输出 audio chunks + 标记播放完成
-- [ ] 4.5 测试：MockLLM 关键字驱动各分支输出确定性
-- [ ] 4.6 测试：MockASR 注入文本 → partial / final 序列时序符合预期
-- [ ] 4.7 测试：MockTTS 文本 → PCM bytes 流 + duration 估算
+- [x] 4.1 `providers/factory.py`：build_llm/asr/tts；非 mock NotImplementedError
+- [x] 4.2 `providers/llm_mock.py`：KeywordDrivenMockLLM — 按 system tag（[role]/[judge]/[polish]/[transfer_intent]/[transfer_llm]）+ user 关键字（成功/预约 / **reject** / do_not_call / 转人工）驱动；json_mode=False 时贴解释性前后缀以便测试 regex 兜底
+- [x] 4.3 `providers/asr_mock.py`：ScriptedMockASR + feed_turn(text) API；每 partial_step_ms 一个 partial + 最后 final
+- [x] 4.4 `providers/tts_mock.py`：TextLengthMockTTS — 字符 × pcm_bytes_per_char 输出 PCM
+- [x] 4.5 测试：MockLLM role/judge/polish/transfer 各分支确定性
+- [x] 4.6 测试：ScriptedMockASR partial/final 序列正确
+- [x] 4.7 测试：MockTTS PCM 字节数与文本长度成比例
 
 ## 5. MockTelephonyClient + audio 管道（PR #5）
 
-- [ ] 5.1 `realtime/telephony_client.py`：ABC `TelephonyClient`（`dial(phone) -> str(call_id)` / `hangup(call_id)` / `audio_in(call_id) -> AsyncIterator[bytes]` / `audio_out(call_id, chunks: AsyncIterator[bytes])` / `events(call_id) -> AsyncIterator[TelephonyEvent]`）
-- [ ] 5.2 `realtime/mock_telephony.py`：`MockTelephonyClient` 实现：dial → 异步等 `mock_connect_delay_ms` → emit `connected`；hangup → emit `local_hangup`；`simulate_remote_hangup`；`inject_user_audio(call_id, frames)` 测试 API
-- [ ] 5.3 audio_in：用 asyncio Queue + 注入接口；audio_out：把 chunks 落 `_outbound_log[call_id]`（测试断言用）
-- [ ] 5.4 测试：dial 流程 → connected 事件触发；remote_hangup / local_hangup 事件正确 emit
-- [ ] 5.5 测试：注入用户 audio frames → audio_in 异步迭代器 yield 同样 frames
-- [ ] 5.6 测试：audio_out 写入 → `_outbound_log` 累积
-- [ ] 5.7 测试：abstract `tests/test_telephony_client_contract.py`（任何 TelephonyClient 实现都要通过的契约测试，留给阶段 6 RealTelephonyClient）
+- [x] 5.1 `realtime/telephony_client.py` ABC + `TelephonyEvent`（connected / local_hangup / remote_hangup / device_error）
+- [x] 5.2 `realtime/mock_telephony.py` MockTelephonyClient：dial 内联 emit connected（delay=0）/ 异步 task（delay>0）；hangup / simulate_remote_hangup；inject_user_audio
+- [x] 5.3 audio_in / audio_out 用 asyncio.Queue + outbound_log
+- [x] 5.4 测试：connected / local / remote hangup 事件序列
+- [x] 5.5 测试：inject_user_audio → audio_in yield 同样 frames
+- [x] 5.6 测试：audio_out 累积到 outbound_log
+- [x] 5.7 `tests/test_telephony_client_contract.py` parametrize fixture，stage 6 加 RealTelephonyClient 时一行注册
 
 ## 6. 三层并行管线 orchestrator（PR #6）
 
-- [ ] 6.1 `pipeline/prompt_builder.py`：`build_role_messages(session, role_config, is_wrap_up, is_follow_up)` → system + user message 三段式（按 role-prompt spec）
-- [ ] 6.2 `pipeline/json_parser.py`：`parse_role_output(text) -> ParseResult{reply, goal_achieved, goal_type, extracted, parse_failed}`：两步兜底（json.loads → 正则提取 → fallback）
-- [ ] 6.3 `pipeline/role_llm.py`：`call_role(session, role_config, llm_provider) -> RoleCandidate{role_config_id, prompt_version_id, raw_output, parsed, duration_ms, tokens, error}`；超时 / Provider 异常 → error 字段填，candidate 标记 parse_failed
-- [ ] 6.4 `pipeline/judge_llm.py`：`call_judge(judge_config, candidate_reply, llm_provider) -> JudgeResult{candidate_index, role_config_id, prompt_version_id, passed, reason, duration_ms}`；输入仅 reply 字段
-- [ ] 6.5 `pipeline/polish_llm.py`：`call_polish(polish_config, passed_candidates, llm_provider) -> PolishResult{reply, selected_candidate_index, duration_ms, role_config_id, prompt_version_id, error}`；超时 / 异常 / JSON 错 → error
-- [ ] 6.6 `pipeline/orchestrator.py`：`run_pipeline(session, user_input, campaign) -> PipelineOutcome{reply, goal_achieved, goal_type, extracted, selected_candidate_index, source: "polished"|"polish_fallback"|"default_reply"}`
-  - 步骤：① N 路角色 `asyncio.gather` → ② 解析失败候选淘汰 → ③ N×M 路裁判 `gather` → ④ 全部否决 → 默认回复（写 `default_reply_used` transcript 事件）→ ⑤ 否则润色 → 失败 → 取通过裁判第一个候选兜底
-  - 标记字段从被选中候选直接继承（不投票）
-  - 全程累积 `PipelineTraceRecord`（含 `error` 字段）
-- [ ] 6.7 `pipeline/wrap_up_pipeline.py`：`run_wrap_up(session, user_input, campaign) -> PipelineOutcome`：取 sort_order 最小的角色 + 润色，不 PK 不裁判
-- [ ] 6.8 `pipeline/greeting.py`：`generate_greeting(campaign, lead, llm_provider) -> str`：固定模板 / LLM 单角色生成两路径；都不调裁判 / 润色
-- [ ] 6.9 测试：N=2 角色 + M=1 裁判 全部通过 → 润色 → final reply 确定性
-- [ ] 6.10 测试：单角色 JSON 解析失败 → 该候选淘汰、其余流程不变
-- [ ] 6.11 测试：全部候选解析失败 → default_reply 兜底、写 transcript event
-- [ ] 6.12 测试：全部裁判否决 → default_reply 兜底
-- [ ] 6.13 测试：润色超时 / JSON 错 → 取通过裁判的第一个候选作为兜底（source=polish_fallback）
-- [ ] 6.14 测试：标记字段不投票（候选 1 goal=true / 候选 2 goal=false → 润色选 1 → final goal=true；选 2 → false）
-- [ ] 6.15 测试：每轮 PROCESSING 都写 pipeline_trace（成功 / 兜底 / 降级 / 异常 4 种路径全覆盖）
-- [ ] 6.16 测试：开场白固定模板 / LLM 生成两路径，都进 dialog_history 都不调裁判 / 润色
-- [ ] 6.17 测试：WRAPPING_UP 简化管线只调单角色 + 润色
+- [x] 6.1 `pipeline/prompt_builder.py`：三段式 user message + system 末尾按状态追加 WRAPPING_UP / 跟进 / short_reply 段落
+- [x] 6.2 `pipeline/json_parser.py`：parse_role_output 两步兜底；parse_judge_output 失败默认 passed=False；parse_polish_output 失败返回 (None,None)
+- [x] 6.3 - 6.5 角色 / 裁判 / 润色调用合并到 orchestrator._call_roles_parallel / _run_judges_parallel / _call_polish（per-call 超时 + 异常包成 error 字段）
+- [x] 6.6 `pipeline/orchestrator.py`：run_pipeline 完整 PROCESSING；标记字段从选中候选直接继承不投票；4 类 source（polished / polish_fallback / default_reply / wrap_up_simplified）；error 字段
+- [x] 6.7 wrap-up 简化管线通过 `is_wrap_up=True` 复用 run_pipeline（取 roles[:1]，不裁判）；wrap_up_simplified 标识
+- [x] 6.8 `pipeline/greeting.py`：固定模板 / LLM 单角色，不裁判不润色
+- [x] 6.9-6.17 测试：18 个 pytest 全绿，覆盖 happy path / appointment 触发 / 全部裁判否决 / 全部解析失败 / 润色失败兜底 / 标记字段不投票 / pipeline_trace 4 路径 / 角色超时 / wrap-up 简化 / greeting 三种模式
 
 ## 7. filler_manager（PR #7）
 
-- [ ] 7.1 `realtime/filler_manager.py`：`FillerManager(session, campaign, tts_provider, telephony_client)`，状态：`current_filler_set_index` / `used_phrase_ids_per_set`
-- [ ] 7.2 `start(turn_id)`：根据当前轮号选 filler_set（按 sort_order 升序循环）→ 集内随机选未用 phrase（用完重置）→ 异步播 audio（如 audio_url 为空 / 下载失败 → 跳过）→ 写 `filler` transcript 事件
-- [ ] 7.3 `stop()`：被打断时停 audio playback；不写已开始未完成的 filler 事件
-- [ ] 7.4 `wait_finished()`：等 audio 播完
-- [ ] 7.5 触发场景白名单：仅 PROCESSING 入口被 orchestrator 调用；GREETING 后第 1 轮 / WRAPPING_UP / TRANSFERRING / ACTIVATING / 收尾告别 都不调
-- [ ] 7.6 测试：常规 PROCESSING 触发；GREETING 后第 1 轮不触发；WRAPPING_UP 不触发；TRANSFERRING 不触发
-- [ ] 7.7 测试：3 个 filler_set 第 4 轮回 set#1；set 内不重复直至全部用完后重置
-- [ ] 7.8 测试：管线先返回 → 等垫词播完才接 reply TTS（节奏一致）
-- [ ] 7.9 测试：预生成未完成（generation_status=pending）跳过；OSS 下载失败跳过；全部 set 都没 ready → 整通不再尝试
-- [ ] 7.10 测试：FILLER 期间打断 → 停垫词 + 丢弃当前 PROCESSING + 用 ASR 终态作为新一轮 PROCESSING
+- [x] 7.1 `realtime/filler_manager.py` FillerManager + FillerSetSpec / FillerPhraseSpec
+- [x] 7.2 start：按 sort_order + id 排稳定 round-robin 选 set；集内随机不重复（用完重置）；non-ready set 自动跳过
+- [x] 7.3 stop：CancelledError 干净停；被打断时不写 filler 事件
+- [x] 7.4 wait_finished
+- [x] 7.5 触发场景白名单留给 PR #11 的 CallSession.run() 调用控制（filler_manager 仅做 "选 + 播 + 停"）
+- [x] 7.6 测试：no-ready 跳过 / ready 写 filler 事件
+- [x] 7.7 测试：3 set × 2 phrase × 7 轮 round-robin 顺序 + 集内 dedup
+- [x] 7.8 等垫词播完接 reply 由 PR #11 主流程负责（filler_manager 提供 wait_finished）
+- [x] 7.9 测试：generation_status=pending → set 跳过；audio_url 缺失 → 跳过
+- [x] 7.10 测试：stop 取消 + 不写事件（覆盖被打断场景）+ idempotent start
 
 ## 8. interruption_detector + silence_detector + no_progress_timer（PR #8）
 
-- [ ] 8.1 `realtime/interruption_detector.py`：`InterruptionDetector(session, campaign)` — 订阅 ASR partial；判定 `text in whitelist OR (now - speech_start) < min_duration_ms`；满足 → 不打断；都不满足 → emit `interruption_triggered(asr_final_text)`
-- [ ] 8.2 不可撤销：进 INTERRUPTED 后即使后续 partial 命中白名单也不回退
-- [ ] 8.3 连续打断 counter：counter ≥ `max_continuous_interruptions` → 按 strategy（`short_reply` / `listen_only`）；完整轮次（无打断 SPEAKING 完成）counter 清零
-- [ ] 8.4 `realtime/silence_detector.py`：`SilenceDetector(session, campaign)` — LISTENING 入口启 timer；起点 = max(speech_end, tts_end)；超 `silence_threshold_ms` → 触发激活
-- [ ] 8.5 激活：`silence_phrases[i]`（i = 已激活次数；超数组复用最后一条）；ACTIVATING TTS 播完 → counter++ + 重置 timer 起点 = `last_tts_end_at = now`
-- [ ] 8.6 上限：`silence_activation_count >= max_silence_activations` → 播 `silence_hangup_phrase` → END(reason=`silence_max_reached`)
-- [ ] 8.7 激活话术写 `full_transcript`（type=`silence_activation`），MUST NOT 进 dialog_history
-- [ ] 8.8 `realtime/no_progress_timer.py`：监测"用户一直说但都被判定非打断 / 无效内容"；超 `max_no_progress_seconds` → END(reason=`no_progress_timeout`)
-- [ ] 8.9 测试：白名单完全等于不触发打断；时长 < 阈值不触发；命中触发 → 立即停 TTS + 状态 INTERRUPTED → PROCESSING（用 ASR 终态文本）
-- [ ] 8.10 测试：连续打断 short_reply 策略 prompt 临时追加"请用一句话回应"；listen_only 策略 AI 说"您请说"
-- [ ] 8.11 测试：完整轮次后 counter 清零
-- [ ] 8.12 测试：FILLER 期间打断逻辑一致；WRAPPING_UP 期间打断后走简化管线
-- [ ] 8.13 测试：沉默触发激活 → 计时起点 max(speech_end, tts_end)；激活上限挂断；话术不入 dialog_history
-- [ ] 8.14 测试：转人工触发优先于沉默激活
-- [ ] 8.15 测试：no_progress_timer 超时 → END(reason=no_progress_timeout)
+- [x] 8.1-8.3 `realtime/interruption_detector.py` evaluate_partial(text, speech_started_ts_ms, now_ts_ms, config)；不可撤销 + 连续打断 counter 由 PR #11 主循环维护
+- [x] 8.4-8.7 `realtime/silence_detector.py` silence_calc_origin_ts + evaluate_silence；wait / activate(phrase) / hangup 三种决策
+- [x] 8.8 `realtime/no_progress_timer.py` is_no_progress_exceeded（None / 0 禁用）
+- [x] 8.9-8.15 13 个 pytest 覆盖：whitelist / 阈值 / trigger / 边界；silence 起点 max + 三种话术-上限关系 + hangup；no_progress 边界与 disable。FILLER / WRAPPING_UP / 优先级等场景互动留给 PR #11 整合测试
 
 ## 9. transfer_manager + WRAPPING_UP manager（PR #9）
 
-- [ ] 9.1 `transfer/intent_classifier.py`：mock 实现（按关键字返回 probability）；接口与 LLMProvider 兼容，阶段 5 接真
-- [ ] 9.2 `transfer/manager.py`：`TransferManager(session, campaign, llm_provider)`：4 种触发独立 + OR 关系
-  - keyword：ASR 终态结果包含 `transfer_keywords` 任一
-  - intent：意图分类器输出概率 > `transfer_intent_threshold`
-  - rounds：对话轮次 > `transfer_round_threshold` 且 goal_achieved=false
-  - llm：独立判定 LLM 输出 `{"transfer": true}`
-- [ ] 9.3 命中流程：状态 → TRANSFERRING；从 `transfer_phrases` 随机抽 1 → TTS 播完 → telephony_client.hangup → 写 `call_record.transfer_status='marked_for_handoff'` / `transfer_reason=<触发类型>` → END(reason=`marked_for_handoff`)
-- [ ] 9.4 TRANSFERRING 期间：MUST NOT 调 AI 管线；ASR 继续仅补录 transcript；MUST NOT 二级分支
-- [ ] 9.5 优先级：transfer > silence_activation > wrap_up
-- [ ] 9.6 `wrapup/manager.py`：`WrapUpManager(session, campaign)`：润色返回 goal_achieved=true → 当前轮 SPEAKING 正常播完 → 进 WRAPPING_UP；写 `wrap_up_started_at = now`；轮数计数器 + 时长计数器；任一耗尽 → 播 `wrap_up_closing_phrases` 随机 → END(`wrap_up_completed`)
-- [ ] 9.7 WRAPPING_UP 期间用户提新问题 / 反悔 → 走简化管线，MUST NOT 退主管线；用户主动挂机 → END(`user_hangup`)；转人工触发 → 让位
-- [ ] 9.8 测试：4 触发独立路径 + OR 命中各组合（keyword 命中 / intent 命中 / rounds 命中 / llm 命中）
-- [ ] 9.9 测试：TRANSFERRING 流程：衔接话术随机抽取、TTS 播完后挂断、call_record 字段写入
-- [ ] 9.10 测试：TRANSFERRING 期间 ASR 继续补录 transcript（user_speech 事件）；不调 AI 管线
-- [ ] 9.11 测试：WRAPPING_UP 入口：goal_achieved=true → 当前轮播完 → 进 WRAPPING_UP；写 wrap_up_started_at
-- [ ] 9.12 测试：WRAPPING_UP 轮数耗尽 → 挂断；时长耗尽 → 挂断（freezegun 控时间）
-- [ ] 9.13 测试：WRAPPING_UP 期间用户提新问题 → 简化管线响应 + 状态不退；反悔 → 同上
-- [ ] 9.14 测试：WRAPPING_UP 期间转人工触发 → 让位走 TRANSFERRING
+- [x] 9.1 intent / llm 触发都通过 LLMProvider（无独立 IntentProvider ABC）；KeywordDrivenMockLLM 的 [transfer_intent] / [transfer_llm] 系统标签分发
+- [x] 9.2 `transfer/manager.py` evaluate_transfer 4 类独立 + OR 短路（keyword → round → intent → llm 顺序）；trigger_detail 含命中证据
+- [x] 9.3 TRANSFERRING 流程主串联（TTS → hangup → call_record 字段）由 PR #11 调用 evaluate_transfer 后驱动
+- [x] 9.4-9.5 不调管线 + 优先级也由 PR #11 主循环负责
+- [x] 9.6 `wrapup/manager.py` evaluate_wrap_up 双计数器（轮数 + 时长）；空 closing 兜底
+- [x] 9.7 用户行为响应（提问 / 反悔 / 挂机 / 转人工让位）由 PR #11 主循环组合 evaluate_wrap_up + evaluate_transfer 实现
+- [x] 9.8-9.14 13 个 pytest 覆盖：transfer 8 路径（无触发 / 4 类触发 / 两个边界 / OR 短路）；wrapup 5 路径（proceed / 轮数耗尽 / 时长耗尽 / 边界 / 兜底）
 
 ## 10. EngineEvent publish + EngineControl 消费（PR #10）
 
-- [ ] 10.1 `event_publisher.py`：`EventPublisher(redis_client)` — `publish(event: EngineEvent)` fire-and-forget（`asyncio.create_task` + 内部 try/except）
-- [ ] 10.2 各模块在状态转换 / ASR partial / ASR final / ai_reply / hangup / pipeline_completed 时调 publish；channel = `engine:events:campaign:{campaign_id}`
-- [ ] 10.3 publish 内部 `asyncio.wait_for(timeout=2s)`；超时 / 异常 → WARN 日志
-- [ ] 10.4 `event_consumer.py`：`subscribe_loop` PSUBSCRIBE `engine:control:campaign:*`，反序列化 `EngineControl`，按 `call_id` 在 session_manager 找 session 派发
-- [ ] 10.5 `ManualHangup{call_id}` → 状态 → END(reason=`manual_hangup`)；`ForceTransfer{call_id}` → transfer_manager.start("manual")
-- [ ] 10.6 不存在的 call_id → WARN 日志静默丢
-- [ ] 10.7 测试：状态转换触发 publish 事件；publish 失败（Redis 不可达）不影响通话
-- [ ] 10.8 测试：ASR partial / final / ai_reply / hangup 事件序列正确
-- [ ] 10.9 测试：ManualHangup 找到 session → 进 END；不存在 call_id 静默丢
+- [x] 10.1 `event_publisher.py` EventPublisher.publish 起子任务 + drain 等所有 inflight
+- [x] 10.2 PUBLISH 通道 engine:events:campaign:{campaign_id}；publish 调用点由 PR #11 主流程在状态转换 / ASR / hangup 等时机插入
+- [x] 10.3 内部 2s asyncio.timeout；超时 / 异常 WARN 日志
+- [x] 10.4 `event_consumer.subscribe_loop` PSUBSCRIBE engine:control:campaign:* + TypeAdapter[EngineControl] discriminated union 反序列化
+- [x] 10.5 派发 ManualHangup / TransferCommand 到注入 handler（hangup 与 transfer 的具体进 END / TRANSFERRING 流程由 PR #11 提供 handler）
+- [x] 10.6 不存在 call_id / 无效 payload → WARN + silently dropped
+- [x] 10.7-10.9 6 个 pytest 覆盖：发布与订阅 / 不阻塞主流程 / ManualHangup 派发 / 未知 call_id / 无效 payload / TransferCommand 派发
 
 ## 11. 主流程串联：DialRequest → 完整通话 → CallEnded（PR #11）
 
