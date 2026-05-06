@@ -182,7 +182,8 @@
   - `aggregate_metrics`：定时聚合 analytics 视图
 
 **验收：**
-- 用一条手工构造的 call_record（含 transcript）跑完整链路，DB 中 call_summary / callback_log 都正确写入
+- [x] mock CallEnded 注入脚本（`scripts/fake_call_end.py`）已交付——运维侧可注入合成消息验证完整链路（call_summary / callback_log / lead.status 三张表）
+- impl-worker change 已实施完成（openspec/changes/impl-worker）
 
 ---
 
