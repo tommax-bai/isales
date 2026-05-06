@@ -79,4 +79,4 @@
 - [x] 10.1 全量 pytest 全绿
 - [x] 10.2 mypy / ruff 无 error
 - [ ] 10.3 1 小时不崩压测：fake_engine_consumer simulate-call-end，并发计数器无泄漏（每分钟 sample `GET isales:concurrency:active`），DialRequest 全部 schema 合法
-- [ ] 10.4 主仓 commit 标记 impl-scheduler 实施完成；archive 由 /opsx:archive 触发
+- [x] 10.4 主仓 commit 标记 impl-scheduler 实施完成；archive 由 /opsx:archive 触发
