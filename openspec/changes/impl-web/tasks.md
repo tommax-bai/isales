@@ -2,33 +2,34 @@
 > 前端独立栈：Vue 3 + Vite + TypeScript + Element Plus + Pinia + Vue Router + axios + echarts + vitest。
 > 不动后端任何 Python 服务（API endpoints 已就位）。
 
-## 1. isales-web 仓库骨架（PR #1）
+## 1. isales-web 仓库骨架（PR #1）✅
 
-- [ ] 1.1 `git init isales-web` + `.gitignore`（node_modules / dist / .env.local）
-- [ ] 1.2 `package.json`（npm；deps: vue@^3.4 / vite@^5 / element-plus@^2 / pinia@^2 / vue-router@^4 / axios / echarts + vue-echarts / dayjs / @vueuse/core）
-- [ ] 1.3 dev deps: typescript / @vue/tsconfig / vue-tsc / eslint + @vue/eslint-config-typescript / prettier / vitest + @vue/test-utils + jsdom / @testing-library/vue
-- [ ] 1.4 `vite.config.ts`：vue plugin / Element Plus auto import / path alias `@/` → `src/` / proxy `/api` → `http://localhost:8000` / proxy `/ws` → `ws://localhost:8000`（dev）
-- [ ] 1.5 `tsconfig.json` + `tsconfig.node.json`（vite Vue 3 推荐）
-- [ ] 1.6 目录骨架：`src/{main.ts,App.vue,router,stores,api,components,views,types,utils,assets}/`、`tests/`、`deploy/`
-- [ ] 1.7 README + CI（`.github/workflows/ci.yml`：npm install + lint + vue-tsc --noEmit + vitest）
-- [ ] 1.8 base layout：`<App>` → router-view；登录之外的所有页面用 `<DefaultLayout>`（侧边栏 + 顶栏）
-- [ ] 1.9 主题：仅 Element Plus 默认 + 全局 reset.css + 顶部品牌色（VITE_TENANT_NAME）
+- [x] 1.1 git init + .gitignore（node_modules / dist / .env.local）
+- [x] 1.2 package.json（vue@3.5 / vite@5.4 / element-plus@2.8 / pinia@3 / pinia-plugin-persistedstate@4 / vue-router@4 / axios / echarts + vue-echarts / dayjs / @vueuse/core / @element-plus/icons-vue）
+- [x] 1.3 dev deps: typescript / @vue/tsconfig / vue-tsc / eslint + @vue/eslint-config-typescript / prettier / vitest + @vue/test-utils + jsdom / @testing-library/vue / unplugin-auto-import / unplugin-vue-components
+- [x] 1.4 vite.config.ts：vue + Element Plus 自动导入 + @/ alias + dev proxy /api+/ws + vitest jsdom 配置（含 css: false + element-plus inline 解决 jsdom CSS 加载）
+- [x] 1.5 tsconfig.json + tsconfig.node.json（@vue/tsconfig.dom + .node 继承）
+- [x] 1.6 目录骨架 src/{router,stores,api,components/Layout,views,types,utils,assets} + tests + deploy
+- [x] 1.7 README 部署章节 + 后续 PR 路线图；CI workflow 留 PR #11
+- [x] 1.8 App.vue → DefaultLayout（侧边栏 + 顶栏 + main outlet）
+- [x] 1.9 reset.css + 中文字体栈 + bg #f5f7fa；Element Plus 默认主题 + 顶部品牌色 VITE_TENANT_NAME
 
-## 2. JWT 鉴权 + 登录 + 路由 guard（PR #2）
+## 2. JWT 鉴权 + 登录 + 路由 guard（PR #2）✅
 
-- [ ] 2.1 `api/client.ts`：axios.create({baseURL: VITE_API_BASE})；request 拦截器加 Authorization；response 401 → router.push('/login') + 清 auth store
-- [ ] 2.2 `stores/auth.ts`：Pinia auth store — token / user / isAuthenticated computed；login(creds) → POST /auth/login → 存 token；logout() → 清；持久化 token 到 localStorage
-- [ ] 2.3 `views/LoginView.vue`：用户名 + 密码表单 + 调 auth.login + 错误提示
-- [ ] 2.4 `router/index.ts`：路由表 + beforeEach guard（未登录跳 /login；已登录访问 /login 跳 /dashboard）
-- [ ] 2.5 `components/Layout/DefaultLayout.vue`：侧边栏导航（按角色权限渲染；v1 admin 全显示）+ 顶栏（用户名 + 注销按钮）
-- [ ] 2.6 测试（vitest）：auth store login 成功 / 401 失败；router guard 未登录跳转
+- [x] 2.1 api/client.ts axios + request 拦截器加 Authorization + response 401 → handleUnauthorized + router.push /login（带 redirect）
+- [x] 2.2 stores/auth.ts Pinia + persist plugin（localStorage key=isales-auth）；login OAuth2PasswordRequestForm；JWT payload role 解析；logout 仅清状态（导航职责放调用方避免循环依赖）
+- [x] 2.3 views/LoginView.vue 完整登录表单 + 校验 + loading + 错误提示（401 显示"账号或密码错误"）
+- [x] 2.4 router beforeEach guard：未登录 → /login（带 redirect query）；已登录访问 /login → /dashboard
+- [x] 2.5 DefaultLayout 顶栏接 auth store + 注销下拉
+- [x] 2.6 3 个 vitest 测试：初始未登录 / JWT role 解码 / handleUnauthorized 清状态
 
-## 3. 任务管理（Campaigns）（PR #3）
+## 3. 任务管理（Campaigns）— PR #3 minimal 已上线；9-tab 嵌套配置 DEFERRED
 
-- [ ] 3.1 `api/campaigns.ts`：CRUD + start/pause + status query
-- [ ] 3.2 `stores/campaigns.ts`：Pinia store，list / current / loading
-- [ ] 3.3 `views/Campaigns/CampaignList.vue`：el-table + 状态 / 接通率列；操作列含编辑 / 启动 / 暂停 / 删除
-- [ ] 3.4 `views/Campaigns/CampaignEdit.vue`：el-tabs 分 9 个页签
+- [x] 3.1 api/campaigns.ts list / get / create / update / remove / start / pause
+- [x] 3.2 stores/campaigns.ts Pinia + 乐观更新
+- [x] 3.3 views/Campaigns/CampaignList.vue el-table + 启动/暂停/删除（popconfirm）+ 新建/编辑按钮
+- [ ] 3.4 9 tab 嵌套配置编辑 — DEFERRED 到独立 PR（角色 / 裁判 / 润色 / 沉默 / 打断 / 转人工 / 收尾 / 时间窗口 / 重试 / 勿打 / 回调）
+- [ ] 3.4-old el-tabs 分 9 个页签（详细列表保留作 follow-up reference）
   - 基础（name / voice_id / default_replies）
   - 角色配置（嵌套 role_config 子表 + 弹层编辑 prompt + 模型 + 温度）
   - 沉默激活（threshold / max / phrases / hangup_phrase）
