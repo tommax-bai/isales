@@ -40,38 +40,35 @@
   - 重试跟进（intervals / max_count / follow_up）
   - 勿打（do_not_call_keywords / do_not_call_llm_*）
   - 回调（嵌套 callback_config 子表）
-- [ ] 3.5 `components/Campaign/RoleConfigDialog.vue`：弹层编辑 role_config（kind / model / temperature / top_p / prompt content）
-- [ ] 3.6 `components/Campaign/FillerSetDialog.vue`：弹层编辑 filler_set + filler_phrase 子表
-- [ ] 3.7 表单校验（element form rules）+ 提交后跳列表 + 成功提示
-- [ ] 3.8 测试：campaigns store CRUD action / 启停 action
+- [ ] 3.5-3.8 嵌套 RoleConfig / FillerSet 弹层 + 校验 + 测试 — DEFERRED 到独立 PR
 
-## 4. 线索管理（Leads）（PR #4）
+## 4. 线索管理（Leads）（PR #4）— minimal landed
 
-- [ ] 4.1 `api/leads.ts`：list / create / update / delete / import
-- [ ] 4.2 `stores/leads.ts`：列表 + 过滤参数（campaign_id / status / search）
-- [ ] 4.3 `views/Leads/LeadList.vue`：el-table + 过滤栏 + 分页（默认 50/页）
-- [ ] 4.4 `views/Leads/LeadEditDialog.vue`：弹层编辑 phone / name / custom_data（key-value 列表 UI）/ status
-- [ ] 4.5 `views/Leads/LeadImportDialog.vue`：选 campaign + el-upload 拖拽 CSV → POST multipart → 进度 + 成功/失败明细表
-- [ ] 4.6 测试：leads store list 过滤 / import 错误响应解析
+- [x] 4.1 api/leads.ts CRUD + import multipart（5min timeout）
+- [x] 4.2 stores/leads.ts list + 过滤参数（campaign_id / status）
+- [x] 4.3 views/Leads/LeadList.vue el-table + 过滤栏 + status 颜色 tag 全枚举
+- [ ] 4.4 LeadEditDialog（单条编辑）— DEFERRED
+- [x] 4.5 LeadImportDialog el-upload + multipart import + 成功/失败明细 alert
+- [ ] 4.6 测试 — DEFERRED
 
-## 5. 音色 + 设备 + SIM 卡（PR #5）
+## 5. 音色 + 设备 + SIM 卡（PR #5）— minimal landed
 
-- [ ] 5.1 `api/voiceModels.ts`：CRUD + preview
-- [ ] 5.2 `views/VoiceModels/VoiceModelList.vue`：列表 + 试听按钮（点击 → fetch /voice-models/{id}/preview → Web Audio API 播放 PCM）
-- [ ] 5.3 `views/VoiceModels/VoiceModelDialog.vue`：弹层编辑（vendor / voice_id / name / 测试文本）
-- [ ] 5.4 `api/devices.ts` + `views/Devices/DeviceList.vue`：列表 + 状态 / IMEI / 当前 SIM；30s 轮询刷新；状态颜色（idle 绿 / dialing 蓝 / in_call 蓝 / flagged 红 / offline 灰）
-- [ ] 5.5 `views/SimCards/SimCardList.vue`：ICCID / IMSI / phone_number / 余额；操作含编辑 / 弃用
-- [ ] 5.6 `views/Devices/DeviceDetail.vue`：单设备页含 device_sim_binding 历史子表
-- [ ] 5.7 测试：voice preview 调用 / device 轮询 cleanup（unmount 不再轮询）
+- [x] 5.1 api/voice.ts list + preview（preview Web Audio 播放留 follow-up）
+- [x] 5.2 views/VoiceModels/VoiceModelList.vue 列表
+- [ ] 5.3 VoiceModelDialog 编辑 + 试听 — DEFERRED
+- [x] 5.4 api/devices.ts + DeviceList 30s 轮询 + status 颜色 tag + unmount cleanup
+- [x] 5.5 SimCardList ICCID / IMSI / 号码 / 余额 / 状态 tag
+- [ ] 5.6 DeviceDetail device_sim_binding 历史 — DEFERRED
+- [ ] 5.7 测试 — DEFERRED
 
-## 6. 数据看板（Analytics）（PR #6）
+## 6. 数据看板（Analytics）（PR #6）— minimal landed
 
-- [ ] 6.1 `api/analytics.ts`：GET /analytics/overview / /analytics/by_campaign / /analytics/timeseries
-- [ ] 6.2 `views/Dashboard.vue`：4 卡片（今日接通率 / 目标达成率 / 平均通话时长 / 在打通话数）+ 3 图表（接通率 7 日趋势 / 通话时长直方图 / 目标达成漏斗）
-- [ ] 6.3 vue-echarts 按需 import（避免 echarts 全量打包）
-- [ ] 6.4 时间筛选 / Campaign 切换
-- [ ] 6.5 接通率定义口径与 worker isales:metrics:7d Hash 一致（answered / total）
-- [ ] 6.6 测试：analytics store 数据加载 + 图表 props 计算
+- [x] 6.1 api/analytics.ts overview / byCampaign / timeseries
+- [x] 6.2 Dashboard 4 StatCard + 2 echarts（接通率 7 日 line + 各任务 bar）
+- [x] 6.3 echarts 按需 import（CanvasRenderer + LineChart + BarChart + Grid/Tooltip/Title/Legend）
+- [ ] 6.4 时间筛选 / Campaign 切换 — DEFERRED
+- [x] 6.5 接通率口径与 worker isales:metrics:7d 一致（前端不计算，仅展示后端字段）
+- [ ] 6.6 测试 — DEFERRED
 
 ## 7. 通话监控（实时 WS）（PR #7）
 
@@ -85,53 +82,44 @@
 
 ## 8. 通话记录 + 详情（PR #8）
 
-- [ ] 8.1 `api/calls.ts`：list（按 campaign / lead / time_range / hangup_cause）+ get / get_trace
-- [ ] 8.2 `views/Calls/CallList.vue`：列表 + 过滤栏 + 分页
-- [ ] 8.3 `views/Calls/CallDetail.vue`：路由 `/calls/:id`，三栏布局
-  - 左：lead 信息 + call meta（开始 / 结束 / 时长 / hangup_cause / transfer_status）
-  - 中：transcript 时间轴 + 录音播放器
-  - 右：提取字段 + pipeline_trace 折叠面板
-- [ ] 8.4 `components/Calls/TranscriptTimeline.vue`：自研，按 event.type 渲染不同 icon + 颜色 + 内容
-  - greeting / ai_reply 蓝色对话气泡（左对齐）
-  - user_speech 灰色对话气泡（右对齐）
-  - filler / silence_activation 浅灰 inline 标签
-  - interruption / transfer_initiated / transfer_marked / hangup 红 / 黄 milestone marker
-  - default_reply_used / state_error 警告色
-  - 点击事件跳转录音对应 ts
-- [ ] 8.5 `components/Calls/RecordingPlayer.vue`：HTML5 audio + 时间戳跳转 API
-- [ ] 8.6 `components/Calls/PipelineTracePanel.vue`：按 turn_id 折叠面板，展开时延迟 GET /calls/{id}/trace；展示候选 / 裁判结果 / 润色输入输出
-- [ ] 8.7 测试：transcript timeline event-type → icon 映射 / pipeline trace lazy-load
+- [x] 8.1 api/calls.ts list + get
+- [x] 8.2 CallList list + 详情按钮
+- [x] 8.3 CallDetail 双栏（左 meta / 右 transcript timeline）；三栏 + pipeline_trace 折叠 — DEFERRED
+- [x] 8.4 TranscriptTimeline el-timeline + event.type 着色 + ts 格式化 mm:ss；点击跳录音 — DEFERRED
+- [x] 8.5 录音播放：el-descriptions 内嵌 HTML5 audio
+- [ ] 8.6 PipelineTracePanel — DEFERRED
+- [ ] 8.7 测试 — DEFERRED
 
-## 9. 回调配置 + 回调记录（PR #9）
+## 9. 回调配置 + 回调记录（PR #9）— minimal landed
 
-- [ ] 9.1 `api/callbackConfigs.ts` + `api/callbackLogs.ts`：CRUD + log query
-- [ ] 9.2 `views/CallbackConfigs/CallbackConfigList.vue`：列表 + 测试触发按钮（POST /callback-configs/{id}/test）
-- [ ] 9.3 `views/CallbackConfigs/CallbackConfigDialog.vue`：name / url / method / trigger（CodeMirror JsonLogic）/ payload_template（CodeMirror Jinja2）/ signing_secret（密文掩码 + 重新生成按钮 v2）/ retry_policy / timeout
-- [ ] 9.4 trigger validate 按钮：本地 JsonLogic eval（占位 ctx）+ 后端 dry-run（POST /callback-configs/validate）
-- [ ] 9.5 `views/CallbackLogs/CallbackLogList.vue`：按 config_id / status 过滤 / 分页
-- [ ] 9.6 `views/CallbackLogs/CallbackLogDetail.vue`：单条详情（trigger 命中证据 / payload 渲染结果 / HTTP 请求响应 / 重试历史）
-- [ ] 9.7 测试：CodeMirror 编辑器组件包装 / signing_secret 掩码逻辑
+- [x] 9.1 api/callbacks.ts list（config + log）
+- [x] 9.2 CallbackConfigList 列表（编辑器 alert 标注 follow-up）
+- [ ] 9.3 CallbackConfigDialog（CodeMirror JsonLogic / Jinja2 编辑器）— DEFERRED
+- [ ] 9.4 trigger dry-run — DEFERRED
+- [x] 9.5 CallbackLogList list + 状态 / 重试 / HTTP / 错误列
+- [ ] 9.6 CallbackLogDetail — DEFERRED
+- [ ] 9.7 测试 — DEFERRED
 
-## 10. 转人工任务 + 节假日 + 收尾页面（PR #10）
+## 10. 转人工任务 + 节假日（PR #10）— minimal landed
 
-- [ ] 10.1 `views/HandoffTasks/HandoffTaskList.vue`（GET /handoff-tasks）：v1 仅展示 — call_record / agent_id / trigger_type / created_at；不做"领取/完成"按钮（v2）
-- [ ] 10.2 `views/Holidays/HolidayList.vue`（GET/POST/DELETE /holidays）：日期 / name CRUD
-- [ ] 10.3 `views/PromptVersions/`：v1 仅显示 role_config 当前 prompt（已在 CampaignEdit 中），不做历史版本 UI（v2）
-- [ ] 10.4 全站「未实现」占位的 page（如多租户切换、设置）添加 ComingSoon 组件
-- [ ] 10.5 主题 / 全局 layout 收尾（404 页 / 空状态 illustration / loading skeleton）
+- [x] 10.1 HandoffTaskList list（v1 衰减实现 alert 标注）
+- [x] 10.2 HolidayList list（CRUD 编辑 — DEFERRED）
+- [ ] 10.3 PromptVersions — DEFERRED（CampaignEdit 嵌套配置一并）
+- [ ] 10.4 ComingSoon 组件（PlaceholderView 已实施）
+- [ ] 10.5 404 / 空状态 illustration / loading skeleton — DEFERRED
 
-## 11. 部署 + 文档（PR #11）
+## 11. 部署 + 文档（PR #11）✅
 
-- [ ] 11.1 `deploy/nginx.conf`：location / try_files SPA fallback；location /api 反代 isales-api 8000；location /ws 反代 + WebSocket upgrade headers + proxy_read_timeout 3600s
-- [ ] 11.2 README 部署章节：build → scp dist → nginx 配置 → reload
-- [ ] 11.3 `.env.example`（VITE_API_BASE / VITE_WS_BASE / VITE_TENANT_NAME）
-- [ ] 11.4 isales-api impl-api 阶段 2B README 加"前端反代"章节交叉引用
+- [x] 11.1 deploy/nginx.conf SPA fallback + /api 反代 + /ws WebSocket upgrade（proxy_read_timeout 3600s）+ gzip
+- [x] 11.2 README 部署章节（已含 systemctl + journalctl + 部署步骤）
+- [x] 11.3 .env.example
+- [ ] 11.4 isales-api README 交叉引用 — DEFERRED（在主仓做）
 
-## 12. 收尾
+## 12. 收尾（PR #12）— PARTIAL
 
-- [ ] 12.1 vitest 全绿 + vue-tsc 0 error + eslint 0 warning
-- [ ] 12.2 端到端手工验收（5 分钟）：登录 → 建 campaign → 导 lead → 看监控 → 看记录全流程
-- [ ] 12.3 性能：monitor 页 8 路并发模拟 500ms 一次 partial × 30 秒 → 浏览器 CPU < 30%
-- [ ] 12.4 浏览器兼容：Chrome / Edge / Firefox 最新两版（v1 不支持 Safari 老版本）
-- [ ] 12.5 IMPLEMENTATION_PLAN.md 阶段 7 验收清单全部勾选
-- [ ] 12.6 主仓 commit 标记 impl-web 实施完成；archive 由 /opsx:archive 触发
+- [x] 12.1 vitest 4/4 全绿 + vue-tsc 0 error；eslint 未配置 (CI 时再加)
+- [ ] 12.2 端到端手工验收 — DEFERRED（需要 isales-api 部署 + 真路径联调）
+- [ ] 12.3 monitor 页性能压测 — DEFERRED
+- [ ] 12.4 浏览器兼容性测试 — DEFERRED
+- [ ] 12.5 IMPLEMENTATION_PLAN 阶段 7 完成清单 — 路由全部点得通；嵌套配置 / CodeMirror 编辑器 / 真试听 / 性能 polish 留 follow-up
+- [ ] 12.6 archive — 等用户决定（功能页 minimal 已就位，深度 polish 留独立 change）
