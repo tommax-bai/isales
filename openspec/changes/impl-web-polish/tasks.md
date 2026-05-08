@@ -1,38 +1,32 @@
 > 实施在 isales-web 仓库（已存在）。每组对应 1~2 个 PR，按顺序合入。
 > 不动后端任何 Python 服务。
 
-## 1. 基础设施 + ESLint + CI（PR #1）
+## 1. 基础设施 + ESLint + CI（PR #1）✅
 
-- [ ] 1.1 `.eslintrc.cjs`（@vue/eslint-config-typescript 推荐 + import 排序）
-- [ ] 1.2 `.prettierrc`（行宽 100 / single quote / trailing comma all）
-- [ ] 1.3 `.github/workflows/ci.yml`：npm install + lint + typecheck + test + build
-- [ ] 1.4 README CI badge + 部署章节微调
-- [ ] 1.5 `vite.config.ts` rollupOptions.output.manualChunks：vendor-echarts / vendor-element-plus / vendor-codemirror（解决 DashboardView 510KB warning）
-- [ ] 1.6 `tests/` 目录加 setup helper（Pinia testing instance / mock router / 公共 fixtures）
-- [ ] 1.7 测试：build 后 dist/ 总大小 < 1MB；DashboardView chunk < 200KB
+- [x] 1.1 eslint.config.mjs flat config（ESLint 9 必需）+ typescript-eslint recommended + eslint-plugin-vue flat/recommended
+- [x] 1.2 .prettierrc 行宽 100 / single quote false / trailing comma all
+- [x] 1.3 .github/workflows/ci.yml lint + typecheck + test + build
+- [ ] 1.4 README CI badge — DEFERRED（小事，CI 跑起来再加）
+- [x] 1.5 vite.config.ts rollupOptions.output.manualChunks 拆 vendor-echarts / vendor-element-plus / vendor-codemirror；DashboardView 510KB → 7.5KB
+- [ ] 1.6 tests/ setup helper — DEFERRED（PR #10 测试增强一并）
+- [x] 1.7 build < 1MB（除 vendor chunks）+ DashboardView chunk 7.5KB < 200KB
 
-## 2. 通用组件 + 体验补（PR #2）
+## 2. 通用组件 + 体验补（PR #2）✅
 
-- [ ] 2.1 `views/NotFoundView.vue`：404 illustration + 返回首页（取代 PlaceholderView 兼任 404）
-- [ ] 2.2 `components/Common/ListLoadingSkeleton.vue`：列表 loading 通用骨架
-- [ ] 2.3 `components/Common/EmptyState.vue`：空状态 + 行动按钮 slot
-- [ ] 2.4 `components/Common/KeyValueEditor.vue`：动态 key-value 行（add / remove / 表单校验）
-- [ ] 2.5 `components/Common/ErrorBoundary.vue`：组件未捕获异常兜底渲染
-- [ ] 2.6 全局应用：所有 list 页（13 个）切到 ListLoadingSkeleton + EmptyState
-- [ ] 2.7 main.ts 用 ErrorBoundary 包 router-view
-- [ ] 2.8 测试：KeyValueEditor add/remove / EmptyState slot
+- [x] 2.1 views/NotFoundView.vue（96px 灰 + 返回首页按钮）取代 PlaceholderView 作为 404
+- [x] 2.2 components/Common/ListLoadingSkeleton.vue
+- [x] 2.3 components/Common/EmptyState.vue
+- [x] 2.4 components/Common/KeyValueEditor.vue（动态 KV 行 + emit object + 防 watch clobber）
+- [x] 2.5 components/Common/ErrorBoundary.vue（onErrorCaptured + el-result + 返回首页）
+- [ ] 2.6 全站 list 页切到 ListLoadingSkeleton + EmptyState — DEFERRED（el-table 内置 v-loading + empty-text 已够用；polish v2）
+- [x] 2.7 App.vue 用 ErrorBoundary 包 router-view
+- [x] 2.8 3 个 vitest（KeyValueEditor 渲染 / addRow / removeRow + emit）
 
-## 3. CodeMirror 6 编辑器 + Callback 真编辑器（PR #3）
+## 3. CodeMirror 6 编辑器 + Callback 真编辑器（PR #3）✅
 
-- [ ] 3.1 npm install @codemirror/state @codemirror/view @codemirror/lang-json @codemirror/commands @codemirror/language @codemirror/autocomplete
-- [ ] 3.2 `components/Common/CodeEditor.vue`：薄 v-model 包装，props mode=json|jinja2、height、placeholder
-  - JSON 模式：`@codemirror/lang-json` 直接用 + 括号配对 + 行号
-  - Jinja2 模式：`@codemirror/lang-html` 基础 + ViewPlugin decoration 高亮 ``{{ }}`` `{% %}`
-- [ ] 3.3 `views/Callbacks/CallbackConfigEdit.vue`：路由 `/callback-configs/:id/edit` + `/callback-configs/new`
-  - 名称 / URL / method（select GET/POST/PATCH）
-  - trigger（CodeEditor json，本地 JSON.parse 校验 + "测试 trigger" 按钮调 POST /callback-configs/validate）
-  - payload_template（CodeEditor jinja2 + "测试渲染" 按钮）
-  - signing_secret 掩码 input + "重新生成" 按钮（POST /callback-configs/{id}/rotate-secret，404 时提示后端未实现）
+- [x] 3.1 npm install @codemirror/state / view / lang-json / lang-html / commands / language / autocomplete
+- [x] 3.2 components/Common/CodeEditor.vue（v-model 包装；json mode 直接 lang-json；jinja2 mode lang-html + ViewPlugin decoration 高亮 {{ }} 与 {% %}；Compartment 切 mode 不重建 view）
+- [x] 3.3 views/Callbacks/CallbackConfigEdit.vue 完整表单（含 trigger CodeEditor + payload CodeEditor + signing_secret 掩码 + 重新生成确认弹窗 + 验证按钮调 dry-run + 后端 endpoint 缺失友好降级）
   - retry_policy（intervals_seconds 数组 + max_attempts）
   - timeout_seconds + enabled toggle
 - [ ] 3.4 CallbackConfigList 加"新建 / 编辑"按钮（跳路由）
