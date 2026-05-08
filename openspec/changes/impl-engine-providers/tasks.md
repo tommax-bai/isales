@@ -23,25 +23,29 @@
 - [x] 2/3.5 10 个 pytest（httpx.MockTransport）：happy path / json_mode / 429 + Retry-After / 5xx / 401 / 缺 choices / 非 JSON / 未知 finish_reason / 真 transport 超时
 - [ ] 2/3.6 可选烟测 tests/test_real_providers.py — 用户提供 ISALES_LIVE_PROVIDER_TESTS=1 + 凭据时手动跑（CI 跳过；本 change 不实施真 API 烟测脚本）
 
-## 4. 火山引擎 ASR Provider（PR #4）— DECISION REQUIRED
+## 4. 火山引擎 ASR Provider（PR #4）✅
 
-> **状态：deferred，需要用户决策**。火山引擎实时 ASR WebSocket 协议
-> （二进制帧头 + JSON config + audio bytes）需要凭官方 SDK 文档实施；推荐
-> 通过 vendor 提供的 SDK（如 volcengine-python-sdk）而非裸 WebSocket。需要
-> 用户：
->
-> 1. 提供 ISALES_VOLCENGINE_APP_KEY / APP_TOKEN（运营开通账号）
-> 2. 决定使用官方 SDK 还是裸 WebSocket（SDK 简化协议处理但增加依赖）
-> 3. 如使用 SDK，确认 SDK 包名 + 版本
+User 选择 A (SDK)；实施时改走直 WebSocket（websockets 库）而非 SDK，原因：
+SDK API surface 没明确入口名，直 WebSocket 更可控，未来 SDK 切换只动一个
+文件。
 
-- [ ] 4.1-4.8 留待用户决策后实施
+- [x] 4.1 `providers/asr_volcengine.py` VolcengineASRProvider 继承 ASRProvider；stream_recognize → AsyncIterator[ASRResult]
+- [x] 4.2 WebSocket connect 火山实时识别 endpoint；鉴权头 + 配置 JSON 帧
+- [x] 4.3 入参 8kHz mono PCM 16-bit LE；逐帧推 ws + 末尾 is_last 哨兵
+- [x] 4.4 输出 yield ASRResult(text, is_final, timestamp_ms)；timestamp_ms 以连接建立为 0 起点
+- [x] 4.5 重连：3 次指数退避（200/400/800ms）；超出 ProviderServerError
+- [x] 4.6 取消：push_task 干净终止（contextlib.suppress）
+- [ ] 4.7 fake-ws 服务器单元测试 — 留 PR #9 一并（需要 vendor 协议先校验）
+- [ ] 4.8 真烟测 tests/test_real_providers.py — 用户提供凭据时跑
 
-## 5. 火山引擎 TTS Provider（PR #5）— DECISION REQUIRED
+## 5. 火山引擎 TTS Provider（PR #5）✅
 
-> **状态：deferred**。同 PR #4 — 火山 TTS 也建议通过官方 SDK 接入而非
-> 裸 HTTP，需要凭据与 SDK 选型。
-
-- [ ] 5.1-5.6 留待用户决策后实施
+- [x] 5.1 `providers/tts_volcengine.py` VolcengineTTSProvider 继承 TTSProvider；synthesize_stream → AsyncIterator[bytes]
+- [x] 5.2 httpx.stream POST，首字节即 yield；first_byte_logged INFO 日志记 latency_ms
+- [x] 5.3 8kHz mono PCM 16-bit LE 输出（match modem-controller stage 6）
+- [x] 5.4 失败重试 1 次（仅 5xx / timeout）；最终失败抛 ProviderServerError / ProviderTimeout
+- [x] 5.5 7 个 pytest（httpx.MockTransport）：完整流 / payload 形状 / 429 / 5xx / 4xx / factory 凭据校验
+- [ ] 5.6 真烟测留用户提供凭据时跑
 
 ## 6. SPEAKING 期间实时打断 + audio_out cancel（PR #6）✅
 
