@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Daily PG + Redis backup at 02:30 host TZ.
+  Runs as _isales (read-only access to /etc/isales/env/api.env via group).
+  StandardOutPath / StandardErrorPath capture script output for diagnostics.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.isales.backup</string>
+    <key>UserName</key>
+    <string>_isales</string>
+    <key>GroupName</key>
+    <string>_isales</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>-c</string>
+        <string>/opt/isales/current/deploy/macos/scripts/backup_pg.sh &amp;&amp; /opt/isales/current/deploy/macos/scripts/backup_redis.sh</string>
+    </array>
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>2</integer>
+        <key>Minute</key>
+        <integer>30</integer>
+    </dict>
+    <key>RunAtLoad</key>
+    <false/>
+    <key>StandardOutPath</key>
+    <string>/opt/isales/logs/backup.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/opt/isales/logs/backup.err.log</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>BREW_PREFIX</key>
+        <string>/opt/homebrew</string>
+    </dict>
+</dict>
+</plist>

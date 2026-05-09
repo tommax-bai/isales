@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Managed by iSales install.sh.
+  EnvironmentVariables is rewritten on every install from
+  /etc/isales/env/worker.env (launchd has no EnvironmentFile=).
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.isales.worker</string>
+    <key>UserName</key>
+    <string>_isales</string>
+    <key>GroupName</key>
+    <string>_isales</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/opt/isales/current/venv/bin/isales-worker</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>/opt/isales/current/isales-worker</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+    <key>StandardOutPath</key>
+    <string>/opt/isales/logs/worker.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/opt/isales/logs/worker.err.log</string>
+    <key>EnvironmentVariables</key>
+    <dict/>
+</dict>
+</plist>
