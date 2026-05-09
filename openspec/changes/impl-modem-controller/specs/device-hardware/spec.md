@@ -7,12 +7,12 @@ modem-controller SHALL 每 30s 向 isales-api 发送一次心跳；isales-worker
 #### Scenario: modem-controller 心跳格式与频率
 
 - **WHEN** modem-controller 进程运行中（任意 device 状态）
-- **THEN** 进程 SHALL 每 30s 对每个已注册 device 发一次 `PATCH /devices/{id}/heartbeat`，请求体 `{signal_strength: <0-31, AT+CSQ 实测>}`；MUST NOT 同时更新其他字段（status / last_call_at 等不在心跳路径中维护）
+- **THEN** 进程 SHALL 每 30s 对每个已注册 device 发一次 `PATCH /devices/{id}/heartbeat`；请求体 `{signal_strength: <0-31, AT+CSQ 实测, optional>}`；MUST NOT 同时更新其他字段（status / last_call_at 等不在心跳路径中维护）
 
 #### Scenario: 心跳端点不修改其他字段
 
-- **WHEN** isales-api 收到 `PATCH /devices/{id}/heartbeat`
-- **THEN** 服务端 MUST 仅更新 `last_seen_at = now()` + `signal_strength = <body.signal_strength>`；MUST NOT 修改 `status` / `last_call_at` / `imei` 等字段；MUST 校验 service-account JWT
+- **WHEN** telephony-api 收到 `PATCH /devices/{id}/heartbeat`
+- **THEN** 服务端 MUST 仅更新 `device.last_seen_at = now()`；MUST NOT 修改 `status` / `last_call_at` / `imei` / `signal_strength` 等字段（signal_strength 按 data-model spec 在 sim_card 表，v1 心跳路径暂不级联回写，留给 v2）；MUST 校验当前用户身份（admin JWT 或 service-account JWT 任一）
 
 #### Scenario: watchdog 失联探测
 

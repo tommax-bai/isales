@@ -38,16 +38,22 @@ Stage 6 是整个 v1 系统的最后一块物理拼图：前面 1-5 / 7 把所�
 
 ## Decisions
 
-### 1. 仓库划分：独立 isales-modem-controller 仓 vs 并入 isales-telephony
+### 1. 仓库划分：扩展 isales-telephony 现有 modem_controller 包
 
-- **选择**：独立新仓 `isales-modem-controller`
+- **选择**：扩展 `isales-telephony/isales_telephony/modem_controller/`（替换 stage-2 的 mock 脚手架）
 - **理由**：
-  - device-hardware spec § "仓库与进程关系"明示 isales-telephony 仓内可承载 telephony-api 与 modem-controller 两个 entry point，但 v1 实操：modem-controller 依赖系统级 pyalsaaudio / pyudev / pyserial-asyncio，不能在 mac 安装；telephony-api 是普通 fastapi 服务，跨平台 dev 友好。两者放一仓会让 telephony-api 的开发/CI 跑不了
-  - 独立仓让 systemd 部署 + udev rules + audio device 权限脚本独立打包，更清爽
-  - spec § "仓库与进程关系"是 SHALL 不是 MUST，允许 v1 拆仓
+  - device-hardware spec § "仓库与进程关系" SHALL：isales-telephony 仓内同时提供 telephony-api 与 modem-controller 两个 entry point。stage 2 的 impl-telephony 已经按这条 SHALL 把脚手架放在了 isales-telephony 仓里（含 `MockATClient` + IPC server + udev watcher + console_scripts entry），并且 `pyudev` 已平台门控为 `platform_system == "Linux"`、pyserial 收到独立的 `[hardware]` extra 里。
+  - 新仓 `isales-modem-controller` 在 stage 6 实施初期被起手了，但实操中发现：(a) telephony 的跨平台 dev 顾虑已被 stage 2 平台门控解决；(b) 新仓 IPC 协议字段（`type/call_id/pcm_b64`）偏离了 spec § engine ↔ modem-controller IPC 协议（`cmd/event/session_id/pcm_chunk`）；telephony 现有 IPC server 反而是对齐的。再走分仓只会同时维护两套协议
+  - 扩展现有仓还能复用 stage 2 的 /devices /sim-cards /device-sim-bindings /select 路由（device 域归 telephony 是 spec 锁定的）
 - **替代**：
-  - 并入 isales-telephony → CI 跑不了，dev 限定 Linux 体验差
+  - 独立新仓 `isales-modem-controller` → stage 6 起手时选过，跑了 6 个 PR 后撞到协议偏离 + 重复脚手架，反向了
   - 并入 isales-engine → 进程职责不分离（engine 跨主机，modem 单主机）
+
+### 1a. IPC 协议字段名：按 spec 走
+
+- **选择**：engine → modem 用 `{cmd, session_id, ...}`；modem → engine 用 `{event, session_id, ...}`；音频字段名 `pcm_chunk`（base64）
+- **理由**：spec § engine ↔ modem-controller IPC 协议 给了字面例子；偏离会让 engine 侧 RealTelephonyClient 与 spec 脱节，未来对账成本高
+- **替代**：`type/call_id/pcm_b64` 风格（OpenAPI 风的命名）→ 看着更现代，但 spec 没规约这种命名，没有理由偏离
 
 ### 2. 串口异步：pyserial-asyncio vs raw asyncio + serial 文件描述符
 
