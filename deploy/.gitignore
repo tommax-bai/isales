@@ -1,0 +1,4 @@
+# 真实 env 文件（含 secret）只允许出现在目标主机的 /etc/isales/env/
+# 仓库里只保留 env/*.env.example 模板。
+env/*.env
+!env/*.env.example

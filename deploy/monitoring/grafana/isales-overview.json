@@ -1,0 +1,86 @@
+{
+  "title": "iSales Overview",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "tags": ["isales", "v1"],
+  "timezone": "browser",
+  "time": {"from": "now-3h", "to": "now"},
+  "refresh": "30s",
+  "templating": {"list": []},
+  "annotations": {"list": []},
+  "panels": [
+    {
+      "id": 1,
+      "title": "Active calls (in-flight)",
+      "type": "stat",
+      "datasource": "Prometheus",
+      "gridPos": {"h": 6, "w": 6, "x": 0, "y": 0},
+      "targets": [
+        {
+          "expr": "sum(isales_active_calls)",
+          "legendFormat": "active",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "reduceOptions": {"calcs": ["lastNotNull"]},
+        "colorMode": "background"
+      }
+    },
+    {
+      "id": 2,
+      "title": "engine:dial queue depth",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "gridPos": {"h": 6, "w": 18, "x": 6, "y": 0},
+      "targets": [
+        {
+          "expr": "redis_list_length{key=\"engine:dial\"}",
+          "legendFormat": "engine:dial",
+          "refId": "A"
+        },
+        {
+          "expr": "redis_list_length{key=\"engine:worker:call-ended\"}",
+          "legendFormat": "worker call-ended",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Connection rate (last 1h)",
+      "type": "stat",
+      "datasource": "Prometheus",
+      "gridPos": {"h": 6, "w": 6, "x": 0, "y": 6},
+      "targets": [
+        {
+          "expr": "sum(rate(isales_call_connected_total[1h])) / sum(rate(isales_call_attempted_total[1h]))",
+          "legendFormat": "connect rate",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "Service error log count (last 1h)",
+      "type": "bargauge",
+      "datasource": "Prometheus",
+      "gridPos": {"h": 6, "w": 18, "x": 6, "y": 6},
+      "targets": [
+        {
+          "expr": "sum by (job) (increase(isales_log_errors_total[1h]))",
+          "legendFormat": "{{ job }}",
+          "refId": "A"
+        }
+      ]
+    }
+  ]
+}

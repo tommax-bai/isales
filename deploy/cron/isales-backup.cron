@@ -1,0 +1,13 @@
+# /etc/cron.d/isales-backup — installed by deploy/scripts/install.sh.
+# Daily PostgreSQL + Redis backup at 02:30 host time.
+#
+# Output:
+#   /opt/isales/backups/pg/YYYY-MM-DD.sql.gz       (retain 14 days)
+#   /opt/isales/backups/redis/YYYY-MM-DD.aof.gz    (retain 14 days)
+#
+# Logs: syslog tag `isales-backup` (journalctl -t isales-backup).
+
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+30 2 * * *  isales  /opt/isales/current/deploy/scripts/backup_pg.sh && /opt/isales/current/deploy/scripts/backup_redis.sh

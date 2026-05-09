@@ -1,0 +1,62 @@
+# Prometheus scrape targets for iSales v1.
+#
+# Copy this to your Prometheus host (often /etc/prometheus/prometheus.yml).
+# Provision/install this file is OUT of scope for the iSales provision.sh —
+# operator's existing monitoring setup wins. See deploy/monitoring/README.md.
+#
+# Targets marked `# TODO` correspond to services whose /metrics endpoint is
+# not yet implemented; remove the comment once the service ships /metrics.
+
+global:
+  scrape_interval: 30s
+  evaluation_interval: 30s
+
+rule_files:
+  - alert_rules.yml
+
+scrape_configs:
+  - job_name: isales-api
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['127.0.0.1:8000']
+    # TODO: pending /metrics implementation in isales-api
+
+  - job_name: isales-engine
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['127.0.0.1:8002']
+    # TODO: pending /metrics implementation in isales-engine
+
+  - job_name: isales-scheduler
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['127.0.0.1:8003']
+    # TODO: pending /metrics implementation in isales-scheduler
+
+  - job_name: isales-worker
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['127.0.0.1:8004']
+    # TODO: pending /metrics implementation in isales-worker
+
+  - job_name: isales-telephony-api
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['127.0.0.1:8001']
+    # TODO: pending /metrics implementation in isales-telephony
+
+  # ---------- node + pg ----------
+
+  - job_name: node
+    static_configs:
+      - targets: ['127.0.0.1:9100']
+
+  - job_name: postgres
+    static_configs:
+      - targets: ['127.0.0.1:9187']
+
+  # ---------- self ----------
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ['127.0.0.1:9090']

@@ -1,0 +1,76 @@
+# iSales minimal alert ruleset for v1 single-host deployment.
+# Copy to your Prometheus host alongside prometheus.yml.example.
+#
+# Validate with:  promtool check rules alert_rules.yml.example
+#
+# Thresholds are starting defaults — tune to your traffic profile.
+
+groups:
+  - name: isales-platform
+    rules:
+
+      # 1. engine:dial 队列堆积持续 5 分钟超阈值
+      - alert: IsalesDialQueueBacklog
+        expr: redis_list_length{key="engine:dial"} > 200
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "engine:dial backlog over 200 for 5m (current {{ $value }})"
+          description: |
+            Scheduler is producing dials faster than engine consumes them.
+            Likely causes: engine OOM/restart loop, downstream telephony stall,
+            or scheduler over-pushing. Check `journalctl -u isales-engine`.
+
+      # 2. 过去 1 小时 device flagged 比例骤升
+      - alert: IsalesDeviceFlaggedRateHigh
+        expr: |
+          (
+            sum(rate(isales_device_flagged_total[1h]))
+            /
+            sum(isales_device_total)
+          ) > 0.10
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "device flagged ratio >10% over last hour ({{ $value }})"
+          description: |
+            Telephony health monitor is flagging devices faster than baseline.
+            Suggests SIM exhaustion / signal degradation / modem hardware fault.
+
+      # 3. callback 失败率 > 阈值
+      - alert: IsalesCallbackFailureRate
+        expr: |
+          (
+            sum(rate(isales_callback_failed_total[15m]))
+            /
+            sum(rate(isales_callback_attempted_total[15m]))
+          ) > 0.20
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "callback failure rate >20% over 15m ({{ $value }})"
+          description: |
+            More than 1 in 5 webhook callbacks are failing. External endpoint
+            may be down, or signing_secret / fernet key mismatch — check the
+            worker callback_log table for response_code distribution.
+
+      # 4. PG 连接数 > max_connections * 0.8
+      - alert: IsalesPgConnectionsHigh
+        expr: |
+          (
+            pg_stat_activity_count
+            /
+            on() pg_settings_max_connections
+          ) > 0.80
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PG connections >80% of max ({{ $value }})"
+          description: |
+            One of the iSales services has a connection leak, OR scheduler
+            tick rate × pool size exceeds capacity. Check pg_stat_activity
+            grouped by application_name.
