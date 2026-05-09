@@ -30,7 +30,7 @@ iSales v1 当前明确假设 **Linux 单主机**：`architecture` spec § "v1 �
 ### macOS 部署树（meta-repo 改动）
 
 - **`deploy/macos/`**（与现有 `deploy/scripts/` 平行；Linux 路径改名为 `deploy/linux/scripts/`，向后兼容软链保留 `deploy/scripts/` -> `linux/scripts/` 一个发版周期）：
-  - `provision.sh`：`brew install postgresql@15 redis nginx python@3.12 node@20 pkg-config`；用 `dscl` + `sysadminctl` 创建 `_isales` 系统账户（macOS 系统账户用 `_` 前缀且 UID < 500）；初始化 PG / Redis；写入 `/etc/isales/env/`（macOS 也用 `/etc/`，与 Linux 一致）
+  - `provision.sh`：`brew install postgresql@16 redis nginx python@3.12 node@20 pkg-config`；用 `dscl` + `sysadminctl` 创建 `_isales` 系统账户（macOS 系统账户用 `_` 前缀且 UID < 500）；初始化 PG / Redis；写入 `/etc/isales/env/`（macOS 也用 `/etc/`，与 Linux 一致）
   - `install.sh`：clone 7 仓 + venv（python3.12 from `/opt/homebrew/bin/python3.12`，**仅 Apple Silicon**）+ pip install + npm build + 把 plist 文件部署到 `/Library/LaunchDaemons/`，原子软链 `/opt/isales/current` 用 `ln -sfn`
   - `deploy.sh`：`launchctl bootout system/com.isales.X && launchctl bootstrap system /Library/LaunchDaemons/com.isales.X.plist`，按依赖顺序与 Linux 版一致
   - `rollback.sh`：与 Linux 版结构一致，命令换 launchctl

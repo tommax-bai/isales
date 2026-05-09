@@ -50,16 +50,21 @@ die() {
 # ---------- arg parsing ----------
 
 parse_common_flags() {
-    # Pop --dry-run / --force out of "$@" by re-emitting non-flag args via
-    # stdout; callers do:
-    #     mapfile -t REST < <(parse_common_flags "$@")
-    #     set -- "${REST[@]}"
+    # Set DRY_RUN / FORCE globals from "$@"; non-flag args go into the global
+    # REST array. Callers do:
+    #     parse_common_flags "$@"
+    #     for arg in "${REST[@]+"${REST[@]}"}"; do ...; done
+    #
+    # Note: this CANNOT be invoked via process substitution (e.g.
+    # `mapfile -t X < <(parse_common_flags "$@")`) — that would run the body
+    # in a subshell and the global mutations would not propagate back.
+    REST=()
     local arg
     for arg in "$@"; do
         case "$arg" in
             --dry-run) DRY_RUN=1 ;;
             --force)   FORCE=1 ;;
-            *)         printf '%s\n' "$arg" ;;
+            *)         REST+=("$arg") ;;
         esac
     done
 }

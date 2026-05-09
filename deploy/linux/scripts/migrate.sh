@@ -7,8 +7,8 @@
 # would do; we use api.env by convention).
 #
 # Usage:
-#     sudo bash deploy/scripts/migrate.sh              # upgrade head
-#     sudo bash deploy/scripts/migrate.sh --dry-run    # alembic history -i
+#     sudo bash deploy/linux/scripts/migrate.sh              # upgrade head
+#     sudo bash deploy/linux/scripts/migrate.sh --dry-run    # alembic history -i
 #
 # Always operates on /opt/isales/current — run after install.sh swaps the
 # symlink, OR before deploy.sh if you prefer migrate-then-deploy ordering.
@@ -19,7 +19,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=./_lib.sh
 source "$SCRIPT_DIR/_lib.sh"
 
-mapfile -t REST < <(parse_common_flags "$@")
+parse_common_flags "$@"
 for arg in "${REST[@]:-}"; do
     case "$arg" in
         --help|-h) sed -n '3,16p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;

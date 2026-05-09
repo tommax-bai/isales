@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# macOS ships /bin/bash 3.2 (GPL3-frozen). All scripts here use bash 4+
+# features (mapfile, "${arr[@]+...}", etc.). Re-exec under brew bash if
+# the current shell is too old.
+if [[ ${BASH_VERSINFO[0]:-3} -lt 4 ]]; then
+    exec /opt/homebrew/bin/bash "$0" "$@"
+fi
 #
 # backup_pg.sh — daily PostgreSQL backup on macOS. Triggered by launchd
 # (see deploy/macos/launchd-jobs/com.isales.backup.plist).
@@ -8,7 +14,7 @@
 set -euo pipefail
 
 BREW_PREFIX=${BREW_PREFIX:-/opt/homebrew}
-export PATH="$BREW_PREFIX/opt/postgresql@15/bin:$BREW_PREFIX/bin:/usr/bin:/bin"
+export PATH="$BREW_PREFIX/opt/postgresql@16/bin:$BREW_PREFIX/bin:/usr/bin:/bin"
 
 BACKUP_DIR=/opt/isales/backups/pg
 RETAIN_DAYS=${ISALES_PG_BACKUP_RETAIN:-14}

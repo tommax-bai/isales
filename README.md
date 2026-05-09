@@ -15,21 +15,32 @@ isales-web         # Vue 3 管理面
 
 ## Production deployment
 
-iSales v1 走单主机 + systemd 部署模型。完整脚本与 runbook 见
-[`deploy/README.md`](deploy/README.md)。运维操作直接看 RUNBOOK：
+iSales v1 支持两种单主机部署模型：
+
+- **Linux + systemd**（主线）—— [`deploy/README.md`](deploy/README.md)
+- **macOS 14+ Apple Silicon + launchd**（门店 / 现场）—— [`deploy/macos/README.md`](deploy/macos/README.md)
+
+运维操作直接看 RUNBOOK：
 [首次上线](deploy/RUNBOOK.md#1-first-time-deployment) ·
 [日常发版](deploy/RUNBOOK.md#2-routine-deploy) ·
 [回滚](deploy/RUNBOOK.md#3-rollback) ·
 [备份恢复](deploy/RUNBOOK.md#4-backup-recovery-drill) ·
 [故障排查](deploy/RUNBOOK.md#5-failure-cheatsheet) ·
-[上线前 hard-gate](deploy/RUNBOOK.md#6-pre-launch-hard-gates)。
+[上线前 hard-gate](deploy/RUNBOOK.md#6-pre-launch-hard-gates) ·
+[macOS 部署](deploy/RUNBOOK.md#7-macos-deployment-apple-silicon-macos-14)。
 
 ```bash
-# 在目标主机上：
-sudo bash deploy/scripts/provision.sh                      # 一次性
-sudo -u isales bash deploy/scripts/install.sh v0.1.0       # 拉新 release
-sudo -u isales bash deploy/scripts/migrate.sh              # alembic upgrade head
-sudo bash deploy/scripts/deploy.sh <release-ts>            # 切 current + restart
+# Linux 主机上：
+sudo bash deploy/linux/scripts/provision.sh                      # 一次性
+sudo -u isales bash deploy/linux/scripts/install.sh v0.1.0       # 拉新 release
+sudo -u isales bash deploy/linux/scripts/migrate.sh              # alembic upgrade head
+sudo bash deploy/linux/scripts/deploy.sh <release-ts>            # 切 current + restart
+
+# macOS 主机上（Apple Silicon, macOS 14+）：
+sudo bash deploy/macos/scripts/provision.sh                      # brew install + _isales 用户
+sudo bash deploy/macos/scripts/install.sh v0.1.0                 # venv + 渲染 launchd plist
+sudo bash deploy/macos/scripts/migrate.sh
+sudo bash deploy/macos/scripts/deploy.sh <release-ts>            # launchctl kickstart 6 服务
 ```
 
 ## 跨仓测试一键跑
@@ -49,7 +60,7 @@ pass/fail 数 + 总耗时；任一仓失败 exit code 非零。每个仓需要�
 make deploy-check
 ```
 
-跑 `shellcheck` 校验 `deploy/scripts/*.sh` + 检查 `deploy/env/*.env.example`
+跑 `shellcheck` 校验 `deploy/linux/scripts/*.sh` + 检查 `deploy/env/*.env.example`
 与各服务 README "Environment" 列表是否一致。
 
 ## 校验所有 OpenSpec 制品

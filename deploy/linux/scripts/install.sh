@@ -5,8 +5,8 @@
 # Does NOT touch the `current` symlink — that is deploy.sh's job.
 #
 # Usage:
-#     sudo bash deploy/scripts/install.sh v0.1.0
-#     sudo bash deploy/scripts/install.sh main --dry-run
+#     sudo bash deploy/linux/scripts/install.sh v0.1.0
+#     sudo bash deploy/linux/scripts/install.sh main --dry-run
 #
 # Environment overrides:
 #     ISALES_GIT_BASE   default: https://github.com/tommax-bai
@@ -25,13 +25,14 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-META_REPO_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# SCRIPT_DIR = deploy/linux/scripts -> META_REPO_DIR = repo root
+META_REPO_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 # shellcheck source=./_lib.sh
 source "$SCRIPT_DIR/_lib.sh"
 
 # ---------- args ----------
 
-mapfile -t REST < <(parse_common_flags "$@")
+parse_common_flags "$@"
 
 GIT_REF=""
 for arg in "${REST[@]:-}"; do
@@ -267,7 +268,7 @@ main() {
     step_cron
     TRAP_CLEANUP=0   # success; do not clean
     log_info "install complete: $RELEASE_DIR"
-    log_info "next: bash deploy/scripts/migrate.sh && bash deploy/scripts/deploy.sh $RELEASE_TS"
+    log_info "next: bash deploy/linux/scripts/migrate.sh && bash deploy/linux/scripts/deploy.sh $RELEASE_TS"
 }
 
 main "$@"

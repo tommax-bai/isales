@@ -1,10 +1,16 @@
 # iSales Production RUNBOOK (v1 single-host)
 
-Operational runbook for the iSales platform deployed on a single Linux host
-under systemd. Audience: operator running deploys, on-call engineer, anyone
-recovering the system from incident.
+Operational runbook for the iSales platform deployed on a single host.
+Two platforms supported: **Linux + systemd** (primary) and
+**macOS 14+ on Apple Silicon + launchd** (store / field workstation).
+Each section gives the Linux command sequence inline; the macOS equivalent
+is in a `<details>` block — expand it on macOS hosts.
 
-> Architecture overview: `deploy/README.md`. Spec contract: `openspec/specs/deployment-topology/spec.md`.
+Audience: operator running deploys, on-call engineer, anyone recovering the
+system from incident.
+
+> Architecture overview: `deploy/README.md` (Linux) / `deploy/macos/README.md`
+> (macOS). Spec contract: `openspec/specs/deployment-topology/spec.md`.
 
 ---
 
@@ -18,7 +24,7 @@ git clone https://github.com/tommax-bai/isales.git ~/isales
 cd ~/isales
 
 # 1. One-time provisioning (apt install, user, dirs, redis AOF, PG init)
-sudo bash deploy/scripts/provision.sh
+sudo bash deploy/linux/scripts/provision.sh
 
 # 2. Edit the centralized env files. provision.sh has bootstrapped
 #    /etc/isales/env/*.env with random PG password / JWT secret / fernet key,
@@ -29,14 +35,14 @@ sudo -e /etc/isales/env/api.env
 #         'import bcrypt; print(bcrypt.hashpw(b"<your-password>", bcrypt.gensalt()).decode())')
 
 # 3. Install the first release (clones 7 service repos + builds web)
-sudo bash deploy/scripts/install.sh v0.1.0
+sudo bash deploy/linux/scripts/install.sh v0.1.0
 
 # 4. Run schema migrations
-sudo bash deploy/scripts/migrate.sh
+sudo bash deploy/linux/scripts/migrate.sh
 
 # 5. Switch the symlink + start services. First deploy will be outside the
 #    low-peak window — pass --force.
-sudo bash deploy/scripts/deploy.sh <release-ts> --force --include-modem
+sudo bash deploy/linux/scripts/deploy.sh <release-ts> --force --include-modem
 
 # 6. Smoke test
 curl -sf http://localhost/api/healthz | jq .
@@ -55,14 +61,14 @@ Daily / weekly release cadence. Run during the low-peak window
 
 ```bash
 # 1. Build the new release on the host
-sudo bash deploy/scripts/install.sh v0.1.1
+sudo bash deploy/linux/scripts/install.sh v0.1.1
 
 # 2. (optional but recommended) preview the migrations
-sudo DRY_RUN=1 bash deploy/scripts/migrate.sh
-sudo bash deploy/scripts/migrate.sh
+sudo DRY_RUN=1 bash deploy/linux/scripts/migrate.sh
+sudo bash deploy/linux/scripts/migrate.sh
 
 # 3. Promote — restart order: telephony-api -> scheduler -> worker -> engine -> api
-sudo bash deploy/scripts/deploy.sh <new-release-ts>
+sudo bash deploy/linux/scripts/deploy.sh <new-release-ts>
 
 # 4. Verify
 journalctl -u isales-engine -n 50 --no-pager
@@ -79,10 +85,10 @@ during a maintenance window.
 
 ```bash
 # List recent releases (sorted by mtime, current marked)
-sudo bash deploy/scripts/rollback.sh --list
+sudo bash deploy/linux/scripts/rollback.sh --list
 
 # Rollback to a prior release
-sudo bash deploy/scripts/rollback.sh <prior-release-ts>
+sudo bash deploy/linux/scripts/rollback.sh <prior-release-ts>
 ```
 
 `rollback.sh` swaps the symlink + restarts services in the same order as
@@ -206,3 +212,180 @@ Before sending real traffic, ALL of these must pass:
 - [ ] On-call rotation set up: who responds to alerts, contact channels
 
 Only then flip a real campaign to active.
+
+---
+
+## §7. macOS deployment (Apple Silicon, macOS 14+)
+
+This section mirrors §1–§5 for hosts running macOS 14+ on Apple Silicon
+(`uname -m == arm64`). Decisions: `openspec/changes/impl-deploy-macos/design.md`.
+Architecture: `deploy/macos/README.md`.
+
+The directory skeleton (`/opt/isales/{releases,current,backups,logs}` +
+`/etc/isales/env/`) is identical to Linux. Differences land in service
+management (launchctl), package manager (brew), and USB / audio backends.
+
+<details>
+<summary><strong>§7.1 First-time deployment (macOS)</strong></summary>
+
+Target: a fresh Mac mini M2 / M4 or Mac Studio M2, macOS 14 (Sonoma) or
+newer, Homebrew already installed at `/opt/homebrew`.
+
+```bash
+# 0. Clone the meta-repo
+git clone https://github.com/tommax-bai/isales.git ~/isales
+cd ~/isales
+
+# 1. One-time provisioning (brew install, _isales user, dirs, redis AOF, PG init).
+#    MUST be invoked via sudo so brew runs as your normal user (Apple Silicon
+#    brew refuses to run as root).
+sudo bash deploy/macos/scripts/provision.sh
+
+# 2. Edit centralized env (same files as Linux). provision.sh has bootstrapped
+#    /etc/isales/env/*.env with random PG password / JWT secret / fernet key.
+sudo -e /etc/isales/env/api.env
+#    -> set ISALES_ADMIN_USER + ISALES_ADMIN_PASSWORD_HASH
+
+# 3. Install the first release. install.sh renders 6 launchd plists with
+#    /etc/isales/env/<svc>.env inlined into <EnvironmentVariables> (launchd
+#    has no EnvironmentFile= equivalent), copies them to /Library/LaunchDaemons/,
+#    and installs the daily backup plist.
+sudo bash deploy/macos/scripts/install.sh v0.1.0
+
+# 4. Run schema migrations
+sudo bash deploy/macos/scripts/migrate.sh
+
+# 5. Switch the symlink + bootstrap & kickstart 6 services. First deploy will
+#    be outside the low-peak window — pass --force.
+sudo bash deploy/macos/scripts/deploy.sh <release-ts> --force --include-modem
+
+# 6. Smoke test
+curl -sf http://localhost/api/healthz | jq .
+```
+
+</details>
+
+<details>
+<summary><strong>§7.2 Routine deploy (macOS)</strong></summary>
+
+```bash
+sudo bash deploy/macos/scripts/install.sh v0.1.1
+sudo DRY_RUN=1 bash deploy/macos/scripts/migrate.sh
+sudo bash deploy/macos/scripts/migrate.sh
+sudo bash deploy/macos/scripts/deploy.sh <new-release-ts>
+```
+
+deploy.sh restart order is the same as Linux, but uses launchctl:
+```
+com.isales.telephony-api → com.isales.scheduler → com.isales.worker
+  → com.isales.engine → com.isales.api
+```
+nginx is reloaded via `brew services reload nginx` (runs as `$SUDO_USER`).
+modem-controller skipped unless `--include-modem`.
+
+**Editing env after deploy** — because launchd inlines env at install time,
+editing `/etc/isales/env/<svc>.env` requires re-running `install.sh` to push
+the new values into the plists, or `launchctl bootout system <plist> &&
+launchctl bootstrap system <plist>` for that single service.
+
+</details>
+
+<details>
+<summary><strong>§7.3 Rollback (macOS)</strong></summary>
+
+```bash
+sudo bash deploy/macos/scripts/rollback.sh --list
+sudo bash deploy/macos/scripts/rollback.sh <prior-release-ts>
+```
+
+Schema is left forward-applied (same default as Linux). For schema
+downgrade, the alembic command is identical:
+```bash
+sudo -u _isales /opt/isales/current/venv/bin/alembic \
+    -c /opt/isales/current/isales-common/alembic.ini downgrade -1
+```
+
+</details>
+
+<details>
+<summary><strong>§7.4 Backup recovery drill (macOS)</strong></summary>
+
+Backups land in the same path as Linux (`/opt/isales/backups/{pg,redis}/`),
+triggered by launchd `com.isales.backup` (StartCalendarInterval daily 02:30).
+Logs go to unified logging under tag `isales-backup`.
+
+Manual trigger (e.g. for the recovery drill before a release):
+```bash
+sudo launchctl kickstart -k system/com.isales.backup
+log show --predicate 'subsystem == "isales-backup"' --last 5m --no-pager | tail
+```
+
+PG restore (using brew's psql/pg_restore):
+```bash
+PGPATH=/opt/homebrew/opt/postgresql@16/bin
+sudo -u _isales $PGPATH/createdb isales_restore_test
+gunzip -c /opt/isales/backups/pg/2026-05-09.sql.gz | \
+    sudo -u _isales $PGPATH/pg_restore -d isales_restore_test
+sudo -u _isales $PGPATH/psql -d isales_restore_test -c '\dt' | head -20
+```
+
+Redis restore — stop the brew service, replace dump.rdb, restart:
+```bash
+sudo -u $USER /opt/homebrew/bin/brew services stop redis
+gunzip -c /opt/isales/backups/redis/2026-05-09.rdb.gz \
+    > /opt/homebrew/var/db/redis/dump.rdb
+sudo -u $USER /opt/homebrew/bin/brew services start redis
+/opt/homebrew/bin/redis-cli dbsize
+```
+
+</details>
+
+<details>
+<summary><strong>§7.5 Failure cheatsheet (macOS)</strong></summary>
+
+| Symptom | First step | Next step |
+|---------|------------|-----------|
+| brew service down (PG / Redis / nginx) | `brew services list` (as `$SUDO_USER`) | `brew services restart <svc>`; check `/opt/homebrew/var/log/<svc>.log` |
+| launchd service down | `launchctl print system/com.isales.<svc>` | Look at `state =`; tail `/opt/isales/logs/<svc>.{out,err}.log`; `log show --predicate 'subsystem == "com.isales.<svc>"' --last 5m` |
+| USB modem not recognised | `ioreg -p IOUSB \| grep -iE 'modem\|Quectel\|Huawei\|SIMCom\|ZTE'` | `system_profiler SPUSBDataType`; reseat; check `pyserial.tools.list_ports.comports()` from venv |
+| AT serial port stolen by macOS modem service | `lsof /dev/cu.usbmodem*` | If macOS `usbmuxd` / `commcenter` holds it: kill the offending PID, file an internal note; long-term: SIP off + kext blacklist (per design.md risk note) |
+| Core Audio errors (`PortAudio error … device unavailable`) | `python3 -c 'import sounddevice as sd; print(sd.query_devices())'` (run in venv) | Confirm USB Audio CODEC / Quectel / Huawei device shows; set `ISALES_AUDIO_DEVICE_NAME` in modem-controller.env to disambiguate |
+| Plist env stale after editing /etc/isales/env/* | n/a — by design | Re-run `install.sh`, OR `launchctl bootout system <plist> && launchctl bootstrap system <plist>` |
+| `brew install` failing as root | n/a — by design | Always invoke scripts via `sudo` so they re-elevate; do not run scripts as root user directly |
+| `nginx: bind() to 0.0.0.0:80 failed (Permission denied)` | brew nginx defaults to 8080 on macOS | Either run on 8080, or `sudo nginx`, or `setcap` equivalent (not recommended on macOS) — see brew nginx caveats |
+
+### §7.5.1 Useful one-liners (macOS)
+
+```bash
+# All iSales service status at a glance
+for svc in api engine scheduler worker telephony-api modem-controller; do
+    state=$(launchctl print system/com.isales.$svc 2>/dev/null \
+        | awk '/^[[:space:]]+state =/ {print $3}')
+    pid=$(launchctl print system/com.isales.$svc 2>/dev/null \
+        | awk '/^[[:space:]]+pid =/ {print $3}')
+    printf '  %-32s %-10s pid=%s\n' "com.isales.$svc" "${state:-?}" "${pid:-?}"
+done
+
+# Last 5 minutes of error-level unified logs from all isales services
+log show --predicate 'subsystem BEGINSWITH "com.isales."' --last 5m --no-pager | grep -i error
+
+# brew services overview
+sudo -u "$SUDO_USER" /opt/homebrew/bin/brew services list
+
+# Active call count (cross-platform — same Redis schema as Linux)
+/opt/homebrew/bin/redis-cli get isales:concurrency:active
+```
+
+</details>
+
+### §7.6 Pre-launch hard gates (macOS-specific additions)
+
+In addition to §6 (which is platform-agnostic), the macOS rollout MUST also pass:
+
+- [ ] `provision.sh` re-run is fully idempotent: second run prints "already exists, skipped" for every step
+- [ ] `install.sh` produces a plist whose `<EnvironmentVariables>` matches `/etc/isales/env/<svc>.env` exactly (verify with `plutil -p /Library/LaunchDaemons/com.isales.api.plist | grep -A50 EnvironmentVariables`)
+- [ ] Plug a real USB GSM modem; modem-controller logs `device.status = registered` within 5 s
+- [ ] At least 3 real outbound calls completed end-to-end with audio audible on both ends
+- [ ] Core Audio end-to-end p95 latency ≤ 200 ms (measured per `tests/macos/test_coreaudio_latency.py` with a real loopback device)
+- [ ] One full install → deploy → rollback → deploy cycle exercised on the Mac host
+- [ ] `launchctl kickstart system/com.isales.backup` produces a fresh PG + Redis backup; both files pass `gunzip -t`

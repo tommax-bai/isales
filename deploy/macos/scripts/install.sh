@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# macOS ships /bin/bash 3.2 (GPL3-frozen). All scripts here use bash 4+
+# features (mapfile, "${arr[@]+...}", etc.). Re-exec under brew bash if
+# the current shell is too old.
+if [[ ${BASH_VERSINFO[0]:-3} -lt 4 ]]; then
+    exec /opt/homebrew/bin/bash "$0" "$@"
+fi
 #
 # install.sh — build a new release under /opt/isales/releases/<ts>/ on macOS.
 #
@@ -32,15 +38,18 @@ source "$SCRIPT_DIR/_lib.sh"
 
 # ---------- args ----------
 
-mapfile -t REST < <(parse_common_flags "$@")
+parse_common_flags "$@"
 
 GIT_REF=""
+SKIP_CLONE=0
 for arg in "${REST[@]+"${REST[@]}"}"; do
     case "$arg" in
         --help|-h)
             sed -n '3,22p' "$0" | sed 's/^# \{0,1\}//'
             exit 0
             ;;
+        --skip-clone) SKIP_CLONE=1 ;;
+        --release-dir=*) RELEASE_DIR_OVERRIDE=${arg#*=} ;;
         -*) die "unknown flag: $arg" ;;
         *)  GIT_REF=$arg ;;
     esac
@@ -56,7 +65,12 @@ GIT_BASE=${ISALES_GIT_BASE:-https://github.com/tommax-bai}
 REPOS=(${ISALES_REPOS:-isales-common isales-api isales-engine isales-scheduler isales-worker isales-telephony isales-web})
 
 RELEASE_TS=$(date +%Y%m%d-%H%M%S)
-RELEASE_DIR=/opt/isales/releases/$RELEASE_TS
+if [[ -n "${RELEASE_DIR_OVERRIDE:-}" ]]; then
+    RELEASE_DIR=$RELEASE_DIR_OVERRIDE
+    RELEASE_TS=$(basename "$RELEASE_DIR")
+else
+    RELEASE_DIR=/opt/isales/releases/$RELEASE_TS
+fi
 VENV_DIR=$RELEASE_DIR/venv
 PYTHON_BIN=$BREW_PREFIX/opt/python@3.12/bin/python3.12
 NPM_BIN=$BREW_PREFIX/opt/node@20/bin/npm
@@ -75,11 +89,15 @@ trap on_exit EXIT
 # ---------- helpers ----------
 
 run_as_isales() {
+    # cd to /opt/isales first: when invoked from a sudo/osascript admin
+    # context, the cwd inherited by the sub-shell may be unreadable to
+    # _isales (e.g. /var/root, the script's launch dir), causing git's
+    # getcwd() probe to fail before it even tries to clone.
     if [[ $DRY_RUN -eq 1 ]]; then
         log_dry "(as $ISALES_USER) $*"
     else
         log_info "(as $ISALES_USER) $*"
-        sudo -u "$ISALES_USER" -H bash -c "$*"
+        sudo -u "$ISALES_USER" -H bash -c "cd /opt/isales && $*"
     fi
 }
 
@@ -87,13 +105,26 @@ run_as_isales() {
 
 step_release_dir() {
     log_info "step 1/6: prepare release dir $RELEASE_DIR"
-    run install -d -m 0755 -o "$ISALES_USER" -g "$ISALES_GROUP" "$RELEASE_DIR"
+    if [[ -d "$RELEASE_DIR" ]] && [[ $SKIP_CLONE -eq 1 ]]; then
+        log_info "release dir already exists; SKIP_CLONE set, reusing"
+    else
+        run install -d -m 0755 -o "$ISALES_USER" -g "$ISALES_GROUP" "$RELEASE_DIR"
+    fi
     TRAP_CLEANUP=1
 }
 
 # ---------- step 2: clone/update repos ----------
 
 step_clone() {
+    if [[ $SKIP_CLONE -eq 1 ]]; then
+        log_info "step 2/6: skipped (--skip-clone). Verifying pre-populated repos in $RELEASE_DIR"
+        local repo
+        for repo in "${REPOS[@]}"; do
+            [[ -d "$RELEASE_DIR/$repo" ]] \
+                || die "missing pre-populated repo: $RELEASE_DIR/$repo (--skip-clone requires you to copy all 7 repos in beforehand)"
+        done
+        return 0
+    fi
     log_info "step 2/6: clone/update repos at ref=$GIT_REF"
     local repo url dst
     for repo in "${REPOS[@]}"; do
@@ -242,17 +273,75 @@ step_nginx() {
     log_info "step 6/6: sync nginx config"
     local src=$RELEASE_DIR/isales-web/deploy/nginx.conf
     local dst=$BREW_PREFIX/etc/nginx/servers/isales.conf
-    [[ -f "$src" ]] || die "missing nginx source: $src"
 
-    install -d -m 0755 "$BREW_PREFIX/etc/nginx/servers"
-    install -d -m 0755 "$BREW_PREFIX/var/www"
-
+    # Skip the file-existence assertion under DRY_RUN — the release dir
+    # hasn't actually been created yet, so $src is guaranteed to be missing.
     if [[ $DRY_RUN -eq 1 ]]; then
         log_dry "would install $src -> $dst + symlink $BREW_PREFIX/var/www/isales-web"
         return 0
     fi
 
-    install -m 0644 -o root -g wheel "$src" "$dst"
+    [[ -f "$src" ]] || die "missing nginx source: $src"
+    install -d -m 0755 "$BREW_PREFIX/etc/nginx/servers"
+    install -d -m 0755 "$BREW_PREFIX/var/www"
+
+    # The isales-web repo's nginx.conf template targets Linux paths
+    # (`listen 80; root /var/www/isales-web;`). On macOS brew the docroot is
+    # `$BREW_PREFIX/var/www/...` and binding to port 80 needs root, so brew
+    # nginx running as the user account has to use 8080. Rewrite both on the
+    # fly so the source template stays Linux-canonical.
+    sed -E \
+        -e 's|^([[:space:]]*)listen 80;|\1listen 8080 default_server;|' \
+        -e "s|^([[:space:]]*root[[:space:]]+)/var/www/|\\1$BREW_PREFIX/var/www/|" \
+        "$src" > "${dst}.new"
+    install -m 0644 -o root -g wheel "${dst}.new" "$dst"
+    rm -f "${dst}.new"
+
+    # Brew's default nginx.conf ships an example `server { listen 8080; }`
+    # block. Comment it out (idempotent) so our default_server isales.conf
+    # owns 8080 cleanly.
+    if grep -qE '^[[:space:]]+listen[[:space:]]+8080;' "$BREW_PREFIX/etc/nginx/nginx.conf"; then
+        # Remove the entire default server block (its 4-space indent makes it
+        # easy to identify; we replace `    server { ... }` with `    # ...`).
+        # If already commented, this is a no-op.
+        python3 - "$BREW_PREFIX/etc/nginx/nginx.conf" <<'PYDEFAULT'
+import re, sys
+p = sys.argv[1]
+src = open(p).read()
+sentinel = "# disabled by iSales install.sh: conflicts with isales.conf default_server"
+if sentinel in src:
+    sys.exit(0)
+# Match the first `    server {` block in nginx.conf (4-space indent), with
+# nested braces. Naive brace matching since nginx config is well-formed.
+m = re.search(r'^[ ]{4}server[ ]*\{', src, re.MULTILINE)
+if not m:
+    sys.exit(0)
+start = m.start()
+i = m.end() - 1  # at the `{`
+depth = 0
+while i < len(src):
+    if src[i] == '{':
+        depth += 1
+    elif src[i] == '}':
+        depth -= 1
+        if depth == 0:
+            i += 1
+            break
+    i += 1
+end = i
+block = src[start:end]
+commented = "    " + sentinel + "\n" + "\n".join(("    # " + l[4:]) if l.startswith("    ") else ("    # " + l) for l in block.splitlines())
+open(p, 'w').write(src[:start] + commented + src[end:])
+PYDEFAULT
+    fi
+    # Ensure ownership of brew nginx logs/run is the brew user (sudo runs may
+    # have created files as root, breaking later starts).
+    if [[ -n "${SUDO_USER:-}" ]]; then
+        chown -R "$SUDO_USER:admin" "$BREW_PREFIX/var/log/nginx" "$BREW_PREFIX/var/run" 2>/dev/null || true
+    fi
+
+    # The rewritten config has already been installed above. Just create the
+    # docroot symlink and we're done.
     ln -sfn /opt/isales/current/isales-web/dist "$BREW_PREFIX/var/www/isales-web"
     log_info "installed nginx config + dist symlink"
 }

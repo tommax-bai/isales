@@ -29,7 +29,7 @@ import re
 import sys
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = Path(__file__).resolve().parents[3]
 
 # (env-template name, repo name, optional column-filter for telephony)
 SERVICES: list[tuple[str, str, str | None]] = [

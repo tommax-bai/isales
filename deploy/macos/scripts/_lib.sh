@@ -21,11 +21,11 @@ source "$_LIB_DIR/../../common/_lib.sh"
 BREW_PREFIX=/opt/homebrew
 
 # ---------- macOS brew package list ----------
-# postgresql@15 + redis + nginx + python@3.12 + node@20 cover the full stack;
+# postgresql@16 + redis + nginx + python@3.12 + node@20 cover the full stack;
 # pkg-config + git are required for pip installs of native deps.
 # shellcheck disable=SC2034
 MACOS_BREW_PACKAGES=(
-    postgresql@15
+    postgresql@16
     redis
     nginx
     python@3.12
@@ -45,10 +45,14 @@ ISALES_ENV_TEMPLATE_DIR="$_LIB_DIR/../../env"
 ISALES_USER=_isales
 # shellcheck disable=SC2034
 ISALES_GROUP=_isales
+# UID/GID 350 — middle of the macOS 309-394 system-account hole. UIDs 200-308
+# and 395-441 are populated by Apple's reserved system services (verified via
+# `dscl . -list /Users UniqueID` on macOS 14+/26+); 350 is unallocated on
+# current Apple Silicon images.
 # shellcheck disable=SC2034
-ISALES_USER_UID=298
+ISALES_USER_UID=350
 # shellcheck disable=SC2034
-ISALES_USER_GID=298
+ISALES_USER_GID=350
 
 # ---------- macOS-only sanity check ----------
 

@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# macOS ships /bin/bash 3.2 (GPL3-frozen). All scripts here use bash 4+
+# features (mapfile, "${arr[@]+...}", etc.). Re-exec under brew bash if
+# the current shell is too old.
+if [[ ${BASH_VERSINFO[0]:-3} -lt 4 ]]; then
+    exec /opt/homebrew/bin/bash "$0" "$@"
+fi
 #
 # rollback.sh — switch /opt/isales/current back to a prior release on macOS.
 #
@@ -22,7 +28,7 @@ source "$SCRIPT_DIR/_lib.sh"
 LIST_ONLY=0
 INCLUDE_MODEM=0
 
-mapfile -t REST < <(parse_common_flags "$@")
+parse_common_flags "$@"
 RELEASE_TS=""
 for arg in "${REST[@]+"${REST[@]}"}"; do
     case "$arg" in

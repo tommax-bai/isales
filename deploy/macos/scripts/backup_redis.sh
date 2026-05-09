@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# macOS ships /bin/bash 3.2 (GPL3-frozen). All scripts here use bash 4+
+# features (mapfile, "${arr[@]+...}", etc.). Re-exec under brew bash if
+# the current shell is too old.
+if [[ ${BASH_VERSINFO[0]:-3} -lt 4 ]]; then
+    exec /opt/homebrew/bin/bash "$0" "$@"
+fi
 #
 # backup_redis.sh — daily Redis snapshot on macOS via `redis-cli --rdb`.
 # Output: /opt/isales/backups/redis/YYYY-MM-DD.rdb.gz. Retention: 14 days.

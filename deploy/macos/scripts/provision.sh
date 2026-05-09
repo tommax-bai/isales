@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# macOS ships /bin/bash 3.2 (GPL3-frozen). All scripts here use bash 4+
+# features (mapfile, "${arr[@]+...}", etc.). Re-exec under brew bash if
+# the current shell is too old.
+if [[ ${BASH_VERSINFO[0]:-3} -lt 4 ]]; then
+    exec /opt/homebrew/bin/bash "$0" "$@"
+fi
 #
 # provision.sh — one-time host provisioning for iSales on macOS 14+ (Apple Silicon).
 #
@@ -10,8 +16,8 @@
 #     sudo bash deploy/macos/scripts/provision.sh --dry-run   # log only
 #
 # What it does:
-#   1. brew install system packages (postgresql@15 / redis / nginx / ...)
-#   2. Create system user `_isales:_isales` (UID 298, shell /usr/bin/false)
+#   1. brew install system packages (postgresql@16 / redis / nginx / ...)
+#   2. Create system user `_isales:_isales` (UID 350, shell /usr/bin/false)
 #   3. Create directory skeleton under /opt/isales/ and /etc/isales/env/
 #   4. Configure Redis AOF persistence (/opt/homebrew/etc/redis.conf)
 #   5. Initialize PostgreSQL role + database; generate first random secret
@@ -25,7 +31,7 @@ source "$SCRIPT_DIR/_lib.sh"
 
 # ---------- parse args ----------
 
-mapfile -t REST < <(parse_common_flags "$@")
+parse_common_flags "$@"
 for arg in "${REST[@]+"${REST[@]}"}"; do
     case "$arg" in
         --help|-h)
@@ -61,7 +67,7 @@ step_brew() {
 
     local pkg
     for pkg in "${MACOS_BREW_PACKAGES[@]}"; do
-        # Strip version suffix for the `list` check (postgresql@15 → postgresql@15 is fine,
+        # Strip version suffix for the `list` check (postgresql@16 → postgresql@16 is fine,
         # `brew list <name>@<ver>` works directly).
         if sudo -u "${SUDO_USER:-root}" -H "$BREW_PREFIX/bin/brew" list "$pkg" >/dev/null 2>&1; then
             log_info "brew $pkg: already installed, skipped"
@@ -83,20 +89,30 @@ step_user() {
         log_dry "would create $ISALES_USER (UID $ISALES_USER_UID) + group $ISALES_GROUP (GID $ISALES_USER_GID)"
         return 0
     fi
+    # `dscl -create <path> <attr> <value>` errors with eDSRecordAlreadyExists
+    # if the attribute already exists (macOS auto-fills some fields when a
+    # record is initially created). Force-replace by -delete + -create, with
+    # the -delete tolerated when the attribute isn't there yet.
+    _dscl_set() {
+        local path=$1 attr=$2 value=$3
+        dscl . -delete "$path" "$attr" >/dev/null 2>&1 || true
+        run dscl . -create "$path" "$attr" "$value"
+    }
+
     # Group first so the user's PrimaryGroupID resolves.
     if ! dscl . -read "/Groups/$ISALES_GROUP" >/dev/null 2>&1; then
         run dscl . -create "/Groups/$ISALES_GROUP"
-        run dscl . -create "/Groups/$ISALES_GROUP" PrimaryGroupID "$ISALES_USER_GID"
-        run dscl . -create "/Groups/$ISALES_GROUP" RealName "iSales service group"
     fi
+    _dscl_set "/Groups/$ISALES_GROUP" PrimaryGroupID "$ISALES_USER_GID"
+    _dscl_set "/Groups/$ISALES_GROUP" RealName "iSales service group"
+
     run dscl . -create "/Users/$ISALES_USER"
-    run dscl . -create "/Users/$ISALES_USER" UniqueID "$ISALES_USER_UID"
-    run dscl . -create "/Users/$ISALES_USER" PrimaryGroupID "$ISALES_USER_GID"
-    run dscl . -create "/Users/$ISALES_USER" UserShell /usr/bin/false
-    run dscl . -create "/Users/$ISALES_USER" RealName "iSales service account"
-    run dscl . -create "/Users/$ISALES_USER" NFSHomeDirectory /opt/isales
-    # Hide from the macOS login window:
-    run dscl . -create "/Users/$ISALES_USER" IsHidden 1
+    _dscl_set "/Users/$ISALES_USER" UniqueID "$ISALES_USER_UID"
+    _dscl_set "/Users/$ISALES_USER" PrimaryGroupID "$ISALES_USER_GID"
+    _dscl_set "/Users/$ISALES_USER" UserShell /usr/bin/false
+    _dscl_set "/Users/$ISALES_USER" RealName "iSales service account"
+    _dscl_set "/Users/$ISALES_USER" NFSHomeDirectory /opt/isales
+    _dscl_set "/Users/$ISALES_USER" IsHidden 1
 }
 
 # ---------- step 3: directories ----------
@@ -150,12 +166,26 @@ step_redis() {
     fi
 
     if [[ $DRY_RUN -eq 0 ]]; then
-        # `brew services` must run as the original user (Apple Silicon brew is
-        # not root-owned). System-wide vs user-wide is intentional: keep redis
-        # under the brew owner's launchd domain for now.
-        local brew_user=${SUDO_USER:-}
-        [[ -n "$brew_user" ]] || die "redis restart needs SUDO_USER set"
-        sudo -u "$brew_user" -H "$BREW_PREFIX/bin/brew" services restart redis
+        # Activate AOF on the running server via live CONFIG SET.
+        #
+        # We deliberately avoid `brew services restart redis` here: when this
+        # script is invoked under sudo (or via osascript with administrator
+        # privileges), brew services falls back to bootstrapping into the
+        # `user/<uid>` launchd domain instead of the user's GUI session
+        # (`gui/<uid>`). On macOS 14+/26+ that bootstrap path can fail with
+        # `Bootstrap failed: 5: Input/output error`, which would abort
+        # provisioning. Live `CONFIG SET appendonly yes` + `CONFIG REWRITE`
+        # achieves the same effect — Redis re-reads AOF settings without a
+        # process restart and persists them to redis.conf.
+        local redis_cli=$BREW_PREFIX/bin/redis-cli
+        if [[ -x "$redis_cli" ]] && "$redis_cli" ping >/dev/null 2>&1; then
+            run "$redis_cli" CONFIG SET appendonly yes
+            run "$redis_cli" CONFIG SET appendfsync everysec
+            run "$redis_cli" CONFIG REWRITE
+        else
+            log_warn "redis is not currently running; AOF block in $conf will take effect on next start"
+            log_warn "to start redis later: brew services start redis  (run as your user, not via sudo)"
+        fi
     fi
 }
 
@@ -164,7 +194,7 @@ step_redis() {
 _psql_as_brew_user() {
     local brew_user=${SUDO_USER:-}
     [[ -n "$brew_user" ]] || die "psql commands must run via sudo with SUDO_USER set"
-    sudo -u "$brew_user" -H "$BREW_PREFIX/opt/postgresql@15/bin/psql" "$@"
+    sudo -u "$brew_user" -H "$BREW_PREFIX/opt/postgresql@16/bin/psql" "$@"
 }
 
 pg_role_exists() {
@@ -180,14 +210,14 @@ pg_db_exists() {
 step_postgres() {
     log_info "step 5/5: postgres role + database"
     require_cmd sudo
-    [[ -x "$BREW_PREFIX/opt/postgresql@15/bin/psql" ]] \
-        || die "psql not found at $BREW_PREFIX/opt/postgresql@15/bin/psql"
+    [[ -x "$BREW_PREFIX/opt/postgresql@16/bin/psql" ]] \
+        || die "psql not found at $BREW_PREFIX/opt/postgresql@16/bin/psql"
 
-    # postgresql@15 service must be running before we can talk to it.
+    # postgresql@16 service must be running before we can talk to it.
     if [[ $DRY_RUN -eq 0 ]]; then
         local brew_user=${SUDO_USER:-}
         [[ -n "$brew_user" ]] || die "pg start needs SUDO_USER set"
-        sudo -u "$brew_user" -H "$BREW_PREFIX/bin/brew" services start postgresql@15 || true
+        sudo -u "$brew_user" -H "$BREW_PREFIX/bin/brew" services start postgresql@16 || true
         # Give the server a moment to come up on a freshly-installed brew.
         sleep 2
     fi

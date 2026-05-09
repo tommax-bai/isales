@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# macOS ships /bin/bash 3.2 (GPL3-frozen). All scripts here use bash 4+
+# features (mapfile, "${arr[@]+...}", etc.). Re-exec under brew bash if
+# the current shell is too old.
+if [[ ${BASH_VERSINFO[0]:-3} -lt 4 ]]; then
+    exec /opt/homebrew/bin/bash "$0" "$@"
+fi
 #
 # deploy.sh — atomically switch /opt/isales/current and restart launchd
 # services on macOS.
@@ -29,7 +35,7 @@ INCLUDE_MODEM=0
 LOW_PEAK_START=${ISALES_LOW_PEAK_START:-22}
 LOW_PEAK_END=${ISALES_LOW_PEAK_END:-8}
 
-mapfile -t REST < <(parse_common_flags "$@")
+parse_common_flags "$@"
 RELEASE_TS=""
 for arg in "${REST[@]+"${REST[@]}"}"; do
     case "$arg" in
@@ -115,9 +121,18 @@ step_restart() {
     local label
     for label in "${RESTART_ORDER[@]}"; do
         ensure_bootstrapped "$label"
-        run launchctl kickstart -k "system/$label"
+        # `kickstart -k` can race against a freshly-bootstrapped service
+        # (process still spawning), returning "Operation not permitted" even
+        # though the service is healthy. Tolerate kickstart errors here and
+        # let `launchctl_running` below be the source of truth.
+        if [[ $DRY_RUN -eq 1 ]]; then
+            log_dry "launchctl kickstart -k system/$label"
+        else
+            log_info "launchctl kickstart -k system/$label"
+            launchctl kickstart -k "system/$label" 2>&1 | sed 's/^/  /' || true
+        fi
         if [[ $DRY_RUN -eq 0 ]]; then
-            sleep 1
+            sleep 2
             if ! launchctl_running "$label"; then
                 log_err "$label failed to start; recent unified log:"
                 log show --predicate "subsystem == \"$label\"" --last 5m --no-pager 2>/dev/null \

@@ -15,5 +15,9 @@ spec-validate:
 #   - env-template variable lists vs each service repo's README
 deploy-check:
 	@command -v shellcheck >/dev/null || { echo "shellcheck not installed (brew install shellcheck or apt install shellcheck)"; exit 1; }
-	cd deploy/scripts && shellcheck -x _lib.sh provision.sh install.sh migrate.sh deploy.sh rollback.sh backup_pg.sh backup_redis.sh
-	python3 deploy/scripts/check_env_consistency.py
+	shellcheck -x deploy/common/_lib.sh
+	cd deploy/linux/scripts && shellcheck -x _lib.sh provision.sh install.sh migrate.sh deploy.sh rollback.sh backup_pg.sh backup_redis.sh
+	@if [ -d deploy/macos/scripts ] && ls deploy/macos/scripts/*.sh >/dev/null 2>&1; then \
+		cd deploy/macos/scripts && shellcheck -x _lib.sh $$(ls *.sh | grep -v '^_lib.sh$$'); \
+	fi
+	python3 deploy/linux/scripts/check_env_consistency.py

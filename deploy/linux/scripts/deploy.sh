@@ -3,9 +3,9 @@
 # deploy.sh — atomically switch /opt/isales/current and restart services.
 #
 # Usage:
-#     sudo bash deploy/scripts/deploy.sh <release-ts>
-#     sudo bash deploy/scripts/deploy.sh <release-ts> --include-modem
-#     sudo bash deploy/scripts/deploy.sh <release-ts> --force --dry-run
+#     sudo bash deploy/linux/scripts/deploy.sh <release-ts>
+#     sudo bash deploy/linux/scripts/deploy.sh <release-ts> --include-modem
+#     sudo bash deploy/linux/scripts/deploy.sh <release-ts> --force --dry-run
 #
 # Restart order (per deployment-topology spec):
 #   isales-telephony-api → isales-scheduler → isales-worker → isales-engine → isales-api
@@ -27,7 +27,7 @@ INCLUDE_MODEM=0
 LOW_PEAK_START=${ISALES_LOW_PEAK_START:-22}
 LOW_PEAK_END=${ISALES_LOW_PEAK_END:-8}
 
-mapfile -t REST < <(parse_common_flags "$@")
+parse_common_flags "$@"
 RELEASE_TS=""
 for arg in "${REST[@]:-}"; do
     case "$arg" in

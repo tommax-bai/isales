@@ -34,7 +34,7 @@ iSales v1 SHALL 部署在单台 **Linux 或 macOS** 主机上：7 个服务进�
 - **WHEN** provision macOS 主机
 - **THEN** 主机 SHALL 满足：
   - macOS 14 Sonoma 或更新（**仅 Apple Silicon**，arm64）
-  - Homebrew 包：`postgresql@15` `redis` `nginx` `python@3.12` `node@20` `pkg-config` `git`
+  - Homebrew 包：`postgresql@16` `redis` `nginx` `python@3.12` `node@20` `pkg-config` `git`
   - 系统账户 `_isales`（用 `dscl` + `sysadminctl` 创建，UID < 500，无 shell）
   - 目录骨架：
     ```
@@ -46,7 +46,7 @@ iSales v1 SHALL 部署在单台 **Linux 或 macOS** 主机上：7 个服务进�
     /etc/isales/env/             # 与 Linux 一致；macOS 也允许 /etc
     /Library/LaunchDaemons/      # 6 份 com.isales.<service>.plist
     /opt/homebrew/var/db/redis/  # Redis 数据目录（brew 管理）
-    /opt/homebrew/var/postgresql@15/  # PG 数据目录（brew 管理）
+    /opt/homebrew/var/postgresql@16/  # PG 数据目录（brew 管理）
     ```
 
 #### Scenario: 不引入容器化

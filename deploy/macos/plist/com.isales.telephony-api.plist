@@ -15,7 +15,7 @@
     <string>_isales</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/opt/isales/current/venv/bin/isales-telephony-api</string>
+        <string>/opt/isales/current/venv/bin/telephony-api</string>
     </array>
     <key>WorkingDirectory</key>
     <string>/opt/isales/current/isales-telephony</string>

@@ -19,7 +19,7 @@ iSales v1 在 **macOS 14+ Sonoma (Apple Silicon)** 上的单主机部署模型�
 │    com.isales.backup            (StartCalendarInterval 02:30 daily)   │
 │                                                                       │
 │  brew services（$BREW_PREFIX = /opt/homebrew）：                      │
-│    postgresql@15                                                      │
+│    postgresql@16                                                      │
 │    redis             (AOF appendonly yes / appendfsync everysec)      │
 │    nginx             (反代 + isales-web 静态资源)                     │
 │                                                                       │
@@ -40,8 +40,8 @@ iSales v1 在 **macOS 14+ Sonoma (Apple Silicon)** 上的单主机部署模型�
 | Homebrew | 装在 `/opt/homebrew/`（Apple Silicon 默认路径） |
 | Python | `python@3.12` (brew) |
 | Node | `node@20` (brew) |
-| 系统包 | `postgresql@15` `redis` `nginx` `pkg-config` `git` |
-| 用户 | 系统账户 `_isales:_isales`（UID 298，shell `/usr/bin/false`，`IsHidden 1`） |
+| 系统包 | `postgresql@16` `redis` `nginx` `pkg-config` `git` |
+| 用户 | 系统账户 `_isales:_isales`（UID 350，shell `/usr/bin/false`，`IsHidden 1`） |
 
 provision.sh 会用 `dscl` + `brew install` 把上述依赖落齐。Intel Mac 与 macOS 13- 会被 `require_macos` 直接拒绝。
 

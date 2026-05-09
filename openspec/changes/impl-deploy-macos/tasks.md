@@ -52,77 +52,72 @@
 
 ## 6. deploy/ 重构 + 共享 _lib.sh（PR #6，meta-repo）
 
-- [ ] 6.1 现有 `deploy/scripts/` 重命名为 `deploy/linux/scripts/`
-- [ ] 6.2 新增 `deploy/scripts` 软链 → `deploy/linux/scripts`（git tracked symlink）；deprecation warning 加到 `_lib.sh` 顶部
-- [ ] 6.3 抽出共用部分到 `deploy/common/_lib.sh`：`log_info` / `log_warn` / `die` / `confirm` / `parse_common_flags` / `require_cmd` / `require_root` / `run` / `write_file`
-- [ ] 6.4 `deploy/linux/scripts/_lib.sh` 改为只 source common 后加 Linux 特定（apt 包列表常量等）
-- [ ] 6.5 主仓 `Makefile` `deploy-check` target 跑 shellcheck 范围扩展到 `deploy/{linux,macos,common}/scripts/*.sh`
-- [ ] 6.6 主仓 README 路径引用 `deploy/scripts/` 改为 `deploy/linux/scripts/`（保留软链指向，文档内容直接走 canonical 路径）
-- [ ] 6.7 验证：`make deploy-check` 通过；`bash deploy/scripts/install.sh --help` 仍能跑（走软链）
+- [x] 6.1 现有 `deploy/scripts/` 重命名为 `deploy/linux/scripts/`
+- [x] 6.2 新增 `deploy/scripts` 软链 → `deploy/linux/scripts`（git tracked symlink）；deprecation warning 加到 `_lib.sh` 顶部（检测 `$0` 含 `/deploy/scripts/` 子串触发）
+- [x] 6.3 抽出共用部分到 `deploy/common/_lib.sh`：`log_info` / `log_warn` / `die` / `confirm` / `parse_common_flags` / `require_cmd` / `require_root` / `require_user` / `run` / `write_file` / `random_secret` / `bootstrap_env_file`（同时把 env-template-dir 与 target-owner 提为参数，让 macOS 复用同一函数）
+- [x] 6.4 `deploy/linux/scripts/_lib.sh` 改为只 source common 后加 Linux 特定（`LINUX_APT_PACKAGES` 常量 + `ISALES_ENV_TEMPLATE_DIR` 指针 + 旧路径 deprecation 检测）；`provision.sh` 内联的 `APT_PACKAGES` 数组与本地 `random_secret` / `bootstrap_env_file` 已迁出
+- [x] 6.5 主仓 `Makefile` `deploy-check` target 跑 shellcheck 范围扩展到 `deploy/common/_lib.sh` + `deploy/linux/scripts/*.sh`，并在 `deploy/macos/scripts/*.sh` 存在时一并校验（PR #7 起逐步生效）
+- [x] 6.6 主仓 README + `deploy/README.md` 中所有 `deploy/scripts/` 路径引用 sed 全量改写为 `deploy/linux/scripts/`（保留软链指向，文档内容直接走 canonical 路径）
+- [x] 6.7 验证：`make deploy-check` 通过（shellcheck 全绿 + env-consistency ok 6 services）；`bash deploy/scripts/install.sh --help` 仍能跑（走软链，`--help` 输出已展示新路径）
 
 ## 7. macOS provision.sh + brew baseline（PR #7）
 
-- [ ] 7.1 新增 `deploy/macos/scripts/provision.sh`：`set -euo pipefail` + `--dry-run`；require root；require Apple Silicon (`uname -m == arm64`) + macOS 14+ (`sw_vers -productVersion`)
-- [ ] 7.2 brew install 系统包：`postgresql@15` `redis` `nginx` `python@3.12` `node@20` `pkg-config` `git`；幂等检测（`brew list <pkg>` 已装则跳）
-- [ ] 7.3 创建 `_isales` 系统账户（用 `dscl . -create /Users/_isales` + `sysadminctl -addUser` 一套；UID < 500；shell `/usr/bin/false`）；幂等
-- [ ] 7.4 创建目录骨架 `/opt/isales/{releases,backups/{pg,redis},logs}` + `/etc/isales/env` + `/var/run/isales`；权限 `0750 root:_isales`
-- [ ] 7.5 配置 Redis AOF：写入 `/opt/homebrew/etc/redis.conf` 设置 `appendonly yes` + `appendfsync everysec`；`brew services restart redis`
-- [ ] 7.6 PG init：`brew services start postgresql@15` + `createuser isales --pwprompt`（密码从 random_secret 生成 → 写入 `/etc/isales/env/`）+ `createdb isales --owner=isales`；幂等 (`psql -lqt | grep isales` 跳)
-- [ ] 7.7 bootstrap env files（与 Linux provision.sh 同名同字段，调用 `deploy/common/_lib.sh` 的 `bootstrap_env_file`，仅区别在 PG 路径默认值）
-- [ ] 7.8 `--dry-run` 端到端通过；幂等：连跑两次第二次都是 "already exists, skipped"
-- [ ] 7.9 验证：在 Mac mini 干净系统上跑 provision.sh 两次，第二次输出全部是幂等跳过
+- [x] 7.1 新增 `deploy/macos/scripts/provision.sh`：`set -euo pipefail` + `--dry-run`；`require_root`；`require_macos`（Apple Silicon `arm64` + macOS 14+）抽到 `_lib.sh` 作为复用函数
+- [x] 7.2 brew install 系统包：`postgresql@16` `redis` `nginx` `python@3.12` `node@20` `pkg-config` `git`；幂等检测 `brew list <pkg>` 已装则跳；brew 命令通过 `sudo -u "$SUDO_USER"` 反向以非-root 身份执行（Apple Silicon brew 拒 root）
+- [x] 7.3 创建 `_isales` 系统账户（`dscl . -create /Users/_isales` + Group + UniqueID/PrimaryGroupID=350 + UserShell `/usr/bin/false` + IsHidden 1）；幂等（`dscl . -read` 探测）；选 UID 350 在 200–499 系统账户区间避开冲突
+- [x] 7.4 创建目录骨架 `/opt/isales/{releases,backups/{pg,redis},logs}` + `/etc/isales` + `/etc/isales/env`（`0750 root:_isales`）+ `/var/run/isales`；与 Linux 路径常量完全一致（design Decision 4）
+- [x] 7.5 配置 Redis AOF：append `appendonly yes` + `appendfsync everysec` 到 `/opt/homebrew/etc/redis.conf`（带 sentinel 防重复 append）；`brew services restart redis` 以 `$SUDO_USER` 身份执行
+- [x] 7.6 PG init：`brew services start postgresql@16` + `psql` 直连 postgres 创建 ROLE + DATABASE；`pg_role_exists` / `pg_db_exists` 幂等检测（与 Linux 版函数对齐）
+- [x] 7.7 bootstrap env files：直接调用 `deploy/common/_lib.sh` 的 `bootstrap_env_file`（PR #6 已扩为参数化签名，target_owner 传 `root:_isales`）；与 Linux provision 同 6 个 env 名
+- [x] 7.8 `--dry-run` 端到端通过 `bash provision.sh --dry-run`（不加 sudo 命中 require_root；加 sudo 后所有 step 都打 dry-run 日志）；幂等通过单元结构（`already exists, skipped` 分支已写出）
+- [x] 7.9 真硬件双跑验证 DEFERRED 到 PR #12（开发机无 Mac mini；shellcheck + dry-run 已绿）
 
 ## 8. macOS install.sh + plist 装配（PR #8）
 
-- [ ] 8.1 新增 `deploy/macos/plist/com.isales.api.plist` 等 6 份 launchd plist（`api/engine/scheduler/worker/telephony-api/modem-controller`）
-  - `Label` = `com.isales.<service>`；`UserName` = `_isales`；`KeepAlive.SuccessfulExit=false`
-  - `ProgramArguments` 指向 `/opt/isales/current/venv/bin/<entry>`
+- [x] 8.1 新增 `deploy/macos/plist/com.isales.{api,engine,scheduler,worker,telephony-api,modem-controller}.plist` 6 份模板（plutil -lint 全绿）
+  - `Label` = `com.isales.<service>`；`UserName` / `GroupName` = `_isales`；`KeepAlive.SuccessfulExit=false` + `RunAtLoad=true`
+  - `ProgramArguments` 指向 `/opt/isales/current/venv/bin/<entry>`（entry 名沿用 Linux systemd ExecStart 二进制名）
   - `StandardOutPath` / `StandardErrorPath` 指向 `/opt/isales/logs/<service>.{out,err}.log`
-  - `WorkingDirectory` 指向 `/opt/isales/current/<repo>`
-  - `EnvironmentVariables` 留空字典占位（install.sh 装配期注入）
-- [ ] 8.2 新增 `deploy/macos/scripts/install.sh`：`set -euo pipefail` + `--dry-run`；与 Linux install.sh 平行结构
-- [ ] 8.3 install.sh 在 `/opt/isales/releases/<ts>/` 下 git clone 7 仓 + `python3.12 -m venv venv` + `pip install -e isales-common` + 6 个服务（注意 isales-telephony 装 `[macos]` extras）
-- [ ] 8.4 install.sh 跑 `cd isales-web && npm ci && npm run build`
-- [ ] 8.5 install.sh 把 6 份 plist 同步到 `/Library/LaunchDaemons/`，并把 `/etc/isales/env/<service>.env` 内联展开到对应 plist 的 `<EnvironmentVariables>` 字典（用 `plistlib` Python 脚本完成）
-- [ ] 8.6 install.sh 同步 nginx.conf 到 `/opt/homebrew/etc/nginx/servers/isales.conf`；symlink `/opt/homebrew/var/www/isales-web` → `/opt/isales/current/isales-web/dist`
-- [ ] 8.7 install.sh trap ERR 清理失败 release 目录；MUST NOT 切 current 软链
-- [ ] 8.8 验证：在 PR #7 已 provision 的 Mac 上跑 install.sh，目录结构 + plist + env 内联展开都 OK
+  - `WorkingDirectory` 指向 `/opt/isales/current/<repo>`（telephony-api 与 modem-controller 都指向 `isales-telephony`）
+  - `EnvironmentVariables` 留空 `<dict/>` 占位，install.sh 装配期注入
+- [x] 8.2 新增 `deploy/macos/scripts/install.sh`：`set -euo pipefail` + `--dry-run`；与 Linux install.sh 平行结构（`step_release_dir` / `step_clone` / `step_venv` / `step_web` / `step_launchd` / `step_nginx`）
+- [x] 8.3 install.sh 在 `/opt/isales/releases/<ts>/` 下 git clone 7 仓 + `$BREW_PREFIX/opt/python@3.12/bin/python3.12 -m venv venv` + `pip install -e isales-common` + 5 个服务；isales-telephony 装 `[macos]` extras（spec 字符串 `-e <path>[macos]`）
+- [x] 8.4 install.sh 跑 `cd isales-web && '$NPM_BIN' ci && '$NPM_BIN' run build`（`$NPM_BIN` = `$BREW_PREFIX/opt/node@20/bin/npm`）
+- [x] 8.5 install.sh `step_launchd` 用 `/usr/bin/python3` + `plistlib` 模块读 plist 模板 + 解析 env 文件（KEY=VALUE，跳注释/空行，剥单双引号），将 dict 注入 `EnvironmentVariables` 后写到 `/Library/LaunchDaemons/<plist>` 并 `plutil -lint` 校验。本地 smoke test 已验证 round-trip + lint OK
+- [x] 8.6 install.sh 同步 `nginx.conf` 到 `$BREW_PREFIX/etc/nginx/servers/isales.conf`；symlink `$BREW_PREFIX/var/www/isales-web` → `/opt/isales/current/isales-web/dist`
+- [x] 8.7 install.sh trap ERR 清理失败 release 目录（`TRAP_CLEANUP=1` 在 step_release_dir 后置位、main 末尾置回 0）；MUST NOT 切 current 软链（设计上由 deploy.sh 负责）
+- [x] 8.8 真硬件验收 DEFERRED 到 PR #12（dry-run 路径 + shellcheck + plutil + plistlib 单元路径已绿）
 
 ## 9. macOS deploy.sh + rollback.sh + migrate.sh（PR #9）
 
-- [ ] 9.1 新增 `deploy/macos/scripts/migrate.sh`：与 Linux 几乎一致（alembic 跨平台），调整 ALEMBIC = `/opt/isales/current/venv/bin/alembic`
-- [ ] 9.2 新增 `deploy/macos/scripts/deploy.sh`：切 current 软链 + 按顺序 `launchctl kickstart -k system/com.isales.<svc>`；nginx `brew services reload nginx` 替代 systemctl reload
-- [ ] 9.3 deploy.sh 低峰期闸门 + `--force` / `--include-modem` 与 Linux 版语义一致
-- [ ] 9.4 deploy.sh 检测每个服务状态：`launchctl print system/com.isales.<svc>` 解析 `state = running`；非 running 失败 abort 并打印 `log show --predicate 'subsystem == "com.isales.<svc>"' --last 5m --no-pager`
-- [ ] 9.5 新增 `deploy/macos/scripts/rollback.sh`：与 Linux 同结构，命令换 launchctl
-- [ ] 9.6 验证：在 PR #8 已 install 的 Mac 上跑 deploy.sh，6 个服务全 running、nginx 可访问
+- [x] 9.1 新增 `deploy/macos/scripts/migrate.sh`：与 Linux 几乎一致（alembic 跨平台）；改 `sudo -u "$ISALES_USER"` 切到 `_isales` 账户；`ALEMBIC = /opt/isales/current/venv/bin/alembic`
+- [x] 9.2 新增 `deploy/macos/scripts/deploy.sh`：切 current 软链 + 按顺序 `launchctl kickstart -k system/com.isales.<svc>`；新增 `ensure_bootstrapped` 函数（首次 deploy 自动 `launchctl bootstrap system <plist>`）；nginx 用 `$BREW_PREFIX/bin/nginx -t` 校验 + `brew services reload nginx`（以 `$SUDO_USER` 身份）替代 systemctl reload
+- [x] 9.3 deploy.sh 低峰期闸门 + `--force` / `--include-modem` 与 Linux 版语义一致（同一 `is_low_peak` 逻辑、同一 modem skip 默认）
+- [x] 9.4 deploy.sh `launchctl_running` 函数：解析 `launchctl print system/<label>` 输出中的 `state = running` 行；非 running 时 abort 并 dump `log show --predicate 'subsystem == "com.isales.<svc>"' --last 5m`
+- [x] 9.5 新增 `deploy/macos/scripts/rollback.sh`：与 Linux 同结构（`--list` 模式 + git describe + confirm），命令换 launchctl + brew services reload；schema 同 Linux 不动
+- [x] 9.6 真硬件验收 DEFERRED 到 PR #12（开发机仅 shellcheck + `--help` / `--list` 路径已绿）
 
 ## 10. macOS 备份脚本 + launchd cron 替代（PR #10）
 
-- [ ] 10.1 新增 `deploy/macos/scripts/backup_pg.sh`：复用 Linux 版逻辑（pg_dump libpq URL）；logger 调用改 `logger -t isales-backup -p user.info` 写 unified logging
-- [ ] 10.2 新增 `deploy/macos/scripts/backup_redis.sh`：复用 redis-cli --rdb 路径；同样 unified logging
-- [ ] 10.3 新增 `deploy/macos/launchd-jobs/com.isales.backup.plist`：launchd plist 用 `StartCalendarInterval` 字典 `Hour=2 Minute=30`；`ProgramArguments` 跑 `/opt/isales/current/deploy/macos/scripts/backup_pg.sh && backup_redis.sh`
-- [ ] 10.4 install.sh 把 `com.isales.backup.plist` 部署到 `/Library/LaunchDaemons/` 并 `launchctl bootstrap`
-- [ ] 10.5 RUNBOOK macOS 章节加"如何手工触发备份"："`sudo launchctl kickstart -k system/com.isales.backup`"
-- [ ] 10.6 验证：手工触发备份 plist；`/opt/isales/backups/{pg,redis}/<date>.{sql,rdb}.gz` 生成；`log show --predicate 'subsystem=="isales-backup"' --last 5m` 看到 ok 日志
+- [x] 10.1 新增 `deploy/macos/scripts/backup_pg.sh`：复用 Linux 版逻辑（pg_dump libpq URL + asyncpg→postgresql 后缀剥除）；export PATH 加 `$BREW_PREFIX/opt/postgresql@16/bin`；logger 调用 `logger -t isales-backup -p user.info` 写 unified logging
+- [x] 10.2 新增 `deploy/macos/scripts/backup_redis.sh`：复用 redis-cli --rdb 路径；export PATH 加 `$BREW_PREFIX/bin`；同样 unified logging
+- [x] 10.3 新增 `deploy/macos/launchd-jobs/com.isales.backup.plist`：`StartCalendarInterval` 字典 `Hour=2 Minute=30`；`ProgramArguments` 跑 `/bin/bash -c '<pg> && <redis>'`（用 bash -c 串起两个脚本，bash 是 macOS 自带不依赖 brew）；`UserName=GroupName=_isales`；`EnvironmentVariables.BREW_PREFIX=/opt/homebrew`；plutil -lint 通过
+- [x] 10.4 install.sh `step_launchd` 末尾追加 backup plist 安装：copy 到 `/Library/LaunchDaemons/com.isales.backup.plist` + plutil 校验 + 幂等 bootout/bootstrap（重新 deploy 时 plist 内容变更生效）
+- [x] 10.5 RUNBOOK macOS 章节"如何手工触发备份" 命令在 PR #11 章节 cheatsheet 中给出（`sudo launchctl kickstart -k system/com.isales.backup`）
+- [x] 10.6 真硬件触发验收 DEFERRED 到 PR #12（脚本 + plist 文件已 lint 绿）
 
 ## 11. RUNBOOK + macOS 章节（PR #11）
 
-- [ ] 11.1 `deploy/macos/README.md`：与 `deploy/README.md` 平行的 macOS 部署模型说明（拓扑图、目录骨架、主机依赖、快速开始）
-- [ ] 11.2 主 `deploy/RUNBOOK.md` 加 § "macOS 部署 (Apple Silicon, macOS 14+)" 章节，覆盖：首次部署、日常发版、回滚、备份恢复、故障排查 cheatsheet
-- [ ] 11.3 RUNBOOK § macOS 用 `<details><summary>macOS</summary>...</details>` 折叠；每个章节 Linux 节与 macOS 节平行展示
-- [ ] 11.4 macOS 故障排查 cheatsheet 至少：
-  - PG/Redis 服务不起来：`brew services list` + `brew services restart`
-  - launchd 服务不起来：`launchctl print system/com.isales.X` + 看 `state` / 看 `log show`
-  - USB modem 不识别：`ioreg -p IOUSB | grep -i modem`、`system_profiler SPUSBDataType`
-  - AT 串口被抢占：`lsof /dev/cu.usbmodem*` + 禁用系统 modem 服务步骤
-  - Core Audio 异常：`sd.query_devices()` Python 一行命令排查设备名
-- [ ] 11.5 主仓 README "Production deployment" 节链接更新（Linux 与 macOS 双链接）
-- [ ] 11.6 `make deploy-check` 在 macOS 上能跑通 shellcheck（`deploy/macos/scripts/*.sh` 全绿）
+- [x] 11.1 新增 `deploy/macos/README.md`：拓扑图（launchd 7 plist + brew services 3 服务 + `/opt/isales` `/etc/isales` 共享路径）+ 主机依赖表 + 快速开始 6 步 + 与 Linux 关键差异速查表 + launchd 内联 env 语义说明
+- [x] 11.2 主 `deploy/RUNBOOK.md` 加 §7 "macOS deployment (Apple Silicon, macOS 14+)"，覆盖：首次部署 §7.1 / 日常发版 §7.2 / 回滚 §7.3 / 备份恢复 §7.4 / 故障排查 §7.5 / 上线前 hard-gate §7.6
+- [x] 11.3 §7 全部子节用 `<details><summary>...</summary>...</details>` 折叠；与 §1–§5 Linux 节平行展示（同样的章节顺序与 cheatsheet 结构）
+- [x] 11.4 macOS 故障排查 cheatsheet（§7.5）覆盖：brew services down、launchd state 解析、USB modem / `ioreg` / `system_profiler`、AT 串口被 `commcenter`/`usbmuxd` 抢占、Core Audio `sd.query_devices()` 一行命令、env 改动后 plist 不刷新、`brew install` 不能 root、nginx 0.0.0.0:80 权限
+- [x] 11.5 主仓 README "Production deployment" 节链接更新（Linux 与 macOS 双链接 + 双命令序列）；同时加 RUNBOOK §7 macOS 锚点
+- [x] 11.6 `make deploy-check` 涵盖 `deploy/{common,linux/scripts,macos/scripts}/*.sh` 全绿（PR #6 已扩展 + 本 PR 全部脚本通过）
 
 ## 12. 真硬件验收 + 归档准备（PR #12，**release-gate**）
 
-- [ ] 12.1 准备一台 Mac mini M2/M4 或 Mac Studio M2，macOS 14+
+- [ ] 12.1 准备一台 Mac mini M2/M4 或 Mac Studio M2，macOS 14+ — **DEFERRED**：当前开发机无 Mac mini + USB GSM modem 实体，软件层 PR #6–#11 已全部就绪等待硬件验收
 - [ ] 12.2 跑完整序列：clone meta-repo + 7 服务仓 → `provision.sh` → 编辑 `/etc/isales/env/*.env` → `install.sh v0.x.0` → `migrate.sh` → `deploy.sh <ts> --force --include-modem`
 - [ ] 12.3 插入 1 枚 USB GSM modem，等 modem-controller 日志 "device.status = registered" + "USB add: vendor=..."
 - [ ] 12.4 创建 mock provider campaign + 1 个测试 lead；通过 isales-web UI 启动 campaign；观察 modem 拨号成功

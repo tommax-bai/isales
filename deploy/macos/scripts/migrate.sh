@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# macOS ships /bin/bash 3.2 (GPL3-frozen). All scripts here use bash 4+
+# features (mapfile, "${arr[@]+...}", etc.). Re-exec under brew bash if
+# the current shell is too old.
+if [[ ${BASH_VERSINFO[0]:-3} -lt 4 ]]; then
+    exec /opt/homebrew/bin/bash "$0" "$@"
+fi
 #
 # migrate.sh — run alembic upgrade head against the active release on macOS.
 #
@@ -18,7 +24,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=./_lib.sh
 source "$SCRIPT_DIR/_lib.sh"
 
-mapfile -t REST < <(parse_common_flags "$@")
+parse_common_flags "$@"
 for arg in "${REST[@]+"${REST[@]}"}"; do
     case "$arg" in
         --help|-h) sed -n '3,16p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
@@ -45,6 +51,12 @@ set -a
 # shellcheck disable=SC1090
 source "$ENV_FILE"
 set +a
+
+# cd to a directory _isales can read before invoking alembic — when migrate.sh
+# is itself invoked via sudo / osascript admin, the cwd inherited by the
+# sub-shell may be unreadable to _isales (e.g. /var/root). Python's import
+# machinery walks sys.path including '.' and chokes on PermissionError.
+cd /opt/isales
 
 if [[ $DRY_RUN -eq 1 ]]; then
     log_info "dry-run: alembic history -i"

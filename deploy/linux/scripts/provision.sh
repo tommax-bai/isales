@@ -6,9 +6,9 @@
 # nor reinstall packages. Repeats print "already exists, skipped".
 #
 # Usage:
-#     sudo bash deploy/scripts/provision.sh             # core provision
-#     sudo bash deploy/scripts/provision.sh --with-modem  # also install udev rules
-#     sudo bash deploy/scripts/provision.sh --dry-run   # log only, no changes
+#     sudo bash deploy/linux/scripts/provision.sh             # core provision
+#     sudo bash deploy/linux/scripts/provision.sh --with-modem  # also install udev rules
+#     sudo bash deploy/linux/scripts/provision.sh --dry-run   # log only, no changes
 #
 # What it does:
 #   1. apt install system packages (postgresql-15 / redis-server / nginx / ...)
@@ -28,7 +28,7 @@ source "$SCRIPT_DIR/_lib.sh"
 # ---------- parse args ----------
 
 WITH_MODEM=0
-mapfile -t REST < <(parse_common_flags "$@")
+parse_common_flags "$@"
 for arg in "${REST[@]:-}"; do
     case "$arg" in
         --with-modem) WITH_MODEM=1 ;;
@@ -43,27 +43,12 @@ done
 require_root
 
 # ---------- step 1: apt packages ----------
-
-APT_PACKAGES=(
-    postgresql-15
-    redis-server
-    nginx
-    git
-    pkg-config
-    libudev-dev
-    libasound2-dev
-    python3.12
-    python3.12-venv
-    nodejs
-    npm
-    curl
-    ca-certificates
-)
+# LINUX_APT_PACKAGES is defined in _lib.sh.
 
 step_apt() {
     log_info "step 1/6: apt install"
     run apt-get update -qq
-    run apt-get install -y --no-install-recommends "${APT_PACKAGES[@]}"
+    run apt-get install -y --no-install-recommends "${LINUX_APT_PACKAGES[@]}"
 }
 
 # ---------- step 2: isales user ----------
@@ -153,42 +138,7 @@ pg_db_exists() {
         "SELECT 1 FROM pg_database WHERE datname='isales'" 2>/dev/null | grep -q 1
 }
 
-random_secret() {
-    # 32 url-safe base64 chars (~190 bits entropy).
-    python3 -c 'import secrets; print(secrets.token_urlsafe(32))'
-}
-
-bootstrap_env_file() {
-    # bootstrap_env_file <name> <pg-pass>
-    # Copies deploy/env/<name>.env.example to /etc/isales/env/<name>.env if
-    # missing, substituting <change-me> placeholders for the *first* PG/JWT/
-    # FERNET secret. Re-running MUST NOT reset existing files.
-    local name=$1 pgpass=$2 jwt=$3 fernet=$4
-    local target=/etc/isales/env/$name.env
-    local tpl=$SCRIPT_DIR/../env/$name.env.example
-
-    if [[ ! -f "$tpl" ]]; then
-        log_warn "missing template: $tpl (skip)"
-        return 0
-    fi
-    if [[ -f "$target" ]]; then
-        log_info "$target: already exists, skipped (will not reset secrets)"
-        return 0
-    fi
-
-    if [[ $DRY_RUN -eq 1 ]]; then
-        log_dry "would create $target from $tpl"
-        return 0
-    fi
-
-    install -m 0640 -o root -g isales /dev/null "$target"
-    sed \
-        -e "s|isales:<change-me>@|isales:${pgpass}@|" \
-        -e "s|^ISALES_JWT_SECRET=<change-me>$|ISALES_JWT_SECRET=${jwt}|" \
-        -e "s|^ISALES_FERNET_KEY=<change-me>$|ISALES_FERNET_KEY=${fernet}|" \
-        "$tpl" > "$target"
-    log_info "wrote $target (placeholders for ADMIN_USER / ADMIN_PASSWORD_HASH still need editing)"
-}
+# random_secret + bootstrap_env_file are provided by deploy/common/_lib.sh.
 
 step_postgres() {
     log_info "step 5/6: postgres role + database"
@@ -226,12 +176,11 @@ step_postgres() {
     fi
     fernet=${fernet:-<install-cryptography-and-rerun>}
 
-    bootstrap_env_file api              "$pg_pass" "$jwt" "$fernet"
-    bootstrap_env_file engine           "$pg_pass" "$jwt" "$fernet"
-    bootstrap_env_file scheduler        "$pg_pass" "$jwt" "$fernet"
-    bootstrap_env_file worker           "$pg_pass" "$jwt" "$fernet"
-    bootstrap_env_file telephony-api    "$pg_pass" "$jwt" "$fernet"
-    bootstrap_env_file modem-controller "$pg_pass" "$jwt" "$fernet"
+    local svc
+    for svc in api engine scheduler worker telephony-api modem-controller; do
+        bootstrap_env_file "$svc" "$pg_pass" "$jwt" "$fernet" \
+            "$ISALES_ENV_TEMPLATE_DIR" root:isales
+    done
 
     log_info "NOTE: edit /etc/isales/env/api.env to set ISALES_ADMIN_USER + ISALES_ADMIN_PASSWORD_HASH before deploy.sh"
 }

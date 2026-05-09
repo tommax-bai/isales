@@ -1,6 +1,11 @@
 # Production deployment
 
-iSales v1 走**单主机 + systemd** 部署模型：7 个服务进程通过 systemd 管理，PostgreSQL 与 Redis 作为同主机系统服务，nginx 反代 isales-web 静态资源。本目录提供把 7 个服务装配到一台 Linux 主机所需的全部脚本、模板与文档。
+iSales v1 支持两种**单主机**部署模型：
+
+- **Linux + systemd**（主线，本 README 主要描述）—— 7 个服务进程通过 systemd 管理，PG / Redis / nginx 作为系统服务
+- **macOS 14+ + launchd**（Apple Silicon 门店 / 现场场景）—— 详见 `deploy/macos/README.md`
+
+两套部署的目录骨架（`/opt/isales/{releases,current,backups,logs}` + `/etc/isales/env/`）与 env 模板完全一致；区别集中在服务管理（systemd vs launchd）、包管理器（apt vs brew）与硬件 USB / 音频后端。本目录提供把 7 个服务装配到一台主机所需的全部脚本、模板与文档。
 
 > 与 `openspec/specs/deployment-topology/spec.md` 对应。`architecture` spec 声明了"v1 单主机部署"作为高层选择；`deployment-topology` spec 把对应的可执行运维契约固化下来。
 
@@ -59,20 +64,20 @@ iSales v1 走**单主机 + systemd** 部署模型：7 个服务进程通过 syst
 
 ```bash
 # 1. 准备主机（一次性）
-sudo bash deploy/scripts/provision.sh
+sudo bash deploy/linux/scripts/provision.sh
 
 # 2. 编辑集中化 env，填入真实 secret
 sudoedit /etc/isales/env/api.env
 # ... 其他 5 个 service env 同理
 
 # 3. 安装新 release
-sudo -u isales bash deploy/scripts/install.sh v0.1.0
+sudo -u isales bash deploy/linux/scripts/install.sh v0.1.0
 
 # 4. 数据库迁移
-sudo -u isales bash deploy/scripts/migrate.sh
+sudo -u isales bash deploy/linux/scripts/migrate.sh
 
 # 5. 切换 current 软链 + restart
-sudo bash deploy/scripts/deploy.sh <release-ts>
+sudo bash deploy/linux/scripts/deploy.sh <release-ts>
 ```
 
 ## 子目录索引
@@ -80,16 +85,21 @@ sudo bash deploy/scripts/deploy.sh <release-ts>
 | 目录/文件 | 用途 |
 |-----------|------|
 | `env/*.env.example` | 每个服务的环境变量模板（含一致性约束注释） |
-| `scripts/provision.sh` | 主机一次性 provision（apt 包 + 用户 + 目录 + Redis AOF） |
-| `scripts/install.sh` | 拉 7 仓 + 建 venv + 构建 web，落 `/opt/isales/releases/<ts>/` |
-| `scripts/migrate.sh` | `alembic upgrade head` |
-| `scripts/deploy.sh` | 切 current 软链 + 按依赖顺序 restart |
-| `scripts/rollback.sh` | 切回历史 release（不动 schema） |
-| `scripts/backup_pg.sh` | 每日 PG `pg_dump` |
-| `scripts/backup_redis.sh` | 每日 Redis AOF 复制 |
-| `cron/isales-backup.cron` | 备份 cron 配置 |
+| `linux/scripts/provision.sh` | 主机一次性 provision（apt 包 + 用户 + 目录 + Redis AOF） |
+| `linux/scripts/install.sh` | 拉 7 仓 + 建 venv + 构建 web，落 `/opt/isales/releases/<ts>/` |
+| `linux/scripts/migrate.sh` | `alembic upgrade head` |
+| `linux/scripts/deploy.sh` | 切 current 软链 + 按依赖顺序 restart |
+| `linux/scripts/rollback.sh` | 切回历史 release（不动 schema） |
+| `linux/scripts/backup_pg.sh` | 每日 PG `pg_dump` |
+| `linux/scripts/backup_redis.sh` | 每日 Redis AOF 复制 |
+| `cron/isales-backup.cron` | Linux 备份 cron 配置 |
+| `macos/scripts/` | macOS 平行的 provision / install / migrate / deploy / rollback / backup 脚本 |
+| `macos/plist/` | 6 份 launchd plist 模板（`com.isales.<svc>.plist`） |
+| `macos/launchd-jobs/com.isales.backup.plist` | macOS 每日备份 launchd 计划 |
+| `macos/README.md` | macOS 部署模型说明（拓扑、目录骨架、主机依赖、快速开始） |
+| `common/_lib.sh` | 跨平台共用 bash 函数（log/run/parse_common_flags/write_file/...） |
 | `monitoring/` | Prometheus / Grafana 配置模板（不强制即时实现 /metrics） |
-| `RUNBOOK.md` | 首次部署、发版、回滚、备份恢复、故障排查 |
+| `RUNBOOK.md` | 首次部署、发版、回滚、备份恢复、故障排查（Linux 主线 + macOS 折叠节） |
 
 ## 不属于 v1 的范围
 

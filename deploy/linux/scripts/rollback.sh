@@ -3,9 +3,9 @@
 # rollback.sh — switch /opt/isales/current back to a prior release.
 #
 # Usage:
-#     sudo bash deploy/scripts/rollback.sh <release-ts>
-#     sudo bash deploy/scripts/rollback.sh --list
-#     sudo bash deploy/scripts/rollback.sh <release-ts> --force --dry-run
+#     sudo bash deploy/linux/scripts/rollback.sh <release-ts>
+#     sudo bash deploy/linux/scripts/rollback.sh --list
+#     sudo bash deploy/linux/scripts/rollback.sh <release-ts> --force --dry-run
 #
 # This script DOES NOT touch the database schema. If the rolled-back release
 # expects an older alembic revision, run `alembic downgrade` manually per
@@ -23,7 +23,7 @@ source "$SCRIPT_DIR/_lib.sh"
 LIST_ONLY=0
 INCLUDE_MODEM=0
 
-mapfile -t REST < <(parse_common_flags "$@")
+parse_common_flags "$@"
 RELEASE_TS=""
 for arg in "${REST[@]:-}"; do
     case "$arg" in

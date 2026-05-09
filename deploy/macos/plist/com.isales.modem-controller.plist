@@ -15,7 +15,7 @@
     <string>_isales</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/opt/isales/current/venv/bin/isales-modem-controller</string>
+        <string>/opt/isales/current/venv/bin/modem-controller</string>
     </array>
     <key>WorkingDirectory</key>
     <string>/opt/isales/current/isales-telephony</string>
