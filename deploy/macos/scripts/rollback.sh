@@ -112,7 +112,10 @@ if [[ $DRY_RUN -eq 1 ]]; then
 else
     brew_user=${SUDO_USER:-}
     [[ -n "$brew_user" ]] || die "nginx reload needs SUDO_USER set"
-    sudo -u "$brew_user" -H "$BREW_PREFIX/bin/brew" services reload nginx
+    # See deploy.sh: kickstart launchd directly instead of `brew services
+    # reload` (brew refuses formula API access under nested sudo).
+    brew_uid=$(id -u "$brew_user")
+    run launchctl kickstart -k "user/$brew_uid/homebrew.mxcl.nginx"
 fi
 
 if [[ $INCLUDE_MODEM -eq 1 ]]; then

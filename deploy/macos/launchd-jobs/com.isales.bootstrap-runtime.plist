@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Re-create /var/run/isales on every boot. macOS clears /var/run on reboot
+  (it is backed by tmpfs in modern macOS), so without this job the
+  modem-controller's unix domain socket bind would fail with ENOENT.
+
+  Runs as root (no UserName key) so it can write under /var/run, then
+  chowns the directory to _isales:_isales. Exits immediately after.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.isales.bootstrap-runtime</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <false/>
+    <key>LaunchOnlyOnce</key>
+    <true/>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/install</string>
+        <string>-d</string>
+        <string>-o</string>
+        <string>_isales</string>
+        <string>-g</string>
+        <string>_isales</string>
+        <string>-m</string>
+        <string>0755</string>
+        <string>/var/run/isales</string>
+    </array>
+    <key>StandardOutPath</key>
+    <string>/opt/isales/logs/bootstrap-runtime.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/opt/isales/logs/bootstrap-runtime.err.log</string>
+</dict>
+</plist>

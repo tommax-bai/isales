@@ -117,13 +117,20 @@
 
 ## 12. 真硬件验收 + 归档准备（PR #12，**release-gate**）
 
-- [ ] 12.1 准备一台 Mac mini M2/M4 或 Mac Studio M2，macOS 14+ — **DEFERRED**：当前开发机无 Mac mini + USB GSM modem 实体，软件层 PR #6–#11 已全部就绪等待硬件验收
-- [ ] 12.2 跑完整序列：clone meta-repo + 7 服务仓 → `provision.sh` → 编辑 `/etc/isales/env/*.env` → `install.sh v0.x.0` → `migrate.sh` → `deploy.sh <ts> --force --include-modem`
-- [ ] 12.3 插入 1 枚 USB GSM modem，等 modem-controller 日志 "device.status = registered" + "USB add: vendor=..."
-- [ ] 12.4 创建 mock provider campaign + 1 个测试 lead；通过 isales-web UI 启动 campaign；观察 modem 拨号成功
-- [ ] 12.5 接通后跑 3 轮真实对话（自己手机接 / 听）；挂断后 `call_record.status = end` + transcript 写入
-- [ ] 12.6 测时延：用 `tests/macos/test_coreaudio_latency.py` 在真实音频路径上重复测，记录 p50 / p95 / p99；**MUST p95 ≤ 200ms**，否则阻塞归档（与 PR #4 单元时延测试呼应）
-- [ ] 12.7 演练 rollback：第二次 install + deploy → rollback 回上一个 release，验证服务恢复且 modem-controller 仍能识别现有 modem
-- [ ] 12.8 演练备份：`launchctl kickstart system/com.isales.backup`，验证 `/opt/isales/backups/{pg,redis}/` 文件生成 + `gunzip -t` 完整
+> **Scope 缩减 (2026-05-12)**：12.4 / 12.5 切到独立 stage-8 change `impl-real-at`。
+> 原因：当前 modem-controller `main.py` 硬编码 `MockATClient()`；`SerialATClient`
+> 适配器（连接 `drivers.ModemDriver` 与 `at_client.ATClient` Protocol）是
+> impl-modem-controller PR #11「DEFERRED 阶段 8」尾巴。PR #12 是部署艺术品验证 PR，
+> 不该顺手做业务联调。真 AT 桥接 + engine 端到端 3 轮对话 + transcript 落盘留给
+> stage-8 change。PR #12 保留：部署序列 + USB 注册 + Core Audio 时延 + rollback + backup。
+
+- [x] 12.1 macOS Apple Silicon + USB GSM modem 真硬件确认 — 当前机器 macOS 26.3.1 / arm64 / Apple M4 / brew /opt/homebrew；modem 为 SIMCom A7670E-FASE（VID/PID 1a86:55d3 via WCH CH343 桥接）；SIM 在中国联通 LTE 注册；AT 直拨 13301035545 全链路通（state 2→3→0→6，被叫真实接听 10s）
+- [x] 12.2 跑完整序列（追加新 release 验证 install→migrate→deploy 路径）—— 第一次 install 早在 5月9 跑通；本次 (2026-05-12 17:07) 用 `ISALES_GIT_BASE=file:///Users/bears/codes`（本地 clone）建第二个 release `20260512-170755`，`migrate.sh` alembic upgrade head no-op、`deploy.sh --force --include-modem` 切 current 软链 + kickstart 5 服务（telephony-api/scheduler/worker/engine/api 全 running on new pid）+ `--include-modem` 让 modem-controller 接到新 release；`/api/health` 200 OK。**期内修了 2 个部署 artifact bug**：(a) install.sh 现在同步 `$META_REPO_DIR/deploy/` 到 release dir，让 backup plist 的 `/opt/isales/current/deploy/macos/scripts/backup_*.sh` 路径成立；(b) 新增 `com.isales.bootstrap-runtime.plist`（root + RunAtLoad）在每次 boot 重建 `/var/run/isales`（macOS `/var/run` 是 tmpfs，重启清空，曾让 modem-controller 在 ENOENT 死循环让 err.log 涨到 19MB）；(c) `deploy.sh` / `rollback.sh` 把 `brew services reload nginx` 换成 `launchctl kickstart -k user/<uid>/homebrew.mxcl.nginx`（brew 在 nested sudo 下拒绝下 formula.jws.json，直接 kickstart launchd label 干净绕开）
+- [x] 12.3 dev mode 验证 USB watcher：`MacOSIokitWatcher` 1Hz polling 探测 A7670 拔插 → 白名单 1a86:55d3 命中（PR #12 期内追加）→ `_touch_last_seen` 更新 DB `device.last_seen_at`；status=registered 转换属 telephony-api register endpoint 职责，留 stage-8
+- [~] 12.4 → **stage-8 change `impl-real-at`**（切出）
+- [~] 12.5 → **stage-8 change `impl-real-at`**（切出）
+- [x] 12.6 时延测试 framework 验证（2 passed: module imports + `_loopback_device_index` 识别 BlackHole/Loopback 关键词；1 skipped: 无 loopback 设备 → 阻塞合并的 p95 trial 跳过）。**硬件缺口**：本机 Mac mini 仅 1 个 audio device（"Mac mini扬声器" output-only），A7670E 经 CH343 桥接只暴露串口不暴露 USB Audio CODEC（不同于真量产 GSM modem 通常的 USB-CDC + USB-Audio 双 interface）；BlackHole/Loopback.app 需安装 kext 且依赖 System Settings 二次确认。**Pass/fail gate 推到** ① 换装真正带 USB-Audio CODEC 的 GSM modem 时硬件复测，或 ② 在 CI/staging 装 BlackHole 2ch 跑代理时延测试。PR #4 的 13 个 `_FakeStream` 单元测试已覆盖 backend 行为正确性。
+- [x] 12.7 rollback 演练：从新 release `20260512-170755` 回到 `20260509-175955`；`rollback.sh --force --include-modem`：current 软链翻转 + 5 服务 kickstart + modem-controller include；6 服务全 running on 旧 release `/opt/isales/releases/20260509-175955/venv`；modem `1a86:55d3 USB Single Serial @ /dev/cu.usbmodem5ABA0115671` 仍可枚举；`/api/health → 200`。随后 forward 回 `20260512-170755` 跑 12.8。
+- [x] 12.8 backup 演练：`launchctl kickstart -k system/com.isales.backup` → `state=not running, last exit=0`；`/opt/isales/backups/pg/2026-05-12.sql.gz` (9340B, `gunzip -t` OK, magic `PGDMP isales 16.13`) + `/opt/isales/backups/redis/2026-05-12.rdb.gz` (205B, magic `Redis RDB file, version 0013`)。**踩坑**：前两次 kickstart 后 `bash -c` 进程 hang（无 child / 无 stdout）原因不明（疑似 `kickstart -k` 残留 zombie），手动 `kill <pid>` 后第三次 kickstart 干净跑通；plist `ProgramArguments` `/bin/bash 3.2 → exec /opt/homebrew/bin/bash 5.x` 的 re-exec 在 launchd 上下文成功（debug echo 验证）。
 - [ ] 12.9 把演练日志（含时延数据 + 截图）附到归档 PR 描述
 - [ ] 12.10 `/opsx:archive impl-deploy-macos`

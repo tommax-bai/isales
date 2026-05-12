@@ -25,7 +25,11 @@ fi
 #      isales-common + 5 services (isales-telephony installs `[macos]` extras)
 #   4. Build isales-web (npm ci && npm run build → dist/)
 #   5. Sync 6 launchd plists to /Library/LaunchDaemons/, inlining
-#      /etc/isales/env/<svc>.env into <key>EnvironmentVariables</key>
+#      /etc/isales/env/<svc>.env into <key>EnvironmentVariables</key>.
+#      Also installs com.isales.bootstrap-runtime.plist (recreates
+#      /var/run/isales after each boot) and com.isales.backup.plist
+#      (daily PG+Redis dump). Backup scripts are sourced from
+#      /opt/isales/current/deploy/, populated in step_release_dir.
 #   6. Sync nginx config to $BREW_PREFIX/etc/nginx/servers/isales.conf and
 #      symlink isales-web/dist into $BREW_PREFIX/var/www/isales-web
 
@@ -104,13 +108,28 @@ run_as_isales() {
 # ---------- step 1: release dir ----------
 
 step_release_dir() {
-    log_info "step 1/6: prepare release dir $RELEASE_DIR"
+    log_info "step 1/6: prepare release dir $RELEASE_DIR + sync deploy/"
     if [[ -d "$RELEASE_DIR" ]] && [[ $SKIP_CLONE -eq 1 ]]; then
         log_info "release dir already exists; SKIP_CLONE set, reusing"
     else
         run install -d -m 0755 -o "$ISALES_USER" -g "$ISALES_GROUP" "$RELEASE_DIR"
     fi
     TRAP_CLEANUP=1
+
+    # The backup launchd job runs scripts from /opt/isales/current/deploy/…
+    # (via the `current` symlink that deploy.sh flips). install.sh is the only
+    # path that materialises the meta-repo `deploy/` subtree inside a release,
+    # because git clone in step_clone only pulls the 7 service repos.
+    if [[ $DRY_RUN -eq 1 ]]; then
+        log_dry "would sync $META_REPO_DIR/deploy/ -> $RELEASE_DIR/deploy/"
+    else
+        log_info "syncing meta-repo deploy/ into $RELEASE_DIR/deploy/"
+        rm -rf "$RELEASE_DIR/deploy"
+        # -L so we materialise the deploy/scripts symlink (Linux compat) rather
+        # than carry a broken link into the release.
+        cp -RL "$META_REPO_DIR/deploy" "$RELEASE_DIR/deploy"
+        chown -R "$ISALES_USER:$ISALES_GROUP" "$RELEASE_DIR/deploy"
+    fi
 }
 
 # ---------- step 2: clone/update repos ----------
@@ -219,6 +238,39 @@ PYEOF
 
 step_launchd() {
     log_info "step 5/6: install launchd plists with inlined env"
+
+    # Boot-time bootstrap plist: recreates /var/run/isales (cleared on reboot
+    # because /var/run is tmpfs on modern macOS) before any service plist
+    # tries to bind its unix domain socket. Idempotent bootout/bootstrap so
+    # path or args changes take effect on re-install.
+    local boot_src=$META_REPO_DIR/deploy/macos/launchd-jobs/com.isales.bootstrap-runtime.plist
+    local boot_dst=/Library/LaunchDaemons/com.isales.bootstrap-runtime.plist
+    if [[ ! -f "$boot_src" ]]; then
+        die "missing bootstrap-runtime plist source: $boot_src"
+    fi
+    if [[ $DRY_RUN -eq 1 ]]; then
+        log_dry "would install $boot_src -> $boot_dst + launchctl bootstrap system"
+    else
+        install -m 0644 -o root -g wheel "$boot_src" "$boot_dst"
+        plutil -lint "$boot_dst" >/dev/null \
+            || die "bootstrap-runtime plist failed plutil -lint: $boot_dst"
+        if launchctl print system/com.isales.bootstrap-runtime >/dev/null 2>&1; then
+            launchctl bootout system "$boot_dst" 2>/dev/null || true
+        fi
+        launchctl bootstrap system "$boot_dst"
+        # Wait briefly for the one-shot job to create /var/run/isales before
+        # service plists attempt to bind their sockets. Polling is cheap; the
+        # bootstrap job exits in well under a second.
+        local _i
+        for _i in 1 2 3 4 5; do
+            [[ -d /var/run/isales ]] && break
+            sleep 0.2
+        done
+        [[ -d /var/run/isales ]] \
+            || log_warn "/var/run/isales still missing after bootstrap-runtime; modem-controller may flap on first start"
+        log_info "installed + bootstrapped $boot_dst"
+    fi
+
     local entry plist envname src envfile dst
     for entry in "${LAUNCHD_PLISTS[@]}"; do
         plist=${entry%% *}

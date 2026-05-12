@@ -152,7 +152,13 @@ step_restart() {
     else
         local brew_user=${SUDO_USER:-}
         [[ -n "$brew_user" ]] || die "nginx reload needs SUDO_USER set"
-        sudo -u "$brew_user" -H "$BREW_PREFIX/bin/brew" services reload nginx
+        # `brew services reload` refuses under nested sudo because brew's
+        # formula API download path checks SUDO_USER and bails. brew already
+        # bootstrapped homebrew.mxcl.nginx into user/<uid> on first start,
+        # so we kickstart it directly via launchctl — no brew involvement.
+        local brew_uid
+        brew_uid=$(id -u "$brew_user")
+        run launchctl kickstart -k "user/$brew_uid/homebrew.mxcl.nginx"
     fi
 
     if [[ $INCLUDE_MODEM -eq 1 ]]; then
