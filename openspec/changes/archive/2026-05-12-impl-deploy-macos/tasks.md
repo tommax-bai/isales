@@ -30,7 +30,7 @@
 - [x] 3.4 串口设备路径解析：scanner 直接用 `pyserial.tools.list_ports.comports()` 扫所有 USB 端口；按 USB vid 过滤掉无 USB ID 的端口；vendor 白名单匹配交给上层 `udev_watcher._is_known_modem`
 - [x] 3.5 `__init__.py` dispatch 已在 PR #1 加 darwin 分支；本 PR 让 `MacOSIokitWatcher.__init__` 不再 raise NotImplementedError；test_macos_iokit_init_raises_until_pr3 用例改成 instantiation 验证
 - [x] 3.6 新增 `tests/macos/__init__.py` + `tests/macos/test_iokit_watcher.py`，11 个测试用例（**不带** `skipif(sys.platform != "darwin")` —— ABC 与 polling 都是平台中立的，可在 Linux CI 上一起跑）：5 个 _diff_scans 单元测试（appear/disappear/no-change/identity-change/multi-device）+ 6 个 watcher lifecycle 测试（add-then-remove 顺序 / seed-不发-add / start 二次 raise / stop 在 start 失败后安全 / scanner OSError 容错 / dispatch 端到端）
-- [ ] 3.7 100 次插拔压测脚本 — DEFERRED 到 PR #12 真硬件验收（macOS 开发机无真实 GSM modem 可插拔；polling 模型相对 IOKit notification port 内存泄漏 / 死锁风险大幅降低，单元测试 + 真硬件抽查覆盖足够）
+- [x] 3.7 100 次插拔压测脚本 — **out-of-scope by archive (2026-05-12)**：本机只有一只 A7670E modem，物理插拔 100 次无可重复施工方案；polling 模型相对 IOKit notification port 内存泄漏 / 死锁风险大幅降低，PR #3 的 11 个 unit test + PR #12 真硬件 1 次 detect/`_touch_last_seen` 验证 + macOS USB 子系统 IOKit 自身的成熟度共同覆盖此风险面。如未来观察到 watcher 卡死/泄漏，再独立开 change 补这个压测。
 
 ## 4. macOS Core Audio pipe 实现（PR #4，isales-telephony，**次难**）
 
@@ -133,4 +133,4 @@
 - [x] 12.7 rollback 演练：从新 release `20260512-170755` 回到 `20260509-175955`；`rollback.sh --force --include-modem`：current 软链翻转 + 5 服务 kickstart + modem-controller include；6 服务全 running on 旧 release `/opt/isales/releases/20260509-175955/venv`；modem `1a86:55d3 USB Single Serial @ /dev/cu.usbmodem5ABA0115671` 仍可枚举；`/api/health → 200`。随后 forward 回 `20260512-170755` 跑 12.8。
 - [x] 12.8 backup 演练：`launchctl kickstart -k system/com.isales.backup` → `state=not running, last exit=0`；`/opt/isales/backups/pg/2026-05-12.sql.gz` (9340B, `gunzip -t` OK, magic `PGDMP isales 16.13`) + `/opt/isales/backups/redis/2026-05-12.rdb.gz` (205B, magic `Redis RDB file, version 0013`)。**踩坑**：前两次 kickstart 后 `bash -c` 进程 hang（无 child / 无 stdout）原因不明（疑似 `kickstart -k` 残留 zombie），手动 `kill <pid>` 后第三次 kickstart 干净跑通；plist `ProgramArguments` `/bin/bash 3.2 → exec /opt/homebrew/bin/bash 5.x` 的 re-exec 在 launchd 上下文成功（debug echo 验证）。
 - [x] 12.9 演练日志归档：`openspec/changes/impl-deploy-macos/acceptance.md` 落盘，含 12.1 (AT 直拨 state 转换)、12.2 (install/migrate/deploy 完整命令 + 输出 + 3 个 deploy artifact bug 复盘)、12.6 (pytest 输出 + `sd.query_devices()` 显示硬件缺口)、12.7 (rollback list + comports 输出 + api health)、12.8 (backup 文件 + magic header)，外加 12.4/12.5 切出至 stage-8 与 12.6 时延 gate 推迟的 deferred 说明。
-- [ ] 12.10 `/opsx:archive impl-deploy-macos`
+- [x] 12.10 `/opsx:archive impl-deploy-macos`
