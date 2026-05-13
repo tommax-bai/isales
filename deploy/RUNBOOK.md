@@ -167,6 +167,8 @@ Run this drill **at least quarterly** and before each major release.
 | `psql: connection refused` | `systemctl status postgresql` | Check disk full / `journalctl -u postgresql -n 100` |
 | Redis OOM (`OOM command not allowed`) | `redis-cli info memory` | bump `maxmemory` in `/etc/redis/redis.conf.d/isales.conf`; or eviction policy |
 | modem-controller "device disconnected" | `udevadm monitor --kernel` to see if USB events fire | Reseat USB; `journalctl -u isales-modem-controller -n 200` |
+| modem-controller exits immediately with `ISALES_MODEM_SERIAL_PATH is required` | Inspect `/etc/isales/modem-controller.env` (Linux) or `/etc/isales/env/modem-controller.env` (macOS) | Set `ISALES_MODEM_SERIAL_PATH=/dev/ttyUSB-isales-modem` (Linux, requires udev rule) or `/dev/cu.usbmodem*` (macOS, `ls /dev/cu.usbmodem*` to discover); reload systemd unit / re-run install.sh so launchd plist picks up new env. **Never** set `ISALES_ALLOW_MOCK_AT=1` in production — that bypass exists for CI only |
+| modem-controller logs `MockATClient (dev/CI mode)` in production | Sign of misconfiguration: `ISALES_ALLOW_MOCK_AT=1` leaked into prod env | Remove `ISALES_ALLOW_MOCK_AT` from `modem-controller.env`; restart the service; verify with `journalctl -u isales-modem-controller \| grep MockATClient` returns nothing |
 | `engine:dial` queue depth > 500 | `redis-cli llen engine:dial` | Engine likely down; `systemctl restart isales-engine` if active |
 | worker celery stuck (no `summarize_call` runs) | `celery -A isales_worker inspect active` | Restart worker; check `engine:worker:call-ended` Redis list isn't empty |
 | nginx 502 from `/api/` | `curl http://127.0.0.1:8000/healthz` direct | api service down; `systemctl status isales-api` |

@@ -30,6 +30,17 @@
     <string>/opt/isales/logs/modem-controller.out.log</string>
     <key>StandardErrorPath</key>
     <string>/opt/isales/logs/modem-controller.err.log</string>
+    <!--
+      impl-real-at: ISALES_MODEM_SERIAL_PATH is REQUIRED to start
+      modem-controller. install.sh inlines /etc/isales/env/modem-controller.env
+      into the dict below; that file MUST contain ISALES_MODEM_SERIAL_PATH=
+      <tty path>. On Mac mini deployments the path is typically
+      /dev/cu.usbmodem* (run `ls /dev/cu.usbmodem*` after plugging the modem
+      to discover it). ISALES_MODEM_DRIVER (a7670 / sim800c / quectel_uc20)
+      is optional; if absent the driver is auto-detected via AT+GMI/AT+GMM.
+      ISALES_ALLOW_MOCK_AT MUST NOT be set in production — it is the dev/CI
+      escape hatch handled by modem_controller/main.py:_make_at_client.
+    -->
     <key>EnvironmentVariables</key>
     <dict/>
 </dict>
