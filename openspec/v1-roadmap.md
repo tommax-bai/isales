@@ -233,16 +233,29 @@ openspec capabilities / 依赖前置 change**。`spec deltas` 指 `openspec/chan
 
 #### change A2 — `arch-cloud-edge-split`
 
-> **Status 2026-05-15**：propose 已落 (`openspec/changes/arch-cloud-edge-split/`)，
-> impl 23/63 tasks done。已 ship 部分：isales-common v0.2.x（proto + transport
-> + audio ABC + 27 tests），isales-engine PR #1-5（AliyunRtcSession + gRPC server
-> + dispatcher + RtcTokenIssuer + RtcTelephonyClient + 13+9 tests），isales-
-> telephony PR #1-4（CloudEdgeGrpcClient + audio_bridge + SqliteEventBuffer
-> integration + 53 tests），meta-repo deploy/cloud + deploy/edge skeleton +
-> RUNBOOK-cloud/edge。**剩**：scheduler 6.x dial 重构、api/worker 9.x、edge
-> destructive 7.1/7.3/7.7、QA 环境实测 1.x / 5.5 / 12.x。归档前等 D1
-> windows-client-core 也接近完成（共享 device-hardware / deployment-topology
-> spec delta 需要手工 merge）。
+> **Status 2026-05-15 (late)**：propose 已落 (`openspec/changes/arch-
+> cloud-edge-split/`)，impl 43/63 tasks done。已 ship 部分：
+> - isales-common v0.2.x（proto + transport + audio ABC + 27 tests）
+> - isales-engine PR #1-7（AliyunRtcSession + gRPC server + dispatcher
+>   + RtcTokenIssuer + RtcTelephonyClient + **heartbeat_handler + hardware_
+>   alert_handler** + 244 tests）
+> - isales-telephony PR #1-4（CloudEdgeGrpcClient + audio_bridge +
+>   SqliteEventBuffer integration + 53 new tests）
+> - **isales-scheduler PR (3fc6750)**：dial path retires telephony-api
+>   HTTP, `device_selection.pick_idle_device` (FOR UPDATE SKIP LOCKED) +
+>   39 tests
+> - **isales-api PR (5b6e92e)**：`/edge-devices/status` endpoint +
+>   `isales-edge-token-mint` CLI + 23 new tests
+> - meta-repo deploy/cloud + deploy/edge skeleton + RUNBOOK-cloud/edge +
+>   `openspec/v1-roadmap-a3-context.md` (A3 propose-stage hand-off)
+>
+> **剩 20 tasks**：Sprint 0 物料 (1.1/1.2/1.4/1.5)、3.3/3.4 由 PR #5
+> RtcTelephonyClient 路径替代、5.5 + 12.x e2e (需 ECS + RTC AppId)、
+> 7.1/7.3/7.7 edge destructive (modem-controller 改造)、8.x macOS SDK
+> mock 路线 obsolete、13.2-13.3 PoC Day 2 + archive prep。
+>
+> 归档前等 D1 windows-client-core 也接近完成（共享 device-hardware /
+> deployment-topology spec delta 需要手工 merge）。
 
 - **问题**：当前 7 服务全部部署在客户现场单台 Mac mini，无法 SaaS 多客户运营、
   无法集中 AI 推理；isales-telephony 内 modem-controller 已是唯一硬件耦合点。
