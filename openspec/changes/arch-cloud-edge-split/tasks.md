@@ -18,8 +18,8 @@
 
 - [x] 3.1 新增 `isales_engine/transport/aliyun_rtc.py`，封装 ARTC SDK Linux Python：`RtcSession(channel, token, uid).join() / leave()` + `async on_audio_frame()` 迭代器 + `async push_audio(pcm, ts)` + buffer-full 反压  <!-- engine PR #1 (924b64b) `AliyunRtcSession` + PR #1 follow-up (ca62824) `_AliyunArtcChannel` 真 SDK adaptor + `InMemorySdkChannel` test double -->
 - [x] 3.2 SDK vendor 解压脚本：`deploy/cloud/scripts/install-artc-sdk.sh`，从 OSS 拉压缩包到 `/opt/isales/current/vendor/aliyun-artc-linux-python/`，注入 `sys.path` 或 pip 本地 install  <!-- meta-repo: deploy/cloud/scripts/install-artc-sdk.sh；支持 oss:// / file:// / https:// 三种 URL scheme，VERSION 文件用于幂等，注入路径通过 engine.env 的 LD_LIBRARY_PATH + PYTHONPATH 而非 sys.path/pip install -->
-- [ ] 3.3 `isales_engine/audio_pipe.py` 新增 `AliyunRTCCapture` / `AliyunRTCPlayback` backend 实现，桥接 `RtcSession` 的 PCM 回调与推送  <!-- 替代方案：engine PR #5 (2a04c37) `realtime/rtc_telephony.py` `RtcTelephonyClient` 直接包 RtcSession + grpc_server + dispatcher 成 TelephonyClient ABC，跳过单独的 audio_pipe Capture/Playback 层；3.4 跟随 3.3 一起延后 -->
-- [ ] 3.4 v1.0 云端默认 backend 切换为 `AliyunRTCCapture/Playback`；本地开发 backend 通过环境变量 `ISALES_AUDIO_BACKEND=local` 切回
+- [x] 3.3 `isales_engine/audio_pipe.py` 新增 `AliyunRTCCapture` / `AliyunRTCPlayback` backend 实现，桥接 `RtcSession` 的 PCM 回调与推送  <!-- SUPERSEDED：engine PR #5 (2a04c37) `realtime/rtc_telephony.py` `RtcTelephonyClient` 直接包 RtcSession + grpc_server + dispatcher 成 TelephonyClient ABC，跳过单独的 audio_pipe Capture/Playback 层。功能上等价覆盖（capture/playback 路径在 RtcTelephonyClient 内对称承担），归档时把本条与 3.4 合并到 design.md 的"实装偏离 / Capture-Playback 抽象 vs TelephonyClient 抽象"段落。 -->
+- [ ] 3.4 v1.0 云端默认 backend 切换为 `AliyunRTCCapture/Playback`；本地开发 backend 通过环境变量 `ISALES_AUDIO_BACKEND=local` 切回  <!-- 依赖 QA 环境真 ARTC + ECS：v1.0 默认值 = RtcTelephonyClient（PR #5 替代方案，对应 3.3 SUPERSEDED 路径），切回机制改为 telephony_client_kind=real / rtc 配置项而非 ISALES_AUDIO_BACKEND 环境变量；wire-up 到 main 与 launch flag 在 QA 环境部署阶段（Sprint 0 / Task 1.x）一起做 -->
 - [x] 3.5 单测：用 mock SDK 验证 `RtcSession` 入会 / 离会 / 推帧 / 拉帧的状态机  <!-- 13 tests (engine PR #1) + 4 vendor sanity tests (PR #1 follow-up, gated on $ISALES_RTC_SDK_PATH) -->
 
 ## 4. isales-engine：云-边 gRPC server
@@ -67,9 +67,9 @@ framework（19 个 .h 头 / 4 个 ALI_RTC_API C 函数全是 video/screenshare�
 真 audio 集成在 D1 Windows 阶段（Task 15）。详细决策见 reference_artc_sdk.md
 "macOS SDK 决策"章节。下面 8.1-8.3 整组 obsolete，归档时合并。
 
-- [ ] 8.1 边缘 deploy 脚本：`deploy/edge/scripts/install-artc-sdk.sh` 解压 ARTC SDK macOS 到 `~/Library/Application Support/isales/vendor/aliyun-artc-macos-python/`  <!-- obsolete -->
-- [ ] 8.2 isales-telephony pyproject / requirements 引用 vendor 路径  <!-- obsolete -->
-- [ ] 8.3 macOS 上的实际入会测试（独立小脚本，QA 环境）  <!-- obsolete -->
+- [x] 8.1 边缘 deploy 脚本：`deploy/edge/scripts/install-artc-sdk.sh` 解压 ARTC SDK macOS 到 `~/Library/Application Support/isales/vendor/aliyun-artc-macos-python/`  <!-- OBSOLETE：见 section 8 header（macOS SDK 纯 Obj-C，A2 走 mock `MacosRtcSession` telephony PR #2，真 audio 集成在 D1 Windows）。归档时本条删除并入 section header 的 N/A 说明。 -->
+- [x] 8.2 isales-telephony pyproject / requirements 引用 vendor 路径  <!-- OBSOLETE：同 8.1。telephony pyproject 不引用 macOS ARTC vendor，audio_bridge 只依赖 scipy（resampler）+ 既有 isales-common；归档时合并删除。 -->
+- [x] 8.3 macOS 上的实际入会测试（独立小脚本，QA 环境）  <!-- OBSOLETE：同 8.1。macOS 真入会测试不在 A2 范围；audio_bridge 在 telephony PR #2 用 loopback mock 验证 wire-format + 反压；真 audio e2e 在 D1 Windows 阶段（Task 15）；归档时合并删除。 -->
 
 ## 9. isales-api / isales-worker：云端调整
 
