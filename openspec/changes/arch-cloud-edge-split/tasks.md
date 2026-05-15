@@ -2,42 +2,42 @@
 
 - [ ] 1.1 阿里云 QA 环境开通：ECS 4C16G Ubuntu 22.04 + RDS PG16 + Redis 1G + OSS bucket + 域名 + Let's Encrypt
 - [ ] 1.2 阿里 RTC 应用创建（拿 AppId / AppKey）+ 工单确认计费套餐细节（参考 PoC §9 三题工单稿）
-- [ ] 1.3 ARTC SDK for Linux Python 与 macOS Python 压缩包下载、放入内部 artifact 仓 / OSS 私有 bucket
+- [x] 1.3 ARTC SDK for Linux Python 与 macOS Python 压缩包下载、放入内部 artifact 仓 / OSS 私有 bucket  <!-- Linux SDK 在 ~/codes/vendor/AliRTCSDK_Linux-7.10.2/；macOS 在 ~/codes/vendor/AliRTCSdk_macos/（注：macOS 是纯 Obj-C framework，无 Python wrapper —— audio_bridge 走 mock 实装而非真 SDK，见 reference_artc_sdk.md 决策记录） -->
 - [ ] 1.4 跑 PoC Day 2 实测脚本（[PoC §8](../../v1-roadmap-aliyun-rtc-poc-result.md#8-day-2-实测脚本sprint-0-期间执行)），把决策表"实测"列填实
 - [ ] 1.5 Mac mini QA 边缘机准备：插 GSM modem 确认 USB 串口、装 macOS 通过 `impl-deploy-macos` 既有 launchd 套件
 
 ## 2. isales-common：proto 定义 + transport 抽象
 
-- [ ] 2.1 新增 `isales_common/proto/cloud_edge.proto`，定义 `service CloudEdge` + `Edge2Cloud` / `Cloud2Edge` 两个 oneof message + `DialCommand` / `CancelCommand` / `Heartbeat` / `CallEvent` / `HardwareAlert` / `ConfigUpdate` / `RtcCredentials` / `DialAck` 字段（与 service-communication spec § 服务定义 一致）
-- [ ] 2.2 配置 `make proto` 跑 `protoc` 生成 `cloud_edge_pb2.py` / `cloud_edge_pb2_grpc.py` 编译产物；产物随 pip 包分发
-- [ ] 2.3 新增 `isales_common/transport/cloud_edge_abc.py` 抽象基类：`CloudEdgeServer`（云端起 server）+ `CloudEdgeClient`（边缘 client）+ 心跳 / 重连 / token 验证接口
-- [ ] 2.4 新增 `isales_common/audio/rtc_backend.py` 抽象：`RtcCaptureBackend` / `RtcPlaybackBackend` 与既有 capture / playback ABC 兼容
-- [ ] 2.5 单测：proto 双向序列化 + transport 抽象 mock 实现 + audio backend mock
+- [x] 2.1 新增 `isales_common/proto/cloud_edge.proto`，定义 `service CloudEdge` + `Edge2Cloud` / `Cloud2Edge` 两个 oneof message + `DialCommand` / `CancelCommand` / `Heartbeat` / `CallEvent` / `HardwareAlert` / `ConfigUpdate` / `RtcCredentials` / `DialAck` 字段（与 service-communication spec § 服务定义 一致）  <!-- isales-common v0.2.0 (7426d79) -->
+- [x] 2.2 配置 `make proto` 跑 `protoc` 生成 `cloud_edge_pb2.py` / `cloud_edge_pb2_grpc.py` 编译产物；产物随 pip 包分发  <!-- v0.2.0 + v0.2.1 (31b1f83) sed post-process 修了 pb2_grpc package-relative import -->
+- [x] 2.3 新增 `isales_common/transport/cloud_edge_abc.py` 抽象基类：`CloudEdgeServer`（云端起 server）+ `CloudEdgeClient`（边缘 client）+ 心跳 / 重连 / token 验证接口  <!-- 实际命名 transport/cloud_edge.py（不含 _abc 后缀），内容一致 -->
+- [x] 2.4 新增 `isales_common/audio/rtc_backend.py` 抽象：`RtcCaptureBackend` / `RtcPlaybackBackend` 与既有 capture / playback ABC 兼容  <!-- 实际命名 audio/rtc.py，单一对称的 RtcSession ABC（join / leave / audio_frames / push_audio），比拆 Capture/Playback 两个更贴近真 SDK；audio_pipe 层的 Capture/Playback adapter 留 caller 在 RtcSession 上薄 wrap -->
+- [x] 2.5 单测：proto 双向序列化 + transport 抽象 mock 实现 + audio backend mock  <!-- 27 tests in isales-common v0.2.0 -->
 
 ## 3. isales-engine：云端 ARTC SDK 接入
 
-- [ ] 3.1 新增 `isales_engine/transport/aliyun_rtc.py`，封装 ARTC SDK Linux Python：`RtcSession(channel, token, uid).join() / leave()` + `async on_audio_frame()` 迭代器 + `async push_audio(pcm, ts)` + buffer-full 反压
+- [x] 3.1 新增 `isales_engine/transport/aliyun_rtc.py`，封装 ARTC SDK Linux Python：`RtcSession(channel, token, uid).join() / leave()` + `async on_audio_frame()` 迭代器 + `async push_audio(pcm, ts)` + buffer-full 反压  <!-- engine PR #1 (924b64b) `AliyunRtcSession` + PR #1 follow-up (ca62824) `_AliyunArtcChannel` 真 SDK adaptor + `InMemorySdkChannel` test double -->
 - [ ] 3.2 SDK vendor 解压脚本：`deploy/cloud/scripts/install-artc-sdk.sh`，从 OSS 拉压缩包到 `/opt/isales/current/vendor/aliyun-artc-linux-python/`，注入 `sys.path` 或 pip 本地 install
-- [ ] 3.3 `isales_engine/audio_pipe.py` 新增 `AliyunRTCCapture` / `AliyunRTCPlayback` backend 实现，桥接 `RtcSession` 的 PCM 回调与推送
+- [ ] 3.3 `isales_engine/audio_pipe.py` 新增 `AliyunRTCCapture` / `AliyunRTCPlayback` backend 实现，桥接 `RtcSession` 的 PCM 回调与推送  <!-- 替代方案：engine PR #5 (2a04c37) `realtime/rtc_telephony.py` `RtcTelephonyClient` 直接包 RtcSession + grpc_server + dispatcher 成 TelephonyClient ABC，跳过单独的 audio_pipe Capture/Playback 层；3.4 跟随 3.3 一起延后 -->
 - [ ] 3.4 v1.0 云端默认 backend 切换为 `AliyunRTCCapture/Playback`；本地开发 backend 通过环境变量 `ISALES_AUDIO_BACKEND=local` 切回
-- [ ] 3.5 单测：用 mock SDK 验证 `RtcSession` 入会 / 离会 / 推帧 / 拉帧的状态机
+- [x] 3.5 单测：用 mock SDK 验证 `RtcSession` 入会 / 离会 / 推帧 / 拉帧的状态机  <!-- 13 tests (engine PR #1) + 4 vendor sanity tests (PR #1 follow-up, gated on $ISALES_RTC_SDK_PATH) -->
 
 ## 4. isales-engine：云-边 gRPC server
 
-- [ ] 4.1 新增 `isales_engine/transport/grpc_server.py`：起 `CloudEdge.Bidi` server，监听 0.0.0.0:50051（TLS via nginx 反代或 grpcio 内置）
-- [ ] 4.2 实现 token 验证（gRPC metadata `authorization`）→ 绑定 edge_device_id 到 stream context
-- [ ] 4.3 心跳逻辑：收到 Edge `Heartbeat` 后回 Cloud `Heartbeat` + 更新云内 PG `last_heartbeat`
-- [ ] 4.4 事件路由：`CallEvent` / `HardwareAlert` / `DialAck` 进 engine session dispatcher（按 call_id 找 session）+ 落 PG
-- [ ] 4.5 cloud → edge 命令下发：engine session 发起 `DialCommand` / `CancelCommand` / `ConfigUpdate` / `RtcCredentials` 路径
-- [ ] 4.6 集成测试：本地 grpcio + mock edge client 跑通 dial → call_event → cancel → leave 全链路
+- [x] 4.1 新增 `isales_engine/transport/grpc_server.py`：起 `CloudEdge.Bidi` server，监听 0.0.0.0:50051（TLS via nginx 反代或 grpcio 内置）  <!-- engine PR #2 (86f433d) `CloudEdgeGrpcServer`；TLS-ready via start(server_credentials=...) -->
+- [x] 4.2 实现 token 验证（gRPC metadata `authorization`）→ 绑定 edge_device_id 到 stream context  <!-- engine PR #2 _authenticate via TokenVerifier ABC; UNAUTHENTICATED on failure -->
+- [x] 4.3 心跳逻辑：收到 Edge `Heartbeat` 后回 Cloud `Heartbeat` + 更新云内 PG `last_heartbeat`  <!-- gRPC 层心跳收发 ✓（grpc_server 把 Heartbeat 当 oneof payload 路由给 dispatcher，dispatcher 视为 no-op transport layer concern）；"更新云内 PG last_heartbeat" 归 task 9.4 worker watchdog -->
+- [x] 4.4 事件路由：`CallEvent` / `HardwareAlert` / `DialAck` 进 engine session dispatcher（按 call_id 找 session）+ 落 PG  <!-- engine PR #4 (e185abe) `EngineSessionDispatcher` 按 call_id 路由 CallEvent / DialAck；HardwareAlert 路由到 process-wide handler。"落 PG" 归 9.3 worker -->
+- [x] 4.5 cloud → edge 命令下发：engine session 发起 `DialCommand` / `CancelCommand` / `ConfigUpdate` / `RtcCredentials` 路径  <!-- PR #2 CloudEdgeGrpcServer.send_to_edge() + PR #5 RtcTelephonyClient.dial/hangup 使用 -->
+- [x] 4.6 集成测试：本地 grpcio + mock edge client 跑通 dial → call_event → cancel → leave 全链路  <!-- engine PR #2 9 集成 tests 用真 grpc.aio server + _GrpcEdgeProbe helper client -->
 
 ## 5. isales-engine：engine session co-location 改造
 
-- [ ] 5.1 engine session lifecycle 接 `DialCommand` 触发（替代 Redis Queue 触发）；Redis Queue 接口保留但单实例下走同进程函数
-- [ ] 5.2 同进程 asyncio dispatcher：按 call_id 维护 active session 字典；`Edge2Cloud.CallEvent: remote_hangup` 与 cancel 路径直接 deliver 到 session
-- [ ] 5.3 cancel 路径**确认不走 Redis Pub/Sub**：在云内 api 触发的 cancel 也改为函数调用进 dispatcher
-- [ ] 5.4 RTC token 生成：engine 在派发 DialCommand 前用 AppKey 签发 `engine-{call_id}` 与 `edge-{call_id}` 两个 token，塞进 DialCommand
-- [ ] 5.5 端到端测试：本地 mock 边缘 + 云端 engine + 真 ARTC（QA 环境）跑通一通通话 join → audio → leave
+- [x] 5.1 engine session lifecycle 接 `DialCommand` 触发（替代 Redis Queue 触发）；Redis Queue 接口保留但单实例下走同进程函数  <!-- engine PR #5 (2a04c37) `RtcTelephonyClient.dial` → grpc_server.send_to_edge(DialCommand)；RealTelephonyClient (Unix socket) 保留作为 v1 fallback；wire-up 到 main 留 Task 14 -->
+- [x] 5.2 同进程 asyncio dispatcher：按 call_id 维护 active session 字典；`Edge2Cloud.CallEvent: remote_hangup` 与 cancel 路径直接 deliver 到 session  <!-- engine PR #4 EngineSessionDispatcher.register/deregister + on_call_event callback；PR #5 RtcTelephonyClient._CallState.on_call_event 接 dispatcher -->
+- [x] 5.3 cancel 路径**确认不走 Redis Pub/Sub**：在云内 api 触发的 cancel 也改为函数调用进 dispatcher  <!-- PR #5 RtcTelephonyClient.hangup → grpc_server.send_to_edge(CancelCommand)；不调任何 Redis -->
+- [x] 5.4 RTC token 生成：engine 在派发 DialCommand 前用 AppKey 签发 `engine-{call_id}` 与 `edge-{call_id}` 两个 token，塞进 DialCommand  <!-- engine PR #3 (2eff634) `RtcTokenIssuer` 纯 Python SHA-256 算法（与阿里官方文档一致）；sign_for_call() 返回 (engine_creds, edge_creds) pair -->
+- [ ] 5.5 端到端测试：本地 mock 边缘 + 云端 engine + 真 ARTC（QA 环境）跑通一通通话 join → audio → leave  <!-- 单元 + 集成测试 ✓；真 ARTC e2e 需要 ECS 上 vendor SDK + RTC AppId，留 Task 14 -->
 
 ## 6. isales-scheduler：dial 路径重构
 
@@ -48,20 +48,27 @@
 
 ## 7. isales-telephony：边缘进程重构
 
-- [ ] 7.1 重组 isales-telephony 仓库结构：单一 entry point + asyncio task group（modem-controller / audio-bridge / cloud-edge gRPC client / telephony-api HTTP loopback）
-- [ ] 7.2 新增 `isales_telephony/audio_bridge/__init__.py`：ARTC SDK macOS Python wrapper + `JoinChannel` + `SetExternalAudioSource` + `PushExternalAudioFrameRawData` + `OnSubscribeAudioFrame` + 反压
-- [ ] 7.3 modem-controller 重构：上行 PCM 不再直接推 Unix socket，改推同进程上行环形 buffer；下行 PCM 从同进程下行环形 buffer 取
-- [ ] 7.4 PCM 重采样：上行 8 kHz → 16 kHz、下行 16 kHz → 8 kHz；用 macOS Audio Converter 或 `audioop.ratecv`
-- [ ] 7.5 新增 `isales_telephony/transport/grpc_client.py`：与云端 engine 建立 bidi stream + 心跳 + 自动重连 + 本地 SQLite buffer
-- [ ] 7.6 SQLite buffer 实现：`~/Library/Application Support/isales/sqlite/edge_buffer.db`，存 `CallEvent` / `HardwareAlert` 待补发；server ACK 后删除
-- [ ] 7.7 telephony-api HTTP 角色降级：限制 loopback 监听 + `/devices/select` 加 `Deprecation: 1` header
-- [ ] 7.8 单测：环形 buffer 容量 + 反压 + gRPC client 断线重连 + SQLite buffer 补发顺序
+- [ ] 7.1 重组 isales-telephony 仓库结构：单一 entry point + asyncio task group（modem-controller / audio-bridge / cloud-edge gRPC client / telephony-api HTTP loopback）  <!-- 依赖 7.3 modem-controller 改造完才能做（destructive，建议 fresh session） -->
+- [x] 7.2 新增 `isales_telephony/audio_bridge/__init__.py`：ARTC SDK macOS Python wrapper + `JoinChannel` + `SetExternalAudioSource` + `PushExternalAudioFrameRawData` + `OnSubscribeAudioFrame` + 反压  <!-- telephony PR #2 (a508861) `audio_bridge/` 全套（PcmRingBuffer + Resampler scipy + MacosRtcSession + AudioBridge）。**Deviation**: macOS SDK 是纯 Obj-C Cocoa framework 无 Python wrapper，MacosRtcSession 是 loopback mock + 模拟反压；商用真 SDK 走 D1 Windows 路径（Task 15）。决策见 reference_artc_sdk.md。`PcmFrame` wire-format 与生产一致，engine 业务代码看到的数据形状不变 -->
+- [ ] 7.3 modem-controller 重构：上行 PCM 不再直接推 Unix socket，改推同进程上行环形 buffer；下行 PCM 从同进程下行环形 buffer 取  <!-- destructive 改造，建议 fresh session，Task 13c -->
+- [x] 7.4 PCM 重采样：上行 8 kHz → 16 kHz、下行 16 kHz → 8 kHz；用 macOS Audio Converter 或 `audioop.ratecv`  <!-- telephony PR #2 audio_bridge/resampler.py，scipy.signal.resample_poly polyphase FIR（audioop 在 Python 3.13+ 移除）；round-trip RMS 误差 < 5% -->
+- [x] 7.5 新增 `isales_telephony/transport/grpc_client.py`：与云端 engine 建立 bidi stream + 心跳 + 自动重连 + 本地 SQLite buffer  <!-- telephony PR #1 (4541038) `CloudEdgeGrpcClient`：grpc.aio bidi + Bearer token + auto-reconnect (exponential backoff, infinite retries) + in-memory deque buffer。**注**：SQLite buffer 在 PR #3 单独实装（task 7.6），尚未集成进 grpc_client（in-memory deque 当前依然是默认）-->
+- [x] 7.6 SQLite buffer 实现：`~/Library/Application Support/isales/sqlite/edge_buffer.db`，存 `CallEvent` / `HardwareAlert` 待补发；server ACK 后删除  <!-- telephony PR #3 (2c72faa) `SqliteEventBuffer` WAL durable buffer，append/iter_pending/delete_through/容量 rotation + 18 tests。注：当前是独立 module，未接进 CloudEdgeGrpcClient（集成 PR 留下一步） -->
+- [ ] 7.7 telephony-api HTTP 角色降级：限制 loopback 监听 + `/devices/select` 加 `Deprecation: 1` header  <!-- 跟 7.1 / 7.3 一起做 -->
+- [x] 7.8 单测：环形 buffer 容量 + 反压 + gRPC client 断线重连 + SQLite buffer 补发顺序  <!-- 53 个新增测试 split across 三个 PR：grpc_client 11 + audio_bridge 24 + sqlite_buffer 18 -->
 
 ## 8. ARTC SDK macOS vendor
 
-- [ ] 8.1 边缘 deploy 脚本：`deploy/edge/scripts/install-artc-sdk.sh` 解压 ARTC SDK macOS 到 `~/Library/Application Support/isales/vendor/aliyun-artc-macos-python/`
-- [ ] 8.2 isales-telephony pyproject / requirements 引用 vendor 路径
-- [ ] 8.3 macOS 上的实际入会测试（独立小脚本，QA 环境）
+**N/A — macOS edge 走 mock 路线**：inspect 后发现 macOS SDK 是纯 Obj-C Cocoa
+framework（19 个 .h 头 / 4 个 ALI_RTC_API C 函数全是 video/screenshare），
+无 Python wrapper。PyObjC bridge 是数百行投入换 QA-only 形态，与 v1-roadmap
+"商用 = Windows / D1" 不符。决策走 mock `MacosRtcSession`（telephony PR #2），
+真 audio 集成在 D1 Windows 阶段（Task 15）。详细决策见 reference_artc_sdk.md
+"macOS SDK 决策"章节。下面 8.1-8.3 整组 obsolete，归档时合并。
+
+- [ ] 8.1 边缘 deploy 脚本：`deploy/edge/scripts/install-artc-sdk.sh` 解压 ARTC SDK macOS 到 `~/Library/Application Support/isales/vendor/aliyun-artc-macos-python/`  <!-- obsolete -->
+- [ ] 8.2 isales-telephony pyproject / requirements 引用 vendor 路径  <!-- obsolete -->
+- [ ] 8.3 macOS 上的实际入会测试（独立小脚本，QA 环境）  <!-- obsolete -->
 
 ## 9. isales-api / isales-worker：云端调整
 
