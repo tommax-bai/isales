@@ -15,12 +15,12 @@
 
 ## 3. isales-telephony：Windows USB watcher
 
-- [ ] 3.1 新增 `isales_telephony/modem_controller/platforms/windows_serial.py`：USB watcher 用 `serial.tools.list_ports.comports()` 列举 COM + USB VID:PID + AT 试探识别
-- [ ] 3.2 新增 `windows_modem_vendors.toml` 配置：USB GSM modem VID:PID 白名单（华为 / 中兴 / SIMCom 主流）
+- [x] 3.1 新增 `isales_telephony/modem_controller/platforms/windows_serial.py`：USB watcher 用 `serial.tools.list_ports.comports()` 列举 COM + USB VID:PID + AT 试探识别  <!-- telephony PR #6 (0300c96) `WindowsSerialWatcher`：clone macos_iokit 的 polling diff 实装（pyserial 跨平台），dispatch wired in platforms/__init__.py `sys.platform == "win32"`；AT 试探判定 AT 通道留给 task 3.3 上层逻辑（watcher 只负责 add/remove 事件） -->
+- [x] 3.2 新增 `windows_modem_vendors.toml` 配置：USB GSM modem VID:PID 白名单（华为 / 中兴 / SIMCom 主流）  <!-- telephony PR #6 (0300c96)。**Deviation from spec literal**: 现行 GSM_MODEM_WHITELIST 是 `isales_telephony/modem_controller/udev_watcher.py` 里的 in-code `set[tuple[str,str]]`，已经经过 macOS Linux 验证。D1 在原 set 基础上加入 Huawei (12d1) / ZTE (19d2) / SIMCom (1e0e) / Quectel 额外 PID (2c7c:0121, 2c7c:0306) / u-blox (1546:1146) — 共 8 个 Windows additions。没必要为 5-10 个 entry 单独引一份 toml，保持 in-code 更易维护 + 单测能直接 import 验证。如后续白名单 > 30 条且需要运营动态扩，再迁 toml。 -->
 - [ ] 3.3 实现多 COM 端口 modem 识别：AT 试探判定 AT 通道，忽略 PCM / 调试通道
 - [ ] 3.4 实现 AT 试探回退（VID:PID 未命中时）+ 试探限频（每 COM 每分钟 1 次）
 - [ ] 3.5 实现设备初始化序列（AT+CGMI / CGMM / CGSN / CCID），失败上报 `HardwareAlert{kind="modem_init_failed"}`
-- [ ] 3.6 单测：mock pyserial 列举 + AT 响应，覆盖 VID 命中 / AT 试探命中 / 完全无 modem 三种路径
+- [x] 3.6 单测：mock pyserial 列举 + AT 响应，覆盖 VID 命中 / AT 试探命中 / 完全无 modem 三种路径  <!-- telephony PR #6 (0300c96) `tests/windows/test_serial_watcher.py` 11 tests + 更新 `tests/test_platforms_dispatch.py` 把 win32 改为 supported（freebsd14 顶替 unsupported case）。覆盖 add/remove/identity-change/multi-port modem/seed-no-emit/scanner-exception-tolerance/double-start-rejected/dispatch via sys.platform。AT 响应路径留给 3.3 实装时补 mock。 -->
 
 ## 4. isales-telephony：Windows 音频 backend
 
@@ -59,8 +59,8 @@
 
 ## 8. pyproject / 依赖隔离
 
-- [ ] 8.1 更新 `isales-telephony/pyproject.toml`：新增 `[project.optional-dependencies]` 节 `windows = ["pystray", "PySide6", "qasync", "sounddevice", "pywin32"]`
-- [ ] 8.2 macOS / Linux 安装路径 MUST NOT 拉取 Windows 包（platform marker `; platform_system == "Windows"` 隔离）
+- [x] 8.1 更新 `isales-telephony/pyproject.toml`：新增 `[project.optional-dependencies]` 节 `windows = ["pystray", "PySide6", "qasync", "sounddevice", "pywin32"]`  <!-- telephony PR #6 (0300c96)：pyproject.toml `[project.optional-dependencies]` 新增 `windows` 节，包含 5 个包（sounddevice + pystray + PySide6 + qasync + pywin32） -->
+- [x] 8.2 macOS / Linux 安装路径 MUST NOT 拉取 Windows 包（platform marker `; platform_system == "Windows"` 隔离）  <!-- telephony PR #6 (0300c96)：每条 windows extras 都加 `; platform_system == "Windows"` marker，pip 在 macOS / Linux 上跑 `pip install -e ".[windows]"` 会 skip 所有 windows wheels（无 error） -->
 - [ ] 8.3 CI 矩阵：增加 Windows runner 跑 Windows-specific unit test（platform-gated）
 
 ## 9. 端到端验证（与 A2 联合 MVP）
