@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Edge-side iSales telephony LaunchAgent (A2 cloud-edge topology).
+
+  Single entry-point covers all four asyncio task-group components:
+    - modem-controller (USB GSM AT + PCM)
+    - audio-bridge    (ARTC SDK macOS via mock MacosRtcSession in A2)
+    - cloud-edge gRPC client (Bearer auth, auto-reconnect, SQLite buffer)
+    - telephony-api loopback (127.0.0.1 only; device queries for local CLI)
+
+  Replaces the six separate plists in deploy/macos/plist/ (A2 collapses
+  edge-side processes to one).
+
+  Place at:  ~/Library/LaunchAgents/com.isales.telephony.plist
+  Bootstrap: launchctl bootstrap gui/$UID ~/Library/LaunchAgents/com.isales.telephony.plist
+  Restart:   launchctl kickstart -k gui/$UID/com.isales.telephony
+
+  EnvironmentFile path uses __HOME__ which install.sh rewrites at copy time.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.isales.telephony</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <!-- Entry point: isales-telephony 包内的 `__main__` / console_scripts entry。
+             install.sh 安装时把 venv 链接到 /opt/isales/current/venv/，与 cloud 端
+             保持目录约定一致；macOS 上 /opt 需要预先 chown 给当前用户。 -->
+        <string>/opt/isales/current/venv/bin/isales-telephony</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/opt/isales/current/isales-telephony</string>
+
+    <!-- Env: edge.env 集中所有运行时配置。LaunchAgent 不支持原生 EnvironmentFile，
+         install.sh 安装时把 env 文件展开为 EnvironmentVariables dict 注入。
+         占位 __HOME__ 由 install.sh 替换为实际 $HOME。 -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>ISALES_EDGE_ENV_FILE</key>
+        <string>__HOME__/.config/isales/edge.env</string>
+        <key>TZ</key>
+        <string>Asia/Shanghai</string>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>__HOME__/Library/Logs/isales/telephony.log</string>
+    <key>StandardErrorPath</key>
+    <string>__HOME__/Library/Logs/isales/telephony.err</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <dict>
+        <!-- 进程退出 always restart；除非用户 launchctl bootout 主动卸下 -->
+        <key>SuccessfulExit</key>
+        <false/>
+        <key>Crashed</key>
+        <true/>
+    </dict>
+
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+
+    <key>ProcessType</key>
+    <string>Interactive</string>
+
+    <!-- LaunchAgent 跑在用户 session：能用 /dev/tty.usb*，能访问 ~/Library 路径。
+         不需要 sudo / root。-->
+</dict>
+</plist>

@@ -1,0 +1,41 @@
+[Unit]
+Description=isales-engine — real-time call engine + cloud-edge gRPC server + ARTC SDK
+# Engine needs the ARTC SDK shared libs (Linux .so) reachable via LD_LIBRARY_PATH
+# and the Python wrapper on sys.path; both are baked into engine.env by install.sh.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=isales
+Group=isales
+ExecStart=/opt/isales/current/venv/bin/isales-engine
+WorkingDirectory=/opt/isales/current/isales-engine
+Restart=on-failure
+RestartSec=5
+# Match ISALES_ENGINE_GRACEFUL_SHUTDOWN_TIMEOUT_S in app config (default 30s)
+# plus head room so systemd doesn't kill mid-finalize of an in-flight call.
+TimeoutStopSec=35
+
+# Centralized env carries:
+#  - DB / Redis URLs
+#  - ALIYUN_RTC_APP_ID / ALIYUN_RTC_APP_KEY
+#  - LD_LIBRARY_PATH / PYTHONPATH for ARTC SDK vendor dir
+#  - ISALES_CLOUD_EDGE_GRPC_BIND (default 127.0.0.1:50051, nginx terminates TLS)
+EnvironmentFile=/etc/isales/env/engine.env
+
+# Hardening — note we relax MemoryDenyWriteExecute because ARTC SDK loads .so
+# files that may use runtime code generation (Opus / NEON intrinsics).
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

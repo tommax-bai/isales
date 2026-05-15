@@ -1,0 +1,34 @@
+[Unit]
+Description=isales-api (HTTP + WebSocket, cloud-edge topology)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=isales
+Group=isales
+ExecStart=/opt/isales/current/venv/bin/isales-api
+WorkingDirectory=/opt/isales/current/isales-api
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+
+# Centralized env (managed by deploy/cloud/scripts/install.sh).
+EnvironmentFile=/etc/isales/env/api.env
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictRealtime=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

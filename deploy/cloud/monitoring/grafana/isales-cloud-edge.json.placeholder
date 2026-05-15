@@ -1,0 +1,33 @@
+{
+  "_comment": "Placeholder for Grafana dashboard JSON. Build the actual dashboard in Grafana UI against prometheus.yml.example targets, then export and replace this file with the .json. See deploy/cloud/monitoring/README.md for the metric inventory.",
+  "panels_outline": [
+    {
+      "row": "Cloud-edge stream health",
+      "panels": [
+        "Edge device online count (sum by tenant)",
+        "Heartbeat seconds-since-last (top N devices)",
+        "Disconnection rate per device (last 1h)"
+      ]
+    },
+    {
+      "row": "ARTC media plane",
+      "panels": [
+        "Active ARTC sessions (gauge)",
+        "push_audio buffer-full rate (5m)",
+        "ARTC join failures (logged via engine)"
+      ]
+    },
+    {
+      "row": "Engine pipeline latency (vs design.md Decision 4 budget)",
+      "panels": [
+        "First-TTS P50/P95/P99 by stage (role / judge / polish)",
+        "ASR partial latency",
+        "LLM first-token latency"
+      ]
+    },
+    {
+      "row": "Infra",
+      "panels": ["PG connections / max_connections", "Redis ops/s", "ECS CPU / mem", "Network throughput"]
+    }
+  ]
+}

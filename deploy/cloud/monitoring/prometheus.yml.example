@@ -1,0 +1,76 @@
+# Prometheus scrape config for iSales cloud-edge topology (A2).
+#
+# Copy this to your Prometheus host (often /etc/prometheus/prometheus.yml).
+# Provision is OUT of scope for deploy/cloud/scripts/install.sh; operator's
+# existing monitoring setup wins. See deploy/cloud/monitoring/README.md.
+#
+# Targets marked `# TODO` correspond to metrics endpoints not yet implemented;
+# remove the comment once the service ships /metrics.
+
+global:
+  scrape_interval: 30s
+  evaluation_interval: 30s
+
+rule_files:
+  - alert_rules.yml
+
+scrape_configs:
+
+  # ---------- cloud services on the ECS ----------
+
+  - job_name: isales-api
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['127.0.0.1:8000']
+    # TODO: pending /metrics implementation
+
+  - job_name: isales-engine
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['127.0.0.1:8002']
+    # Engine ships call-pipeline + cloud-edge stream metrics:
+    #   isales_cloud_edge_stream_count{device_id}
+    #   isales_cloud_edge_heartbeat_seconds_since_last{device_id}
+    #   isales_artc_session_count
+    #   isales_artc_push_audio_buffer_full_total
+    #   isales_engine_pipeline_first_tts_seconds{stage="role|judge|polish"}
+    # TODO: confirm endpoint stability before promoting from TODO.
+
+  - job_name: isales-scheduler
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['127.0.0.1:8003']
+    # TODO: pending /metrics implementation
+
+  - job_name: isales-worker
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['127.0.0.1:8004']
+    # Worker ships:
+    #   isales_edge_offline_total{device_id}      (watchdog flips)
+    #   isales_hardware_alert_total{kind}         (signal_lost / sim_arrears / ...)
+    # TODO: pending /metrics implementation
+
+  # ---------- node + managed-mw exporters ----------
+
+  - job_name: node
+    static_configs:
+      - targets: ['127.0.0.1:9100']
+
+  # 阿里云 RDS / Redis 托管：用各自的云监控；也可以在 ECS 上跑
+  # postgres_exporter / redis_exporter 拉读副本指标。
+  - job_name: postgres
+    static_configs:
+      - targets: ['127.0.0.1:9187']
+    # TODO: deploy postgres_exporter against RDS read endpoint
+
+  - job_name: redis
+    static_configs:
+      - targets: ['127.0.0.1:9121']
+    # TODO: deploy redis_exporter against Tair / Redis Cloud
+
+  # ---------- self ----------
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ['127.0.0.1:9090']

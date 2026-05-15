@@ -17,7 +17,7 @@
 ## 3. isales-engine：云端 ARTC SDK 接入
 
 - [x] 3.1 新增 `isales_engine/transport/aliyun_rtc.py`，封装 ARTC SDK Linux Python：`RtcSession(channel, token, uid).join() / leave()` + `async on_audio_frame()` 迭代器 + `async push_audio(pcm, ts)` + buffer-full 反压  <!-- engine PR #1 (924b64b) `AliyunRtcSession` + PR #1 follow-up (ca62824) `_AliyunArtcChannel` 真 SDK adaptor + `InMemorySdkChannel` test double -->
-- [ ] 3.2 SDK vendor 解压脚本：`deploy/cloud/scripts/install-artc-sdk.sh`，从 OSS 拉压缩包到 `/opt/isales/current/vendor/aliyun-artc-linux-python/`，注入 `sys.path` 或 pip 本地 install
+- [x] 3.2 SDK vendor 解压脚本：`deploy/cloud/scripts/install-artc-sdk.sh`，从 OSS 拉压缩包到 `/opt/isales/current/vendor/aliyun-artc-linux-python/`，注入 `sys.path` 或 pip 本地 install  <!-- meta-repo: deploy/cloud/scripts/install-artc-sdk.sh；支持 oss:// / file:// / https:// 三种 URL scheme，VERSION 文件用于幂等，注入路径通过 engine.env 的 LD_LIBRARY_PATH + PYTHONPATH 而非 sys.path/pip install -->
 - [ ] 3.3 `isales_engine/audio_pipe.py` 新增 `AliyunRTCCapture` / `AliyunRTCPlayback` backend 实现，桥接 `RtcSession` 的 PCM 回调与推送  <!-- 替代方案：engine PR #5 (2a04c37) `realtime/rtc_telephony.py` `RtcTelephonyClient` 直接包 RtcSession + grpc_server + dispatcher 成 TelephonyClient ABC，跳过单独的 audio_pipe Capture/Playback 层；3.4 跟随 3.3 一起延后 -->
 - [ ] 3.4 v1.0 云端默认 backend 切换为 `AliyunRTCCapture/Playback`；本地开发 backend 通过环境变量 `ISALES_AUDIO_BACKEND=local` 切回
 - [x] 3.5 单测：用 mock SDK 验证 `RtcSession` 入会 / 离会 / 推帧 / 拉帧的状态机  <!-- 13 tests (engine PR #1) + 4 vendor sanity tests (PR #1 follow-up, gated on $ISALES_RTC_SDK_PATH) -->
@@ -79,18 +79,18 @@ framework（19 个 .h 头 / 4 个 ALI_RTC_API C 函数全是 video/screenshare�
 
 ## 10. 云端部署脚本与 RUNBOOK
 
-- [ ] 10.1 新增 `deploy/cloud/` 目录：systemd unit (api / engine / scheduler / worker)、nginx 配置（反代 isales-web + isales-api + cloud-edge gRPC SNI）、env.example
-- [ ] 10.2 `deploy/cloud/scripts/install.sh`：拉代码 + 装依赖（含 ARTC SDK vendor 步骤）+ 跑 alembic + 重启服务
-- [ ] 10.3 `deploy/cloud/scripts/rollback.sh`：切回历史 release 软链 + 重启服务（不动 schema）
-- [ ] 10.4 `deploy/cloud/monitoring/`：Prometheus + Grafana + alert rules 模板
-- [ ] 10.5 RUNBOOK：阿里云资源开通 / 域名 / TLS / RDS 备份恢复演练 / cloud-edge 调试
+- [x] 10.1 新增 `deploy/cloud/` 目录：systemd unit (api / engine / scheduler / worker)、nginx 配置（反代 isales-web + isales-api + cloud-edge gRPC SNI）、env.example  <!-- meta-repo: deploy/cloud/{README.md, systemd/4 units, nginx/isales.conf, env/4 .example}；nginx 反代 443→web/api + 50051→engine gRPC，TLS terminate；engine.env 含 ARTC SDK LD_LIBRARY_PATH/PYTHONPATH + RTC AppId/AppKey + gRPC bind -->
+- [x] 10.2 `deploy/cloud/scripts/install.sh`：拉代码 + 装依赖（含 ARTC SDK vendor 步骤）+ 跑 alembic + 重启服务  <!-- meta-repo: deploy/cloud/scripts/install.sh；8 步：release dir → git clone → venv → web build → ARTC SDK (delegates to install-artc-sdk.sh) → systemd → nginx (rewrite __ISALES_DOMAIN__) → env drop-ins；`--activate <ts>` 子命令做 symlink swap + 4 cloud services restart + nginx reload；alembic 复用 deploy/linux/scripts/migrate.sh -->
+- [x] 10.3 `deploy/cloud/scripts/rollback.sh`：切回历史 release 软链 + 重启服务（不动 schema）  <!-- meta-repo: deploy/cloud/scripts/rollback.sh；`--list` 列 release + active 标记；切 current 软链 + 4 cloud services restart 顺序(scheduler/worker/api/engine) + nginx reload；不动 modem-controller/telephony-api（在 edge）；vendor SDK missing 时 WARN -->
+- [x] 10.4 `deploy/cloud/monitoring/`：Prometheus + Grafana + alert rules 模板  <!-- meta-repo: deploy/cloud/monitoring/{README.md, prometheus.yml.example, alert_rules.yml.example, grafana/isales-cloud-edge.json.placeholder}；alert rules 锚 design.md Decision 4 latency budget 800ms + cloud-edge stream/heartbeat 健康度 + ARTC push-audio buffer-full；engine /metrics 实装由 isales-engine 后续 PR 落 -->
+- [x] 10.5 RUNBOOK：阿里云资源开通 / 域名 / TLS / RDS 备份恢复演练 / cloud-edge 调试  <!-- meta-repo: deploy/RUNBOOK-cloud.md（与 deploy/RUNBOOK.md single-host 平行），10 章覆盖：阿里云资源开通 / 域名 + Let's Encrypt / 首次部署 / 常规发版 / 回滚 / RDS+Redis+OSS 备份恢复演练 / cloud-edge 调试（gRPC 连通 / token mint / RTC 手工探查）/ 监控告警 / schema rollback 例外 / 应急速查 -->
 
 ## 11. 边缘部署脚本与 RUNBOOK
 
-- [ ] 11.1 新增 `deploy/edge/` 目录：launchd plist + env.example + vendor 安装脚本
-- [ ] 11.2 `deploy/edge/scripts/install.sh`：拉代码 + 装 venv + ARTC SDK 解压 + 注册 launchd
-- [ ] 11.3 `deploy/edge/scripts/rollback.sh` + launchctl kickstart
-- [ ] 11.4 RUNBOOK：边缘机首次配置 / 激活码（A2 用静态 token，多租户由 C2）/ 离线 buffer 排查 / 网络诊断
+- [x] 11.1 新增 `deploy/edge/` 目录：launchd plist + env.example + vendor 安装脚本  <!-- meta-repo: deploy/edge/{README.md, launchd/com.isales.telephony.plist, env/edge.env.example, scripts/}；单 LaunchAgent 取代 6 个 single-host plist；EnvironmentVariables 指向 ~/.config/isales/edge.env；vendor 安装脚本占位（macOS SDK mock 路径见 8.x obsolete 说明） -->
+- [x] 11.2 `deploy/edge/scripts/install.sh`：拉代码 + 装 venv + ARTC SDK 解压 + 注册 launchd  <!-- meta-repo: deploy/edge/scripts/install.sh；5 步：release dir → git clone (isales-common + isales-telephony) → venv (含 scipy for resampler) → LaunchAgent plist (rewrite __HOME__) → bootstrap state dirs + edge.env template；以 LOGIN USER（非 root）跑；ARTC SDK 在 A2 mock 路径下不解压（task 8.1 obsolete 注释提及） -->
+- [x] 11.3 `deploy/edge/scripts/rollback.sh` + launchctl kickstart  <!-- meta-repo: deploy/edge/scripts/rollback.sh；`--list` 列 release；切 current 软链 + `launchctl kickstart -k gui/$UID/com.isales.telephony`；SQLite buffer 在用户 state 目录，回滚不丢离线事件 -->
+- [x] 11.4 RUNBOOK：边缘机首次配置 / 激活码（A2 用静态 token，多租户由 C2）/ 离线 buffer 排查 / 网络诊断  <!-- meta-repo: deploy/RUNBOOK-edge.md；9 章覆盖：首次配置 / 激活码 + Device Token 签发与轮换（云端 isales-edge-token-mint CLI，A2 静态长 JWT；C2 替换为激活码 → 租户 JWT）/ 常规发版 / 回滚 / SQLite 离线 buffer 排查（sqlite3 查 events 表 + 异常清理）/ 网络诊断（DNS + TLS handshake + grpcurl + mtr）/ 硬件诊断（modem 串口 + AT 命令）/ 日志位置（~/Library/Logs/isales + Apple unified log）/ 应急速查 -->
 
 ## 12. 端到端验证
 
@@ -102,7 +102,7 @@ framework（19 个 .h 头 / 4 个 ALI_RTC_API C 函数全是 video/screenshare�
 
 ## 13. 文档与归档准备
 
-- [ ] 13.1 更新 v1-roadmap.md 标注 A2 已 ship + 修正 NAT 穿透段（fallback 路线已用不到）
+- [x] 13.1 更新 v1-roadmap.md 标注 A2 已 ship + 修正 NAT 穿透段（fallback 路线已用不到）  <!-- meta-repo: openspec/v1-roadmap.md；A2 entry 加 Status 2026-05-15 块（23/63 done + 已 ship 项 + 剩余项 + 归档待 D1 同步）；媒体面从 "WebRTC (aiortc)" 改为 "阿里 RTC PaaS"，删 NAT 穿透 待 PoC 段，并入 ARTC SDK Linux Python + macOS 决策；A2/A3 风险节标注 NAT 穿透项 strikethrough + 新增 ARTC PCM 回调延迟与 macOS SDK 决策两项风险 -->
 - [ ] 13.2 更新 PoC 结果文档：把 Day 2 实测数据补到决策表"实测"列
 - [ ] 13.3 准备 A2 archive PR：等 D1 也接近完成时一起规划归档（device-hardware / deployment-topology spec delta 冲突需手工 merge）
 - [ ] 13.4 整理 A3 `edge-vad-and-opener-prefetch` propose 阶段需要的上下文（cancel 通道接口 + OSS 开场白预渲染目录）

@@ -232,18 +232,32 @@ openspec capabilities / 依赖前置 change**。`spec deltas` 指 `openspec/chan
 - **依赖**：无（前置全部就绪，PR #12 的 12.1 真硬件验证已完成）。
 
 #### change A2 — `arch-cloud-edge-split`
+
+> **Status 2026-05-15**：propose 已落 (`openspec/changes/arch-cloud-edge-split/`)，
+> impl 23/63 tasks done。已 ship 部分：isales-common v0.2.x（proto + transport
+> + audio ABC + 27 tests），isales-engine PR #1-5（AliyunRtcSession + gRPC server
+> + dispatcher + RtcTokenIssuer + RtcTelephonyClient + 13+9 tests），isales-
+> telephony PR #1-4（CloudEdgeGrpcClient + audio_bridge + SqliteEventBuffer
+> integration + 53 tests），meta-repo deploy/cloud + deploy/edge skeleton +
+> RUNBOOK-cloud/edge。**剩**：scheduler 6.x dial 重构、api/worker 9.x、edge
+> destructive 7.1/7.3/7.7、QA 环境实测 1.x / 5.5 / 12.x。归档前等 D1
+> windows-client-core 也接近完成（共享 device-hardware / deployment-topology
+> spec delta 需要手工 merge）。
+
 - **问题**：当前 7 服务全部部署在客户现场单台 Mac mini，无法 SaaS 多客户运营、
   无法集中 AI 推理；isales-telephony 内 modem-controller 已是唯一硬件耦合点。
 - **方案**：api/engine/scheduler/worker/web 5 服务搬云端；Mac mini 留 modem-
-  controller + 新增 `audio-bridge` 组件（aiortc WebRTC client）；新增云-边控
-  制面（gRPC bidi stream 或 WebSocket，鉴权 + 心跳 + 拨号指令 + 通话事件）；
-  audio_pipe `CaptureBackend/PlaybackBackend` 增加 WebRTC backend；engine 暂仍
-  请求-响应模式（A3 处理流式）。
+  controller + 新增 `audio-bridge` 组件（**阿里 RTC PaaS 客户端**，2026-05-13
+  PoC 4.5/5 GO 后从 aiortc fallback 切回）；新增云-边控制面（**gRPC bidi
+  stream over TLS**，bearer token + 心跳 + dial / cancel / config update /
+  call event / hardware alert）；audio_pipe 新增 `AliyunRTCCapture/Playback`
+  backend；engine session co-location（dial 触发后本地起，cancel 不走 Redis
+  Pub/Sub）。
 - **specs (deltas)**: `architecture`（云-边双套部署的总图）、`deployment-
   topology`（云端 5 服务 + 边缘 2 组件的拓扑、端口、依赖）、`service-
   communication`（控制面 protocol 定义）、`device-hardware`（audio-bridge
   接口规格）。
-- **依赖**：A1（要在云端能驱动真 modem，前提 SerialATClient 跑通）。
+- **依赖**：A1（要在云端能驱动真 modem，前提 SerialATClient 跑通） — **已归档**。
 
 #### change A3 — `edge-vad-and-opener-prefetch`
 - **问题**：流式 ASR/LLM/TTS + barge-in 在 engine 端**已经完整实装**（详见
@@ -405,34 +419,41 @@ openspec capabilities / 依赖前置 change**。`spec deltas` 指 `openspec/chan
 
 ---
 
-### 云-边通信拓扑（2026-05-13 决定）
+### 云-边通信拓扑（2026-05-13 决定，2026-05-15 更新媒体面）
 
 - **控制面**：gRPC bidi stream（HTTP/2 + TLS + bearer token auth），单条长连接承
   载 (a) 心跳、(b) cloud → edge 指令（dial / cancel / config update / 远程
-  诊断）、(c) edge → cloud 事件（call state / hardware alert）、(d) WebRTC
-  SDP offer/answer 与 ICE candidates。所有内容用 protobuf oneof message
-  统一序列化。
-- **媒体面**：WebRTC（aiortc）。Opus 编码，DTLS-SRTP 加密；UDP 动态端口。
-  与控制面**独立连接**，但 SDP 信令复用 gRPC stream 完成。
+  诊断）、(c) edge → cloud 事件（call state / hardware alert）、(d) RTC 房间
+  凭证下发（AppId / channel / token / uid）。所有内容用 protobuf oneof
+  message 统一序列化。**已实装**：isales-common v0.2.x proto + transport ABC，
+  isales-engine PR #2 CloudEdgeGrpcServer，isales-telephony PR #1
+  CloudEdgeGrpcClient。
+- **媒体面**：**阿里 RTC PaaS**（2026-05-13 PoC 4.5/5 GO，原 aiortc + coturn
+  fallback 用不到，本节已重写）。云端 engine 用 ARTC SDK for Linux Python 作
+  为参会者入会（`JoinChannel` + `OnSubscribeAudioFrame` + 外部 PCM 推送）；
+  边缘 audio-bridge 用 ARTC SDK macOS（A2 阶段 mock loopback，真硬件商用走
+  D1 Windows 路径）作为同房间另一参会者。两端 `channel_id = call_id`，
+  `uid = "engine-{call_id}" / "edge-{call_id}"`，按 uid 过滤订阅，互不混音。
+  IMS AICallKit / 服务端启动智能体 SaaS 不走（多角色 PK 自定义管线与 SaaS
+  不兼容；详见 PoC 结果 §1 决策表）。
 - **Cloud 实例数（v1.0）**：单实例（一台 4-8 核 / 16-32G RAM 云主机）。
   100-1000 seats 规模够用；不做 HA；deploy / 重启期间允许 30-60s 中断；
   Redis Pub/Sub 作命令总线的**接口抽象保留**，单实例下退化为同进程 IPC，
   多实例扩展时切换实现不改业务代码。
 - **Engine session co-location**：dial 触发后 engine session 在唯一 cloud
   instance 本地起；barge-in cancel 经 gRPC stream 到这条 instance → 同进程
-  直接 deliver 给 engine session，**不走 Redis**。SFU（aiortc）同进程异步
-  task，性能不足时再拆子进程。
-- **NAT 穿透（待 PoC 决策）**：用户偏好云厂商 RTC（火山 / 阿里），但这条要
-  stage-9 (A2) propose 阶段先做技术 PoC——云厂商 RTC SDK 默认是 client-to-
-  client SFU 用法，服务端 join 拿 + 推音频流的 Python binding 不一定齐
-  全；且多角色 PK 自定义流程跟厂商"AI 智能体接入"SaaS 的兼容性需验证。
-  - **首选**：火山 RTC（与豆包 ASR/TTS 同生态可能内网低延迟）或阿里 RTC，
-    PoC 项目：Python 服务端入会 + 自定义 ASR/LLM/TTS pipeline 跑通
-  - **若云厂商 PoC 不通**：fallback 到自建 coturn (STUN+TURN) + aiortc 自建
-    SFU 方案，已知可行，一台云主机月度 ¥100 量级
-- **断线重连**：gRPC client auto-reconnect；本地 SQLite 缓冲未上报事件，
-  重连后补发；中断期间 cloud 端 dial 指令丢失允许（scheduler 重试机制兜
-  底），cancel 不通过缓冲，进行中通话断线 → edge 端 modem 自然挂断。
+  直接 deliver 给 engine session，**不走 Redis**。ARTC SDK 在 engine 同进
+  程，PCM 回调直喂 audio_pipe，性能不足时再拆子进程。**已实装**：engine
+  PR #4 EngineSessionDispatcher + PR #5 RtcTelephonyClient.hangup → CancelCommand。
+- **NAT 穿透**：阿里 RTC PaaS 内置（云厂商 BGP + 节点 + DTLS-SRTP），
+  iSales 不自建 coturn / aiortc SFU。原 "若 PoC 不通走自建 fallback" 路径
+  在 2026-05-13 PoC 4.5/5 GO 后**取消**。
+- **断线重连**：gRPC client auto-reconnect（exponential backoff）；本地
+  SQLite WAL buffer 暂存未上报事件，重连后按 seq 顺序补发 + weak-ACK 删除
+  （telephony PR #3 + #4，集成进 grpc_client `event_buffer` opt-in）；中断
+  期间 cloud 端 dial 指令丢失允许（scheduler 重试机制兜底），cancel 不通
+  过缓冲，进行中通话断线 → edge 端 modem 自然挂断。RTC 媒体面与 gRPC
+  控制面**独立断连/重连**，互不阻塞。
 
 ### 云端基础设施（2026-05-13 决定）
 
@@ -485,16 +506,22 @@ openspec capabilities / 依赖前置 change**。`spec deltas` 指 `openspec/chan
 
 ### A2 / A3 待趟过的技术风险
 
-1. **WebRTC over 公网穿 NAT** —— 自建 coturn 还是依赖云厂商 TURN（决定在
-   change A2 proposal 阶段说清）
+1. ~~**WebRTC over 公网穿 NAT** —— 自建 coturn 还是依赖云厂商 TURN~~（**已
+   决**：2026-05-13 阿里 RTC PaaS PoC 4.5/5 GO，走 PaaS，不自建）
 2. **多角色 PK 管线 streaming 兼容**：N 个角色并发 LLM 流 + N×M 裁判并发 LLM
    流 + 润色 LLM 流，三层流水如何在云-边拆分后保持端到端首 TTS byte ≤
-   500ms？需要 A2 design.md 详细推演 latency budget。
+   800ms？A2 design.md Decision 4 已推演（200-400 ms 给多角色 PK 段），且
+   定下降级策略：若 P95 > 800 ms，运行时把默认 N=1。Sprint 0 实测验证。
 3. **边缘 VAD 与云端 ASR partial 并存**：边缘 VAD 检测开口后立即 cancel，但
    云端 ASR 流仍在产 partial——这个数据 race 在 A3 design.md 必须澄清
    （边缘是不是同时停送音频？云是不是 drop 已收的 partial？）
 4. **Mac mini 远程运维成本** —— 边缘机故障的处置 SLA（A2 / D1 衔接阶段
-   要梳理）
+   要梳理）；**A2 范围内不解决**，D2 `hardware-observability` 接手。
+5. **ARTC SDK 服务端 PCM 回调延迟**：PoC §3 标注待 Day 2 实测；如 P95 >
+   100 ms，design.md latency budget 需重算（多角色 PK 段从 400 → 300 ms）。
+6. **macOS ARTC SDK 是纯 Obj-C framework**（2026-05-15 inspect 发现，无
+   Python wrapper）：A2 边缘 audio_bridge 走 mock loopback 跑通 wire 形态，
+   商用真音频走 D1 Windows 客户端路径。决策见 `reference_artc_sdk.md`。
 
 ### 操作建议
 

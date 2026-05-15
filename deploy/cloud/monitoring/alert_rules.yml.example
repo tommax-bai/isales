@@ -1,0 +1,115 @@
+# iSales alert rules for cloud-edge topology (A2).
+# Copy to your Prometheus host alongside prometheus.yml.example.
+#
+# Validate with:  promtool check rules alert_rules.yml.example
+#
+# Thresholds are starting defaults — tune to your traffic profile.
+
+groups:
+  - name: isales-cloud-edge
+    rules:
+
+      # ---------- cloud-edge stream health ----------
+
+      # 1. 某台边缘 120 s 无心跳 → device offline（与 worker watchdog 阈值对齐）
+      - alert: IsalesEdgeOffline
+        expr: isales_cloud_edge_heartbeat_seconds_since_last > 120
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "edge {{ $labels.device_id }} no heartbeat for 120s"
+          description: |
+            Cloud-edge gRPC stream lost or edge process down. Worker watchdog
+            should set the device offline within ~30s of this alert firing.
+            Check engine logs for "stream disconnected" and edge launchd /
+            SQLite buffer health.
+
+      # 2. 重连频繁（5 分钟内 > 5 次断线）
+      - alert: IsalesEdgeReconnectStorm
+        expr: increase(isales_cloud_edge_stream_disconnected_total[5m]) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "edge {{ $labels.device_id }} reconnected > 5 times in 5m"
+          description: |
+            Persistent flapping. Likely WAN instability or token rotation
+            inconsistency. Inspect nginx error.log and edge grpc_client logs.
+
+      # ---------- ARTC SDK health ----------
+
+      # 3. push_audio buffer-full 频繁（30 s 窗口 > 3 次）
+      - alert: IsalesArtcPushAudioBufferFull
+        expr: increase(isales_artc_push_audio_buffer_full_total[30s]) > 3
+        for: 30s
+        labels:
+          severity: warning
+        annotations:
+          summary: "ARTC push_audio buffer-full > 3/30s on {{ $labels.call_id }}"
+          description: |
+            TTS chunk pull is faster than the RTC SDK can encode + ship.
+            Either the cloud-edge path is congested or the engine TTS provider
+            is producing bursts. Check engine logs for OnPushAudioFrameBufferFull
+            callback frequency.
+
+      # 4. ARTC session count drift (与 active call 计数不一致超过 1 通)
+      - alert: IsalesArtcSessionCountDrift
+        expr: abs(isales_artc_session_count - isales_engine_active_call_count) > 1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "ARTC session count drift > 1 (artc={{ $value }})"
+          description: |
+            Number of joined RTC channels does not match active engine calls.
+            Either a session leaked join() or a remote_hangup didn't deliver
+            cancel to leave the room. Manual reconciliation may be needed.
+
+      # ---------- engine pipeline latency budget ----------
+
+      # 5. 首 TTS byte P95 > 800 ms (design.md Decision 4 budget)
+      - alert: IsalesEnginePipelineLatencyBudget
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(isales_engine_pipeline_first_tts_seconds_bucket[10m])) by (le)
+          ) > 0.8
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "engine pipeline first-TTS P95 > 800ms ({{ $value }}s)"
+          description: |
+            End-to-end first-TTS P95 breached the 800ms budget. Per design.md
+            §Decision 4, fallback strategy is to drop multi-role PK to N=1.
+            Inspect provider latency (Doubao ASR / LLM / TTS) before tightening.
+
+      # ---------- legacy carry-over (still relevant) ----------
+
+      # 6. callback 失败率 (carried from single-host monitoring)
+      - alert: IsalesCallbackFailureRate
+        expr: |
+          (
+            sum(rate(isales_callback_failed_total[15m]))
+            /
+            sum(rate(isales_callback_attempted_total[15m]))
+          ) > 0.20
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "callback failure rate >20% over 15m ({{ $value }})"
+
+      # 7. PG 连接数 > max_connections * 0.8
+      - alert: IsalesPgConnectionsHigh
+        expr: |
+          (
+            pg_stat_activity_count
+            /
+            on() pg_settings_max_connections
+          ) > 0.80
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PG connections >80% of max ({{ $value }})"

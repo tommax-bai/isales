@@ -1,0 +1,30 @@
+[Unit]
+Description=isales-scheduler — lead dispatcher (cloud-edge topology)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=isales
+Group=isales
+ExecStart=/opt/isales/current/venv/bin/isales-scheduler
+WorkingDirectory=/opt/isales/current/isales-scheduler
+Restart=on-failure
+RestartSec=5
+
+EnvironmentFile=/etc/isales/env/scheduler.env
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+
+[Install]
+WantedBy=multi-user.target
