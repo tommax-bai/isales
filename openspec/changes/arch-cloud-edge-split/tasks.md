@@ -41,10 +41,11 @@
 
 ## 6. isales-scheduler：dial 路径重构
 
-- [ ] 6.1 选 device 逻辑从"HTTP 调 telephony-api `/devices/select`"改为云内 PG 直查 + 行级锁
-- [ ] 6.2 dial 派发：生成 call_id → 写云内 PG call 表 → 通过 engine 暴露的内部接口（云内函数调用 / Redis Queue 保留兜底）发起 → engine 内 grpc_server 发 `DialCommand` 给边缘
-- [ ] 6.3 移除 telephony-api HTTP client 代码 + tests
-- [ ] 6.4 单测：选 device 算法 + 并发安全（两 dial 不能选同一 idle device）
+- [x] 6.1 选 device 逻辑从"HTTP 调 telephony-api `/devices/select`"改为云内 PG 直查 + 行级锁  <!-- scheduler PR (3fc6750) `isales_scheduler/device_selection.py::pick_idle_device` — 原 telephony-api 算法（SELECT … FOR UPDATE OF device SKIP LOCKED, NULLS FIRST, 然后 UPDATE status='dialing' + last_call_at=now）原样移到 scheduler 内 -->
+- [x] 6.2 dial 派发：生成 call_id → 写云内 PG call 表 → 通过 engine 暴露的内部接口（云内函数调用 / Redis Queue 保留兜底）发起 → engine 内 grpc_server 发 `DialCommand` 给边缘  <!-- scheduler 端（PR 3fc6750）：dispatch_lead 选 device 后推 DialRequest 到 Redis Queue `engine:dial`；call_record 行 + call_id 生成由 engine.dial_consumer.reserve_call_record 完成（engine PR #4 / 之前已就位），符合 spec "云内调用" 语义。grpc_server 发 DialCommand 由 engine PR #5 RtcTelephonyClient.dial 负责 -->
+- [x] 6.3 移除 telephony-api HTTP client 代码 + tests  <!-- scheduler PR (3fc6750)：删 isales_scheduler/telephony.py + tests/test_telephony.py；httpx 从 pyproject deps 移除；ISALES_TELEPHONY_API_BASE / ISALES_SELECT_TIMEOUT_SECONDS 设置项删掉；deploy/{,cloud/}env/scheduler.env.example 同步更新 -->
+- [x] 6.4 单测：选 device 算法 + 并发安全（两 dial 不能选同一 idle device）  <!-- scheduler PR (3fc6750) tests/test_device_selection.py：5 个 test：happy path + 无 idle device + 非 active SIM binding + 两并发 picker 选不同 device（SKIP LOCKED）+ NULLS FIRST/oldest-last_call_at 排序；test_dispatch.py / test_loop.py 改为种真 device/sim_card 数据 -->
+
 
 ## 7. isales-telephony：边缘进程重构
 
@@ -72,10 +73,11 @@ framework（19 个 .h 头 / 4 个 ALI_RTC_API C 函数全是 video/screenshare�
 
 ## 9. isales-api / isales-worker：云端调整
 
-- [ ] 9.1 isales-api：新增内部 endpoint 给前端"看哪些边缘机在线"（基于云内 PG `edge_device.last_heartbeat`）
-- [ ] 9.2 isales-api：签发 `EDGE_DEVICE_TOKEN` 的内部工具 + 文档
-- [ ] 9.3 isales-worker：处理 `HardwareAlert` 事件（A2 范围：仅落 PG 与基础日志告警；详细告警 / 一键诊断 由 D2 处理）
-- [ ] 9.4 isales-worker：watchdog 监听 cloud-edge stream 健康度，超 120 s 无心跳的边缘机 device 置 offline
+- [x] 9.1 isales-api：新增内部 endpoint 给前端"看哪些边缘机在线"（基于云内 PG `edge_device.last_heartbeat`）  <!-- api PR (5b6e92e) `GET /edge-devices/status`：返回每台 Device 的 online 标志（last_seen_at vs 120 s 阈值，对齐 worker watchdog STALE_THRESHOLD_SECONDS）。A2 没有独立 edge_device 表，按 Device 行直出；C2 多租户表落地后改为按 edge_device_id 分组 -->
+- [x] 9.2 isales-api：签发 `EDGE_DEVICE_TOKEN` 的内部工具 + 文档  <!-- api PR (5b6e92e) isales_api/edge_token.py + scripts/mint_edge_token.py CLI（entry-point `isales-edge-token-mint`）：HS256 over ISALES_JWT_SECRET，aud=cloud-edge 与前端 JWT 隔离；A2 默认 TTL 365d；C2 切换为租户作用域轮换。RUNBOOK-edge.md §2 已有使用说明 -->
+- [x] 9.3 isales-worker：处理 `HardwareAlert` 事件（A2 范围：仅落 PG 与基础日志告警；详细告警 / 一键诊断 由 D2 处理）  <!-- engine PR (41463c8) transport/hardware_alert_handler.py::log_hardware_alert —— 实装位置由 worker 调整到 engine（engine 直接拿到 gRPC alert，避免 cross-process Redis fanout）。A2 范围只做结构化 WARNING 日志（按 alert kind 抽 device_id / edge_device_id / kind-specific fields），PG 持久化按 spec 留给 D2 hardware-observability。Worker 没引入新代码 -->
+- [x] 9.4 isales-worker：watchdog 监听 cloud-edge stream 健康度，超 120 s 无心跳的边缘机 device 置 offline  <!-- engine PR (41463c8) transport/heartbeat_handler.py::apply_heartbeat + make_heartbeat_handler —— 接 EngineSessionDispatcher.on_heartbeat（新加 hook）；engine 直接更新 Device.last_seen_at（spec architecture "云端全部 → PG 直连"）。Worker 端的 device_watchdog（既有 isales_worker/device_watchdog.py）继续按 last_seen_at > 120 s 翻 status=offline，无需改 -->
+
 
 ## 10. 云端部署脚本与 RUNBOOK
 
@@ -105,4 +107,5 @@ framework（19 个 .h 头 / 4 个 ALI_RTC_API C 函数全是 video/screenshare�
 - [x] 13.1 更新 v1-roadmap.md 标注 A2 已 ship + 修正 NAT 穿透段（fallback 路线已用不到）  <!-- meta-repo: openspec/v1-roadmap.md；A2 entry 加 Status 2026-05-15 块（23/63 done + 已 ship 项 + 剩余项 + 归档待 D1 同步）；媒体面从 "WebRTC (aiortc)" 改为 "阿里 RTC PaaS"，删 NAT 穿透 待 PoC 段，并入 ARTC SDK Linux Python + macOS 决策；A2/A3 风险节标注 NAT 穿透项 strikethrough + 新增 ARTC PCM 回调延迟与 macOS SDK 决策两项风险 -->
 - [ ] 13.2 更新 PoC 结果文档：把 Day 2 实测数据补到决策表"实测"列
 - [ ] 13.3 准备 A2 archive PR：等 D1 也接近完成时一起规划归档（device-hardware / deployment-topology spec delta 冲突需手工 merge）
-- [ ] 13.4 整理 A3 `edge-vad-and-opener-prefetch` propose 阶段需要的上下文（cancel 通道接口 + OSS 开场白预渲染目录）
+- [x] 13.4 整理 A3 `edge-vad-and-opener-prefetch` propose 阶段需要的上下文（cancel 通道接口 + OSS 开场白预渲染目录）  <!-- meta-repo openspec/v1-roadmap-a3-context.md：cancel 通道接口（EngineSessionDispatcher / CallEvent.user_speaking_started / CancelCommand 三个接驳点）+ opener pre-render 开放问题（key 格式 / sync trigger / codec / 与 voice_model 关系）+ A3 spec deltas 落点 + A3 不应碰的 A2 已锁项 -->
+
