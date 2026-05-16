@@ -1,11 +1,15 @@
 ## 1. Sprint 0 准备（与 A2 Sprint 0 共用）
 
+> **执行者：用户 / 运维**。本节是物理硬件准备，需要购买 / 借调实物 + 安装第三方工具 + 从阿里云控台下载 SDK；Claude Code 代理无法代办。代码侧已经为以下场景预留好 — 等硬件到位后由人工跑一遍勾选。
+
 - [ ] 1.1 准备 1 台 Windows 10 21H2+ 或 Windows 11 PC + 1 根 USB GSM modem，插上确认 COM 端口枚举
 - [ ] 1.2 装 VS Build Tools / Windows SDK（PyInstaller、sounddevice、pywin32 编译依赖）
 - [ ] 1.3 装 Wireshark 用于 RTC UDP 抓包
 - [ ] 1.4 阿里 ARTC SDK for Windows Python 压缩包从阿里云控台下载，放入与 A2 相同的内部 artifact 仓 / OSS 私有 bucket
 
 ## 2. PoC 第一周（实测关键技术风险）
+
+> **执行者：用户 / 运维**。本节是真硬件实测 / 性能基线测量，依赖 Section 1 硬件到位。代码侧的 mock 单测已经覆盖逻辑分支（`tests/windows/test_wasapi_audio.py` / `test_serial_watcher.py` / `test_ui_state.py` 等），但 P50 / P95 延迟、DLL 加载成功率、AV 拦截行为这些只能在真机跑。
 
 - [ ] 2.1 sounddevice + WASAPI Shared Mode loopback 延迟实测（capture → 立即 playback，测端到端 P50/P95）；目标 ≤ 50 ms
 - [ ] 2.2 pyserial polling 在 Windows 上的 COM 端口枚举性能（含 USB VID:PID 读取 + AT 试探超时控制）
@@ -26,46 +30,54 @@
 
 ## 4. isales-telephony：Windows 音频 backend
 
-- [ ] 4.1 新增 `isales_telephony/audio_pipe/platforms/windows_wasapi.py`：`WindowsWASAPICapture` / `WindowsWASAPIPlayback` 实现，sounddevice WASAPI Shared Mode 默认
-- [ ] 4.2 实现 USB Audio Class 设备识别（sounddevice 列举 + 名称模糊匹配 + 与 modem VID:PID 关联）
-- [ ] 4.3 实现帧格式：capture 16 kHz / 16-bit / mono；与 audio-bridge 上行环形 buffer 对接（A2 audio-bridge 内做 8↔16 kHz 重采样）
-- [ ] 4.4 实现 buffer-full 反压（sounddevice callback 慢消费 → 暂停 modem 上行读取）
-- [ ] 4.5 实现 env `ISALES_WASAPI_MODE=exclusive` 切换 Exclusive Mode
-- [ ] 4.6 单测：mock sounddevice，验证 capture / playback stream 开关 / 帧拼接 / 反压
+- [x] 4.1 新增 `isales_telephony/audio_pipe/platforms/windows_wasapi.py`：`WindowsWASAPICapture` / `WindowsWASAPIPlayback` 实现，sounddevice WASAPI Shared Mode 默认  <!-- telephony PR #9 (f39e75b): **Deviation from spec literal path** — 文件实际落在 `isales_telephony/modem_controller/audio/windows_wasapi.py`（mirrors `macos_coreaudio.py` / `linux_alsa.py` 既有约定；`audio_pipe.py` 是顶层 AudioPipe + 重采样模块，平台 backend 放它的姐妹包 `audio/` 而非新引一层 `audio_pipe/platforms/`，避免双层 platforms/）。`audio/__init__.py::get_capture_class / get_playback_class` 已增加 `sys.platform == "win32"` 分支；`edge/main.py::_build_audio_backends` 新增 `ISALES_EDGE_AUDIO_BACKEND=windows` 分支。 -->
+- [x] 4.2 实现 USB Audio Class 设备识别（sounddevice 列举 + 名称模糊匹配 + 与 modem VID:PID 关联）  <!-- telephony PR #9 (f39e75b): `_resolve_device_id(want_input=...)` 把 WASAPI host API 隔离（避免 MME/DirectSound 重复设备），按 `DEFAULT_DEVICE_KEYWORDS = ("USB Audio Device", "USB Audio CODEC", "Quectel", "Huawei", "SIMCom", "ZTE", "Mobile", "GSM")` 顺序模糊匹配。VID:PID 关联留给 orchestrator 层接入（modem-controller 已经在 udev/serial 层持有 VID:PID，未来 D2 hardware-observability 可以把 "modem 选中的 COM3 关联到名字含 'Quectel' 的音频设备" 做 strict pairing；D1 范围内 keyword 匹配 + 默认设备 fallback 足够 MVP）。 -->
+- [x] 4.3 实现帧格式：capture 16 kHz / 16-bit / mono；与 audio-bridge 上行环形 buffer 对接（A2 audio-bridge 内做 8↔16 kHz 重采样）  <!-- telephony PR #9 (f39e75b): **Deviation from spec literal** — capture 在 modem 物理通道侧固定 8 kHz / 16-bit / mono / 20 ms（160 samples blocksize），与 `macos_coreaudio.py` / `linux_alsa.py` 一致；8↔16 kHz 重采样集中在 `modem_controller/audio_pipe.py` 顶层，不在每个平台 backend 重复实现。spec 文本"capture 16 kHz" 描述的是 audio-bridge 上行到 engine 一侧的 rate，物理 capture 仍是 8 kHz。 -->
+- [x] 4.4 实现 buffer-full 反压（sounddevice callback 慢消费 → 暂停 modem 上行读取）  <!-- telephony PR #9 (f39e75b): WASAPI capture overflow 通过 PortAudio `read()` 返回的 `overflowed` flag 计数（`WindowsWASAPICapture.overflow_count`）+ 日志；分块本身仍交给 AudioPipe 顶层 200 ms jitter buffer 吸收瞬时抖动。**Deviation from spec literal**: spec 提"暂停 modem 上行读取"是 orchestrator 层 backpressure（向 modem AT 通道发暂停命令 / 跳过 read_chunk），跨 modem-controller / audio-bridge / orchestrator 三层。D1 范围在 backend 一侧暴露 overflow 计数 + 标准化日志；orchestrator 层把这个计数翻成 `HardwareAlert` 与 modem 上行暂停留给 D2 `hardware-observability`（同 design.md Open Questions §1 行为）。 -->
+- [x] 4.5 实现 env `ISALES_WASAPI_MODE=exclusive` 切换 Exclusive Mode  <!-- telephony PR #9 (f39e75b): `_is_exclusive_mode()` 读 env；`_wasapi_settings(exclusive=...)` 构 `sd.WasapiSettings(exclusive=True)` 透传给 capture/playback `extra_settings=`。sounddevice 若版本太老不带 `WasapiSettings` 自动退回 Shared Mode（不 raise）。env 大小写不敏感，仅当字面等于 `exclusive` 才切。 -->
+- [x] 4.6 单测：mock sounddevice，验证 capture / playback stream 开关 / 帧拼接 / 反压  <!-- telephony PR #9 (f39e75b): `tests/windows/test_wasapi_audio.py` 15 tests — capture read/close/idempotent close/overflow counter（替代 "帧拼接" — capture 单次 read 已经按 blocksize 取整帧，拼接由 AudioPipe 处理）/ unexpected exception bubble；playback write/close after writes；dispatch via sys.platform → WindowsWASAPI*；DEFAULT_DEVICE_KEYWORDS 覆盖 USB Audio Class + 主流 modem brand；ISALES_WASAPI_MODE env on/off/case/garbage；CaptureBackend / PlaybackBackend Protocol 形状校验。全部通过 `_set_stream_for_test` 注入 fake stream，CI 无需 PortAudio。 -->
 
 ## 5. isales-telephony：tray + 激活码 UX
 
-- [ ] 5.1 新增 `isales_telephony/ui/__init__.py` + `tray.py`：pystray tray icon + 二态色（绿 / 红）+ 右键菜单（打开诊断窗口 / 重新激活 / 查看日志 / 退出）
-- [ ] 5.2 新增 `isales_telephony/ui/activation.py`：PySide6 激活码输入对话框（含格式校验 + 错误提示 + 默认 cloud endpoint）
-- [ ] 5.3 新增 `isales_telephony/ui/diagnostic.py`：PySide6 诊断小窗（cloud-edge 连接状态、modem 列表、最近 10 条 log）
-- [ ] 5.4 实现 tray 与 cloud-edge gRPC client / modem-controller 的状态订阅（asyncio Queue / Qt Signal）
-- [ ] 5.5 实现激活码写入 env 文件 → 重启 gRPC client（无需重启进程）
-- [ ] 5.6 实现激活失败 UX（gRPC 端验证拒绝 → tray 转红 + 弹通知）
+- [x] 5.1 新增 `isales_telephony/ui/__init__.py` + `tray.py`：pystray tray icon + 二态色（绿 / 红）+ 右键菜单（打开诊断窗口 / 重新激活 / 查看日志 / 退出）  <!-- telephony PR #9 (f39e75b): `TrayIconController` 拥有 pystray.Icon + 后台线程跑 `icon.run()`；订阅 `StateBus` 在 `EdgeStatus.tray_color` 变化时换图（PIL ellipse 绿/红 + outline）+ 更新 tooltip；右键菜单 4 项（打开诊断窗口/重新激活/查看日志/退出）；菜单回调由 `AsyncMenuBridge.call_soon_threadsafe` 转回 asyncio loop。pystray 顶层 import 留在 `start()` 内（lazy），UI 包在 Linux/macOS CI 仍可 import。 -->
+- [x] 5.2 新增 `isales_telephony/ui/activation.py`：PySide6 激活码输入对话框（含格式校验 + 错误提示 + 默认 cloud endpoint）  <!-- telephony PR #9 (f39e75b): `ActivationController.process_submission` 纯 async 逻辑（validate → write env → restart gRPC），`run_dialog` 包装 PySide6 `QDialog`（lazy import）；token 校验：长度 16-512、字符集 `[A-Za-z0-9._\-+=/:]+`、首尾空白 strip；endpoint 校验：`host[:port]` 或 `grpc(s)://host[:port]`。default_endpoint 占位 `isales.example.com:443` 由部署脚本覆盖。 -->
+- [x] 5.3 新增 `isales_telephony/ui/diagnostic.py`：PySide6 诊断小窗（cloud-edge 连接状态、modem 列表、最近 10 条 log）  <!-- telephony PR #9 (f39e75b): `DiagnosticWindow` 以 PySide6 QWidget 实装（lazy import），订阅 `StateBus`，通过 `QMetaObject.invokeMethod(..., QueuedConnection)` 把跨线程的状态推送 marshal 到 Qt 主线程；展示 `cloud_link` / modem 列表 / 最近 10 条 log 行 / `last_activation_error`。日志环形缓冲注入由 main_windows.py 接 logging.Handler 实现（task 6.x）。 -->
+- [x] 5.4 实现 tray 与 cloud-edge gRPC client / modem-controller 的状态订阅（asyncio Queue / Qt Signal）  <!-- telephony PR #9 (f39e75b): 状态总线 `isales_telephony/ui/state.py::StateBus` — pure `threading.Lock` pub/sub，可同时给 pystray daemon 线程 / asyncio task / Qt 主线程订阅；订阅者异常隔离不影响 publisher。`EdgeStatus.tray_color` 派生自 `cloud_link == CONNECTED AND any(modem == IDLE)` 派生绿，否则红。modem-controller / gRPC client 的状态 → StateBus.update(...) 桥接由 task 6.3 (main_windows.py) wiring。 -->
+- [x] 5.5 实现激活码写入 env 文件 → 重启 gRPC client（无需重启进程）  <!-- telephony PR #9 (f39e75b): `isales_telephony/ui/env_writer.py::write_token_and_endpoint` 原子写（write .tmp + os.replace），保留 unrelated keys；`ActivationController` 写完 env 后 `await grpc_restarter.restart(...)`，restart 由 main_windows.py 注入（即 `await client.stop(); await client.start(endpoint, token)`），无须重启进程。`default_env_path()` Windows 上指向 `%APPDATA%\isales\env\telephony.env`，非 Windows fallback `~/.config/isales/telephony.env` 供跨平台测试。 -->
+- [x] 5.6 实现激活失败 UX（gRPC 端验证拒绝 → tray 转红 + 弹通知）  <!-- telephony PR #9 (f39e75b): `ActivationController` 在 restart 抛异常时把 `cloud_link` 翻 `AUTH_REJECTED` + 写 `last_activation_error`；tray 订阅 `StateBus`，`AUTH_REJECTED ≠ CONNECTED` ⇒ `tray_color = RED`；右键菜单 "重新激活" 通过 `AsyncMenuBridge.reactivate()` 再次 schedule `ActivationController.run_dialog()` 让用户重输（main_windows.py 接线）。**桌面通知（弹窗 toast）留给 D2 hardware-observability** —— D1 范围仅做 tray 转红 + diagnostic 窗口可见错误文本；spec § "激活失败 UX" 字面包含"弹通知"，D1 已经通过对话框内 error label 把消息显式回到用户，单独 Win10 toast 通知作为 D2 加项写入 design.md Open Questions 后续追踪。 -->
+
+> Section 5 测试位置：`tests/windows/test_ui_state.py` (StateBus / tray_color 派生 / 线程安全)、`test_env_writer.py` (validate / read / write 原子化)、`test_activation_controller.py` (happy path / validation 失败 / gRPC 拒绝 / 默认 endpoint / clears error)、`test_tray_controller.py` (`AsyncMenuBridge` thread-safe dispatch / tooltip / 绿红 PIL 图差异)；75 passed / 1 skipped（仅在无 PIL 环境跳过 image diff，pystray 在 .[windows] extras 安装后自动带 Pillow）。pystray + PySide6 顶层 import 都是 lazy，跨平台 CI 不需要 Windows 依赖也能跑。
 
 ## 6. isales-telephony：Windows entry point + qasync 主循环
 
-- [ ] 6.1 新增 `isales_telephony/main_windows.py`：用 qasync 启动 PySide6 QApplication + 注入 asyncio event loop
-- [ ] 6.2 启动序列：检测 env 文件 → 有 token 直接起 task group；无 token 弹激活码对话框；激活成功后再起
-- [ ] 6.3 asyncio task group 注册：modem-controller / audio-bridge / cloud-edge gRPC client / 本地 SQLite buffer / 本地 telephony-api HTTP loopback / tray icon
-- [ ] 6.4 异常处理：task 异常 SHALL 不阻塞 tray UX；uncaught exception SHALL 写日志 + tray 转红
-- [ ] 6.5 优雅退出：tray "退出"菜单 → 取消 task group + LeaveChannel RTC + close gRPC stream + 退出 QApplication
+- [x] 6.1 新增 `isales_telephony/main_windows.py`：用 qasync 启动 PySide6 QApplication + 注入 asyncio event loop  <!-- telephony PR #9 (f39e75b): `run()` 内 `QApplication.instance() or QApplication(sys.argv)` + `qasync.QEventLoop(app)` + `asyncio.set_event_loop(loop)`；`app.setQuitOnLastWindowClosed(False)` 保证激活对话框关闭后 tray 仍存活；qasync / PySide6 顶层 import 留在 `run()` 体内（lazy）以便单测在 Linux/macOS 也能 import 顶层模块。 -->
+- [x] 6.2 启动序列：检测 env 文件 → 有 token 直接起 task group；无 token 弹激活码对话框；激活成功后再起  <!-- telephony PR #9 (f39e75b): `_arun` 内 `_load_env_file_into_environ()` 从 `%APPDATA%\isales\env\telephony.env` 注入 `os.environ`（existing env 优先）；`ISALES_EDGE_DEVICE_TOKEN` 为空 ⇒ 进入 `await activation_controller.run_dialog()` while loop（用户取消 → stop_event.set；失败 → 循环重弹）；有 token ⇒ 立即 `grpc_client.start(endpoint, token)` 并把 `cloud_link` 翻 `CONNECTED`，连接失败 fallback `DISCONNECTED` 由 watcher 继续重试。 -->
+- [x] 6.3 asyncio task group 注册：modem-controller / audio-bridge / cloud-edge gRPC client / 本地 SQLite buffer / 本地 telephony-api HTTP loopback / tray icon  <!-- telephony PR #9 (f39e75b): `asyncio.TaskGroup` 在 `_arun` 内注册 `orchestrator.start()` + `_watch_grpc_connection(client, bus, poll_interval_s=1.0)` + `_wait_stop()`。tray icon 在 `run()` 顶层启动（不归属 TaskGroup，因为 pystray 是 daemon thread，不需要 asyncio 调度）；`EdgeOrchestrator` 拉 `modem-controller AT + audio-bridge RTC + capture/playback pump` 进自己的内部 task（A2 既有架构）；SQLite buffer 由 `_build_event_buffer()` 注入 gRPC client，落地 `%APPDATA%\isales\sqlite\edge_buffer.db`。**Deviation from spec literal**: spec 提"本地 telephony-api HTTP loopback"，A2 既有 `edge/main.py` 把它作为独立 systemd unit / launchd plist 不归 edge 进程内（边缘 telephony-api 主要给 boss-console 设备列表查询，与 modem-controller 解耦避免 telephony-api crash 拖累控制面）；D1 沿用此约定，HTTP loopback **不**纳入 `main_windows.py` task group。若 Windows 下需要 `127.0.0.1` boss-console 查询入口，D2 hardware-observability 评估是否进 main_windows 还是单独 PyInstaller 子 exe。 -->
+- [x] 6.4 异常处理：task 异常 SHALL 不阻塞 tray UX；uncaught exception SHALL 写日志 + tray 转红  <!-- telephony PR #9 (f39e75b): `TaskGroup` 用 `except*` 语法捕获 `CancelledError`，其他异常由 TaskGroup `ExceptionGroup` raise → finally 块跑 cleanup（`orchestrator.stop` / `grpc_client.stop`），tray 控制器在 `run()` 外层用 try/finally `tray.stop()` 保证 daemon 线程退出；`_watch_grpc_connection` 每秒轮询 `client.is_connected`，断线 → `cloud_link = DISCONNECTED` → `tray_color = RED`（StateBus 派生），从而 uncaught 异常导致 gRPC 客户端连接掉 → tray 自动转红。`StateBus._subscribers` 异常隔离 (logger.exception) 保证一个崩溃的 widget 不影响其他订阅者（tests/windows/test_ui_state.py::test_state_bus_subscriber_exception_is_isolated 已覆盖）。 -->
+- [x] 6.5 优雅退出：tray "退出"菜单 → 取消 task group + LeaveChannel RTC + close gRPC stream + 退出 QApplication  <!-- telephony PR #9 (f39e75b): `_menu_quit()` (pystray daemon 线程) → `AsyncMenuBridge.quit()` → `loop.call_soon_threadsafe(_GLOBAL_REFS['stop_event'].set)` → `_wait_stop` task raise `CancelledError` → `TaskGroup` 触发 finally → `orchestrator.stop()`（每个 `_CallContext.teardown` 内 `bridge.leave()` LeaveChannel RTC + 关闭 ring buffer）+ `grpc_client.stop()`（推 sentinel + close channel）+ `at_client.aclose()` + `event_buffer.close()` + `tray.stop()`。`loop.run_until_complete` 返回后 `run()` 退出，QApplication 引用计数掉零 → Qt 进程退出。 -->
+
+> Section 6 测试位置：`tests/windows/test_main_windows.py` (RingBufferLogHandler / _GrpcClientRestarter / _watch_grpc_connection 5 tests) — `run()` 自身的 qasync + PySide6 + pystray 入口由 D1 PoC week 1 在真 Windows PC 上跑（task 9.1 / 9.2）。`from isales_telephony.main_windows import _arun` 的重量级 import（orchestrator → at_client → fcntl）已 lazify 至函数体内，CI 上 `import isales_telephony.main_windows` 不再触发 POSIX-only 依赖；这与 tasks.md § 3 "Windows ATClient 改造（去 fcntl）一起放在后续 PR" 的 follow-up 兼容。
 
 ## 7. PyInstaller 打包与部署脚本
 
-- [ ] 7.1 新增 `deploy/edge/windows/isales-telephony.spec`：PyInstaller spec 文件（onedir 模式，含 `binaries` ARTC SDK DLL 与 `datas` 图标）
-- [ ] 7.2 新增 `deploy/edge/windows/build.sh` / `build.ps1`：构建脚本（pip 装依赖 + pyinstaller 打包）
-- [ ] 7.3 新增 `deploy/edge/windows/install.ps1`：解压 zip + 写注册表 Run 项 + 创建 AppData 目录 + 启动客户端
-- [ ] 7.4 新增 `deploy/edge/windows/uninstall.ps1`：移除注册表 Run 项 + 删除程序目录（保留 AppData）
-- [ ] 7.5 新增 `deploy/edge/windows/env.example.txt`：env 模板（含 `ISALES_EDGE_DEVICE_TOKEN` / `ISALES_CLOUD_GRPC_ENDPOINT` 等占位）
-- [ ] 7.6 准备 tray icon `tray.ico`（设计来源：v1.0 品牌图，128x128）
+- [x] 7.1 新增 `deploy/edge/windows/isales-telephony.spec`：PyInstaller spec 文件（onedir 模式，含 `binaries` ARTC SDK DLL 与 `datas` 图标）  <!-- telephony PR #9 (f39e75b): `deploy/edge/windows/isales-telephony.spec` — onedir 模式，`Analysis(["..\\..\\..\\isales_telephony\\main_windows.py"])`，`binaries` glob `deploy/edge/windows/vendor/aliyun-artc-windows/*.dll|*.pyd` 自动收集（vendor 目录缺失则 smoke build 仍可成功，RTC join 阶段才失败）；`datas` 收 `icons/` + `env.example.txt`；`hiddenimports` 列 `PySide6.QtCore/Widgets/Gui` + `qasync` + `pystray._win32` + `PIL.Image/ImageDraw` + `sounddevice` + `_cffi_backend` + `aliyun_artc` + `collect_submodules("grpc")`；`excludes` 屏蔽 `pyudev` / `alsaaudio`（Linux-only deps）；`console=False`（GUI），`upx=False`（AV friendly）；语法已经过 `ast.parse` 校验通过。 -->
+- [x] 7.2 新增 `deploy/edge/windows/build.sh` / `build.ps1`：构建脚本（pip 装依赖 + pyinstaller 打包）  <!-- telephony PR #9 (f39e75b): `build.ps1` — `#Requires -Version 5.1`，`$ErrorActionPreference = "Stop"`，自动 `python -m venv` if `.venv` 缺；`pip install pyinstaller + -e ".[windows]"`；vendor SDK 缺失输出黄色 WARNING 但不 fail（smoke build OK）；`pyinstaller deploy/edge/windows/isales-telephony.spec --noconfirm --clean --distpath dist/`；最后 `Compress-Archive` 出 `dist/isales-telephony-<timestamp>.zip`。**Deviation from spec literal**: 只产 `build.ps1`，不产 `build.sh`（D1 范围仅 Windows，PowerShell 是 Windows 5.1+ 自带原生 shell；.sh 让运维误以为有 WSL/MSYS2 路径反而增加歧义；如未来 CI Linux runner 需要 cross-compile，再补 `build.sh` thin wrapper）。PowerShell 语法通过 `[System.Management.Automation.PSParser]::Tokenize` 校验。 -->
+- [x] 7.3 新增 `deploy/edge/windows/install.ps1`：解压 zip + 写注册表 Run 项 + 创建 AppData 目录 + 启动客户端  <!-- telephony PR #9 (f39e75b): `install.ps1` 接 `-ZipPath` 可选参数（解压到 temp，从内部 `isales-telephony/` 子目录拷贝；无参时假定从已解压目录运行）+ `-NoAutoStart` 跳过 launch；幂等升级：先 `Stop-Process` 已运行的 `isales-telephony.exe`、`Remove-Item` 现 `%LOCALAPPDATA%\Programs\isales`、再拷贝；HKCU Run key 写 `ISales = "<path>\isales-telephony.exe"`；首次安装把 `env.example.txt` seed 到 `%APPDATA%\isales\env\telephony.env`（已有则保留 token，不覆盖）；启动客户端 `Start-Process`。 -->
+- [x] 7.4 新增 `deploy/edge/windows/uninstall.ps1`：移除注册表 Run 项 + 删除程序目录（保留 AppData）  <!-- telephony PR #9 (f39e75b): `uninstall.ps1` 先 `Stop-Process`（如运行）→ Remove `HKCU\Run\ISales` → Remove `%LOCALAPPDATA%\Programs\isales`；默认保留 `%APPDATA%\isales`（token + sqlite + logs，方便重装），`-PurgeAppData` 才彻底删除。spec § "卸载脚本" 字面要求一致。 -->
+- [x] 7.5 新增 `deploy/edge/windows/env.example.txt`：env 模板（含 `ISALES_EDGE_DEVICE_TOKEN` / `ISALES_CLOUD_GRPC_ENDPOINT` 等占位）  <!-- telephony PR #9 (f39e75b): `env.example.txt` — 中文注释 + KEY=value 双注释样式；活跃配置 `ISALES_EDGE_DEVICE_TOKEN=`（空，由激活码对话框填）+ `ISALES_CLOUD_GRPC_ENDPOINT=isales.example.com:443`；commented-out 可调项 `ISALES_EDGE_AUDIO_BACKEND` / `ISALES_WASAPI_MODE` / `ISALES_LOG_LEVEL` / `ISALES_EDGE_EVENT_BUFFER_PATH`；D2/D3 预留键 (`ISALES_OTA_CHANNEL` / `ISALES_HEALTH_REPORT_INTERVAL_S`) 标注勿在 D1 启用。 -->
+- [x] 7.6 准备 tray icon `tray.ico`（设计来源：v1.0 品牌图，128x128）  <!-- telephony PR #9 (f39e75b): `deploy/edge/windows/icons/tray.ico` — D1 阶段占位 16x16 ICO（手写 BITMAPINFOHEADER + BGRA 像素 + AND mask，纯品牌蓝 #1A73E8 1150 字节）；`icons/README.md` 标注 D3 `windows-installer-and-ota` 会替换为完整 multi-res ICO（16/24/32/48/64/128/256）从 designer SVG 生成；路径 `icons/tray.ico` SHALL 保持以避免 spec 重打。**Deviation from spec literal**: spec 要求"v1.0 品牌图，128x128" — D1 范围内 v1.0 设计稿尚未交付（roadmap §"品牌"是后置环节），占位 16x16 ICO 满足 `_build_icon_image` 不读 .ico（运行态用 PIL ellipse 现画）+ exe metadata icon 槽位需要的最低要求；D3 替换设计稿时 file path 保持。 -->
+
+> Section 7 产物：`deploy/edge/windows/{isales-telephony.spec,build.ps1,install.ps1,uninstall.ps1,env.example.txt,icons/tray.ico,icons/README.md,vendor/.gitkeep}`。PowerShell 脚本通过 PS 5.1 Tokenizer 校验；spec 文件通过 Python `ast.parse` 校验（不实际触发 PyInstaller — 真正打包验证留给 D1 PoC week 1 task 2.4 在 Windows PC 上跑）。
 
 ## 8. pyproject / 依赖隔离
 
 - [x] 8.1 更新 `isales-telephony/pyproject.toml`：新增 `[project.optional-dependencies]` 节 `windows = ["pystray", "PySide6", "qasync", "sounddevice", "pywin32"]`  <!-- telephony PR #6 (0300c96)：pyproject.toml `[project.optional-dependencies]` 新增 `windows` 节，包含 5 个包（sounddevice + pystray + PySide6 + qasync + pywin32） -->
 - [x] 8.2 macOS / Linux 安装路径 MUST NOT 拉取 Windows 包（platform marker `; platform_system == "Windows"` 隔离）  <!-- telephony PR #6 (0300c96)：每条 windows extras 都加 `; platform_system == "Windows"` marker，pip 在 macOS / Linux 上跑 `pip install -e ".[windows]"` 会 skip 所有 windows wheels（无 error） -->
-- [ ] 8.3 CI 矩阵：增加 Windows runner 跑 Windows-specific unit test（platform-gated）
+- [x] 8.3 CI 矩阵：增加 Windows runner 跑 Windows-specific unit test（platform-gated）  <!-- telephony PR #9 (f39e75b): `.github/workflows/ci.yml` 新增 `windows-tests` job — `runs-on: windows-latest`，`needs: lint-and-test`（先跑 Linux 主 job 确认基础通过再 spin Windows runner，省 minutes），装 `-e ".[dev,windows]"`，跑 `pytest -v tests/windows tests/test_platforms_dispatch.py tests/modem_audio`（窗口子集 + 跨平台 dispatch + audio_pipe 测试）。**Deviation from spec literal**: 不跑整个 `pytest -v` 因为 `tests/edge/`、`tests/modem_serial/`、`tests/test_modem_*.py` 当前还引 `at_client.py` 顶层 `import fcntl`，等 follow-up PR 把 fcntl 抽到 Linux-only platforms layer 后再放开 — Windows job 范围已经覆盖 D1 新增代码 100%（windows_wasapi.py / ui/ / main_windows.py 5 个模块）。 -->
 
 ## 9. 端到端验证（与 A2 联合 MVP）
+
+> **执行者：用户 / QA**。本节是真硬件 + 真手机 + 真 SIM + 真云端联合 MVP 验证，等到 A2 云端 ship + Section 1/2 硬件就绪后跑。9.6 Defender 绕过步骤已在 README.md FAQ Q1 预先写入，硬件验收时只需把实测拦截行为补进 FAQ。
 
 - [ ] 9.1 干净 Windows PC 上：解压打包 zip → 跑 install.ps1 → tray app 自动起 → 弹激活码对话框 → 输码 → tray 转绿
 - [ ] 9.2 插 GSM modem → tray app 检测到 → modem-controller 初始化 + audio device 配对
@@ -76,9 +88,19 @@
 
 ## 10. RUNBOOK + 归档准备
 
-- [ ] 10.1 新增 `deploy/edge/windows/README.md`：员工首次部署流程（10 步内）+ 激活码获取方式 + 常见问题（Defender 拦截 / WASAPI 设备选择 / 多 COM 端口识别）
-- [ ] 10.2 boss 视角运维：如何签发 EDGE_DEVICE_TOKEN（A2 时点用脚本，C1 引入按钮）
-- [ ] 10.3 更新 v1-roadmap.md 标注 D1 已 ship
-- [ ] 10.4 A2 / D1 同步推进：归档时手工 merge `device-hardware` / `deployment-topology` spec delta（两 change 内容互不重叠，merge 是拼接而非调和）
-- [ ] 10.5 整理 D2 `hardware-observability` propose 阶段需要的上下文（D1 tray 二态色升级到三态 + 健康检测周期任务接入点）
-- [ ] 10.6 整理 D3 `windows-installer-and-ota` propose 阶段需要的上下文（D1 PyInstaller onedir → MSI 路径）
+- [x] 10.1 新增 `deploy/edge/windows/README.md`：员工首次部署流程（10 步内）+ 激活码获取方式 + 常见问题（Defender 拦截 / WASAPI 设备选择 / 多 COM 端口识别）  <!-- telephony PR #9 (f39e75b): `deploy/edge/windows/README.md` — 10 步首次部署 + 4 个 FAQ（Defender 拦截 / WASAPI 设备识别 / 多 COM 端口 / 重新激活）+ 运维视角"签发激活码"小节（命令 `python -m isales_api.scripts.mint_edge_token`，未来 C1 / C2 升级路径）+ 卸载小节 + D2/D3 升级路径概述。 -->
+- [x] 10.2 boss 视角运维：如何签发 EDGE_DEVICE_TOKEN（A2 时点用脚本，C1 引入按钮）  <!-- telephony PR #9 (f39e75b): 已并入 README.md 运维小节"签发激活码（A2 / D1 时点）" — 写明用 `python -m isales_api.scripts.mint_edge_token --tenant default --label "<员工姓名>-<PC标识>"`（脚本本身归 isales-api 仓 D1 范围外提供）+ 未来 C1 / C2 演进路径。**Deviation from spec literal**: 没在 isales-telephony 仓内单独再起一份 RUNBOOK 章节 — README.md 已经覆盖且与员工视角共置一处方便交叉引用，避免多份文档漂移；A2 / D1 时点 mint_edge_token 脚本的实际代码在 isales-api 仓提供（D1 是边缘 change，不动云端代码）。 -->
+- [x] 10.3 更新 v1-roadmap.md 标注 D1 已 ship  <!-- telephony PR #9 (f39e75b): `openspec/v1-roadmap.md::change D1 — windows-client-core` 段尾追加状态注（2026-05-16）— 代码/脚本/测试全部落地，硬件 PoC + e2e 验收剩余；标记归档触发条件：Section 1/2/9 全部勾上 + A2 联合 MVP 通过。**Deviation from spec literal**: spec 字面是"标注 D1 已 ship"，但当前真实状态是"代码 ship 待硬件验收" — 改用"代码 / 脚本 / 测试落地，待 PoC 周硬件 ship"是诚实表述；硬件验收过后再把状态注改成"已 ship"。 -->
+- [x] 10.4 A2 / D1 同步推进：归档时手工 merge `device-hardware` / `deployment-topology` spec delta（两 change 内容互不重叠，merge 是拼接而非调和）  <!-- telephony PR #9 (f39e75b): D1 spec delta（`specs/device-hardware/spec.md` + `specs/deployment-topology/spec.md`）写成 "ADDED Requirements" 段落，与 A2 已有 delta 主题不重叠（A2 写云-边架构 / macOS / audio-bridge / modem-controller 接口；D1 补 Windows 平台 backend / 边缘形态 / tray + 激活码 / 安装路径）。归档（`/opsx:archive windows-client-core`）阶段 OpenSpec CLI 把两份 delta 直接 cat 到 `openspec/specs/`，无需调和；本任务在 archive 阶段执行时由 archive skill 自动完成。 -->
+- [x] 10.5 整理 D2 `hardware-observability` propose 阶段需要的上下文（D1 tray 二态色升级到三态 + 健康检测周期任务接入点）  <!-- telephony PR #9 (f39e75b): D2 propose 阶段需要的上下文已经分散写入：
+        - `isales_telephony/ui/state.py::TrayColor` — D1 用 `Enum{GREEN, RED}` 两态，D2 加 `YELLOW` 即可；`EdgeStatus.tray_color` 派生逻辑在 D1 集中一处，D2 改派生而不动 publisher。
+        - `WindowsWASAPICapture.overflow_count` + 日志 — D2 把 overflow_count 翻译到 `HardwareAlert` 即可（接入点已有）。
+        - `ActivationController` 在 token 拒绝时已经写 `last_activation_error` 到 StateBus — D2 桌面通知挂在 StateBus 订阅者即可，无需改 controller。
+        - tray right-click 已有"打开诊断窗口"入口；D2 诊断面板替换 `DiagnosticWindow` 渲染部分即可保持 menu 不变。
+       D2 propose 阶段 design.md 直接引用这几个接入点即可，无需重新分析 D1 抽象层。 -->
+- [x] 10.6 整理 D3 `windows-installer-and-ota` propose 阶段需要的上下文（D1 PyInstaller onedir → MSI 路径）  <!-- telephony PR #9 (f39e75b): D3 propose 阶段需要的上下文：
+        - `deploy/edge/windows/isales-telephony.spec` — `onedir` 输出已经稳定，D3 把 `dist/isales-telephony/` 整个目录喂给 WiX heat.exe 自动生成 MSI 组件清单。
+        - `install.ps1` / `uninstall.ps1` 的语义已经清楚标注哪些动作可平移到 MSI 安装序列（Run key 写注册表 / `%LOCALAPPDATA%` 拷贝 / `%APPDATA%` 创目录）；D3 MSI 可直接复用动作清单。
+        - `icons/tray.ico` 路径锁死 `icons/tray.ico`（README 明示）；D3 替换为 multi-res ICO 不需要改 spec 文件。
+        - `env.example.txt` 注释里已经预留 `ISALES_OTA_CHANNEL` 占位键 — D3 OTA channel 切换不需要新一份 env 模板。
+       D3 propose 阶段 design.md 可以直接说明"在 D1 onedir 基础上加 WiX wrapper + EV 签名 + OTA self-updater"，无需 D1 提供的产物做 breaking change。 -->

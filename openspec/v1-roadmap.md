@@ -388,7 +388,7 @@ openspec capabilities / 依赖前置 change**。`spec deltas` 指 `openspec/chan
 
 ### D. 边缘 Windows 客户端
 
-#### change D1 — `windows-client-core`
+#### change D1 — `windows-client-core` *(2026-05-16: 代码 / 脚本 / 测试落地，待 PoC 周硬件 ship)*
 - **问题**：A2 后边缘形态是 Mac mini，需要工程师上门部署；商用形态目标是
   客户员工自己装在自有 Windows PC 上。
 - **方案**：modem_controller / audio_pipe 增加 Windows backend：USB watcher
@@ -402,6 +402,11 @@ openspec capabilities / 依赖前置 change**。`spec deltas` 指 `openspec/chan
   `deployment-topology`（Windows 边缘形态、安装路径、托管方式、单进程异步
   架构）。
 - **依赖**：A2（云-边接口）+ C2（激活码模型）。
+- **状态（2026-05-16）**：Section 3-8 + Section 10 文档全部落地（WASAPI
+  backend / tray + 激活码 UX / main_windows.py / PyInstaller spec + 部署
+  脚本 / Windows CI runner）；Section 1/2/9（硬件准备、PoC 周实测、端到端
+  联合 MVP 验证）等到员工买/借到一台 Windows PC + USB GSM modem 后跑。
+  归档触发条件：Section 1/2/9 全部勾上 + 跟 A2 联合 MVP 验收通过。
 
 #### change D2 — `hardware-observability`
 - **问题**：D1 后 Windows 客户端能跑但是"哑客户端"——员工实际工作是硬件
