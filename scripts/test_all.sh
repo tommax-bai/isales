@@ -45,7 +45,12 @@ run_python_repo() {
         SKIP_COUNT=$((SKIP_COUNT + 1))
         return
     fi
-    if [[ ! -x "${path}/.venv/bin/python" ]]; then
+    local py
+    if [[ -x "${path}/.venv/bin/python" ]]; then
+        py=".venv/bin/python"
+    elif [[ -x "${path}/.venv/Scripts/python.exe" ]]; then
+        py=".venv/Scripts/python.exe"
+    else
         SUMMARY_LINES+=("? ${name} — no .venv (run: pip install -e \".[dev]\")")
         SKIP_COUNT=$((SKIP_COUNT + 1))
         return
@@ -56,7 +61,7 @@ run_python_repo() {
     local start
     start=$(date +%s)
     local output
-    output=$(cd "${path}" && .venv/bin/python -m pytest -q --no-header "$@" 2>&1)
+    output=$(cd "${path}" && "${py}" -m pytest -q --no-header "$@" 2>&1)
     local rc=$?
     local elapsed=$(( $(date +%s) - start ))
     local last_line
