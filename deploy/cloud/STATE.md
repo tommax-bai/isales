@@ -1,6 +1,6 @@
 # cloud deployment — current state snapshot
 
-**Last updated**: 2026-05-17 (interactive provisioning session)
+**Last updated**: 2026-05-17 (ARTC Linux SDK vendored; previous: interactive provisioning session)
 
 This file is a **point-in-time snapshot** of what's actually deployed to the
 iSales cloud, distinct from `deploy/RUNBOOK-cloud.md` which describes *how*
@@ -123,20 +123,36 @@ mirroring env before running `install.sh`, do it manually first).
 The ARTC SDK is proprietary and **gitignored** in every repo it touches.
 Three platform variants, three locations:
 
-| Platform | Used by | Local dev path (current developer) | Repo path (gitignored) |
-|---|---|---|---|
-| Linux Python wrapper | cloud engine | `~/codes/vendor/AliRTCSDK_Linux-7.10.2/` | (cloud) `/opt/isales/current/vendor/aliyun-artc-linux-python/` |
-| Windows C++ SDK | edge (Windows client) | (in repo) `isales-telephony/deploy/edge/windows/vendor/aliyun-artc-windows/` | same |
-| macOS framework | edge (Mac mini QA only) | `~/codes/vendor/AliRTCSdk_macos/` | mock-only path; not used in prod |
+| Platform | Used by | Location |
+|---|---|---|
+| Linux Python wrapper | cloud engine | **ECS**: `/opt/isales/vendor/aliyun-artc-linux-python/` (symlink → `AliRTCSDK_Linux-7.10.2/`). Tarball + extracted dir both kept under `/opt/isales/vendor/`. Not on local Windows dev machine — pulled straight from alicdn to ECS. |
+| Windows C++ SDK | edge (Windows client) | (in repo) `isales-telephony/deploy/edge/windows/vendor/aliyun-artc-windows/`. Gitignored. |
+| macOS framework | edge (Mac mini QA only) | Not downloaded — A2 走 mock，未真实用到 |
 
-On a new dev machine: download fresh from
-<https://help.aliyun.com/zh/live/artc-download-the-sdk> (Linux Python +
-Windows C++ are the two needed), place them at the paths above. The
-Windows SDK URL is pinned in
-`isales-telephony/deploy/edge/windows/vendor/README.md`.
+Linux Python tarball (137 MiB, sha256 `09564bad835f2296140bc6c9f2d8d4a88e7e940de07cbb0a470b3cd8d5db0e98`)
+download direct from alicdn CDN, no auth required:
+
+```
+https://alivc-demo-cms.alicdn.com/versionProduct/sdk/linux/AliRTCSDK_Linux-7.10.0-20260109.tar.gz
+```
+
+Note the filename says `7.10.0` but the tarball's top-level dir is `AliRTCSDK_Linux-7.10.2/` — Aliyun marketing tag inconsistent. The 7.10.2 inside is what we use.
+
+The Python wrapper is ctypes-style FFI (4 `.py` files + a `Release/lib/`
+with `libAliRtcLinuxEngine.so` (50 MiB), `libonnxruntime.so.1.16.3`
+(17 MiB), `AliRtcCoreService` elf). **Not bound to a Python ABI** —
+AL3's stock Python 3.6.8 imports all four modules without issue;
+`ldd libAliRtcLinuxEngine.so` resolves cleanly against AL3 glibc 2.32.
+
+At runtime, callers MUST set `LD_LIBRARY_PATH` to include
+`/opt/isales/vendor/aliyun-artc-linux-python/Python/Release/lib` and
+pass `AliRtcCoreService` absolute path to `CreateAliRTCEngine(...)`.
 
 For CI / OSS distribution: A2 task 1.3 plans an OSS private bucket
-mirror; not provisioned yet.
+mirror; not provisioned yet — but given the alicdn URL is unauthenticated,
+the OSS mirror is no longer strictly needed (CI can pull direct).
+The Windows SDK URL is pinned in
+`isales-telephony/deploy/edge/windows/vendor/README.md`.
 
 ## OSS / object storage
 
@@ -176,9 +192,9 @@ In rough order:
 1. Mirror `deploy/cloud/env/*.env` to `/etc/isales/env/` on the ECS.
 2. Adapt `deploy/cloud/scripts/install.sh` for AL3 dnf (file an issue
    or a small fix-up PR).
-3. Upload ARTC SDK Linux Python tarball to OSS private bucket (A2
-   task 1.3) OR scp it directly to the ECS at
-   `/opt/isales/current/vendor/aliyun-artc-linux-python/`.
+3. ~~Upload ARTC SDK Linux Python tarball.~~ **DONE 2026-05-17** —
+   wget'd from alicdn to `/opt/isales/vendor/`, symlinked to
+   `aliyun-artc-linux-python`, import-smoke on Python 3.6.8 passed.
 4. Clone 5 sibling repos to `/opt/isales/releases/<ts>/` on the ECS,
    create venvs, alembic migrate, register systemd units.
 5. nginx + Let's Encrypt + domain (A2 §1.1).
