@@ -27,7 +27,7 @@ v1.0 边缘机 platform option SHALL 包括 Windows 10 21H2+ / Windows 11（x64�
     isales-telephony.exe        # PyInstaller frozen 主程序
     _internal\                  # PyInstaller _MEIPASS 等价（Python 运行时 + 依赖）
     vendor\
-      aliyun-artc-windows\     # ARTC SDK Windows native binary（.dll + Python wrapper）
+      aliyun-artc-windows\     # ARTC SDK Windows native binary（.dll）+ 项目内 pybind11 binding
     icons\
       tray.ico
     env.example.txt             # 空 env 模板
@@ -94,7 +94,7 @@ Windows 客户端 SHALL 通过 PyInstaller 打包为可移植目录（onedir）�
   - `pyserial`（COM 端口枚举与 IO，已是既有依赖）
   - `pywin32`（注册表 + Windows 启动项写入）
   - `grpcio` / `grpcio-tools` / `protobuf`（与 A2 cloud-edge gRPC client 一致）
-  - 阿里 ARTC SDK for Windows Python wrapper + native binary（vendor）
+  - 阿里 ARTC SDK for Windows native binary（vendor）+ 项目内 pybind11 binding（`aliyun_artc_pywrap.pyd`，由 build.ps1 CMake 阶段产出，详见 `openspec/changes/windows-artc-pybind11/`）
 - macOS / Linux 平台 MUST NOT 强制安装上述 Windows-specific 包（通过 pyproject `extras` 或 platform marker 隔离）
 
 #### Scenario: PyInstaller 打包配置
@@ -105,7 +105,7 @@ Windows 客户端 SHALL 通过 PyInstaller 打包为可移植目录（onedir）�
   - 入口：`isales_telephony/main_windows.py`
   - 显式包含 ARTC SDK Windows native `.dll` 文件（`binaries` 节）
   - 显式包含 tray icon `.ico` 资源（`datas` 节）
-  - 隐藏导入：ARTC SDK Python wrapper 模块、`PySide6.QtCore` 等运行时 import 模块
+  - 隐藏导入：`aliyun_artc_pywrap`（项目内 pybind11 模块名，详见 `openspec/changes/windows-artc-pybind11/`）、`PySide6.QtCore` 等运行时 import 模块
   - 输出目录：`dist/isales-telephony/`（`isales-telephony.exe` + `_internal/`）
   - 不强求代码签名（D3 处理 EV Authenticode）
 
