@@ -134,6 +134,38 @@ A1 是新增能力，不破坏现状（mock 路径继续可用）：
 
 **回滚**：把 `main.py` 改回硬编码 `MockATClient()` 即可——`SerialATClient` 不删，只是不挂到 main；下游 IPC / 状态机 / handlers 不感知。
 
+## Post-A2/D1 scope retraction (added 2026-05-17 pre-archive)
+
+A1 was proposed assuming v1 = single-host deployment, modem-controller co-
+resident with engine/api/scheduler/worker on a single Linux or macOS box
+(see § Migration Plan #4 "用 A7670E + 国内 SIM，跑 at_smoke.py 拨自己手机"
+and § Impact targeting "deploy/linux + deploy/macos"). After A2 `arch-
+cloud-edge-split` + D1 `windows-client-core` landed, v1.0 prod is now:
+
+- Aliyun ECS (Linux) running engine / api / scheduler / worker / web;
+- customer Windows PC running modem-controller + audio-bridge;
+- macOS Mac mini retired from prod (kept only as historical QA reference).
+
+Practical consequences for A1:
+
+- `SerialATClient` in prod runs **only on Windows**.
+- Task §3.4 hardware acceptance literal target (A7670E + Linux/macOS) has
+  no prod-value rationale on the platforms A1 scopes — the same code path
+  must be exercised on Windows, which is D1 territory.
+- The Windows path is gated by D1 §3 footer's promised follow-up PR
+  ("Windows ATClient 改造（去 fcntl）") — making `at_client.py` cross-
+  platform via a platforms layer. Until then, `import fcntl` at module top
+  blocks Windows pytest collection (verified 2026-05-17).
+- A1 archive proceeds on units (11 + 50 passed as-landed in PR `fa3167c`)
+  + spec deltas + scope-retraction acceptance log. The 5-call hardware
+  acceptance work moves to D1 §9 端到端验证.
+
+This retraction does NOT modify any spec delta — only the literal task
+§3.4 acceptance target. The spec contracts (`device-hardware` "ATClient 实
+现策略", `call-state-machine` "真硬件 URC 驱动状态转换" + "hangup_cause 单
+一来源") remain authoritative and apply equally to whichever OS hosts
+`SerialATClient`.
+
 ## Open Questions
 
 - **SIM800C / Quectel UC20 真硬件覆盖**：v1.0 主要 SKU 是 A7670（USB Audio Class），SIM800C 走纯 AT 无 USB 音频，跟 v1.0 音频架构对不齐；Quectel UC20 vs UC25 / EC25 选型未定。是否在 A1 范围内删掉 SIM800C / Quectel driver 子类 + HANGUP_CAUSE_MAP 里相关 entry？还是留作 future SKU 占位？→ **倾向保留**（代码已写、删了只是减 ~30 行，留着不影响 A1 主路径），不在 spec 上承诺

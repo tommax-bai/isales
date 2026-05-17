@@ -26,7 +26,7 @@
 - [x] 3.1 新增 `scripts/at_smoke.py`：argparse 入参 `--tty <path> --number <phone> [--driver <hint>] [--wait-seconds <s>] [--verbose]`
 - [x] 3.2 脚本逻辑：构造 `SerialATClient` → 调 `dial(number)` 拿 call_id + 事件流 → `async for event in stream` 打到 stdout（带相对时间戳）→ 收到 connected 后异步 `asyncio.sleep(wait_seconds)` 默认 5 → `client.hangup(call_id)` → 等 remote_hangup → exit 0；BusyDeviceError → exit 2；其他异常 traceback → exit 1；stream 提前结束无 remote_hangup → exit 3
 - [x] 3.3 在 isales-telephony README 新增 "## Real hardware smoke test" 章节：Linux 与 macOS 各给一个调用示例 + tty 发现命令 + 期望输出样本；新版 env 变量表更新（`ISALES_MODEM_SERIAL_PATH` 必填、`ISALES_MODEM_DRIVER` 可选、`ISALES_ALLOW_MOCK_AT` CI-only）
-- [ ] 3.4 真硬件验收：用 A7670E + 国内移动 SIM，拨打自己手机号，5 通连呼，记录每通 `ATEvent` 序列与 hangup_cause；至少要看到：1 通正常应答 + 自己接听 + 5s 后由脚本主动挂断（`manual_hangup`）；1 通自己不接，等到 NO ANSWER（`no_answer`）；1 通自己按"忙线"或"拒接"（`user_busy`）；记录到 acceptance log
+- [~] 3.4 真硬件验收：用 A7670E + 国内移动 SIM，拨打自己手机号，5 通连呼，记录每通 `ATEvent` 序列与 hangup_cause；至少要看到：1 通正常应答 + 自己接听 + 5s 后由脚本主动挂断（`manual_hangup`）；1 通自己不接，等到 NO ANSWER（`no_answer`）；1 通自己按"忙线"或"拒接"（`user_busy`）；记录到 acceptance log  <!-- **Deferred to D1 `windows-client-core` §9 (2026-05-17)**：A1 scope 是 Linux/macOS，但 v1.0 prod 部署被 A2 + D1 重定向为 "Aliyun ECS（Linux）+ Windows 边缘" — modem-controller 在 prod 只跑 Windows。Linux/macOS 硬件验收对 prod 无价值；SerialATClient 真硬件验收价值移交 D1 §9，依赖 D1 §3 footer 锁定的 "Windows ATClient fcntl → msvcrt 改造" 后续 PR 完成。完整说明见 acceptance.md § "Post-A2/D1 scope retraction"。 -->
 
 ## 4. spec deltas 归档前 dry-run
 
@@ -37,9 +37,9 @@
   - `at_client.py` 中 `local_clearing` → `manual_hangup`、`device_error` 兜底 → `network_out_of_order`
   - `tests/test_modem_dial.py` 断言更新；`tests/modem_serial/test_drivers.py` 断言更新；新建的 SerialATClient 测试断言更新
   - `call-state-machine` spec delta 加新 Requirement「hangup_cause 单一来源」，明确 `isales_common.enums.HangupCause` 为唯一权威枚举，禁止平行词汇表；scenarios 列出 GSM-side / 应用层完整枚举值集合，并把 `manual_hangup` 排除出 retry-followup 重试列表
-- [ ] 4.4 验收 log（含 PR #1/#2/#3 commit hash + 真硬件 5 通通话记录 + 完整 `pytest` 结果）写到 `openspec/changes/impl-real-at/acceptance.md`（与 impl-deploy-macos 12.x acceptance 同格式）—— **依赖 3.4 真硬件验收完成**
+- [x] 4.4 验收 log 写到 `openspec/changes/impl-real-at/acceptance.md`（与 impl-deploy-macos 12.x acceptance 同格式）—— 含 PR `fa3167c`/`3c7ffe8`/`acff6aa` 三个 commit ref + 单元测试结果（11 + 50 passed，as-landed in PR `fa3167c` on Linux/macOS rig；Windows 重跑因 `import fcntl` 阻塞，由 D1 后续 PR 解锁）+ scope retraction 说明 + 真硬件 5 通记录 deferred-to-D1 cross-link。**字面满足 3.4 + 5 通通话记录的部分由 D1 §9 acceptance.md 承担**
 
 ## 5. 收尾
 
-- [ ] 5.1 跑 `openspec archive impl-real-at` 把 change 归档到 `openspec/changes/archive/2026-MM-DD-impl-real-at/`
-- [ ] 5.2 更新 `openspec/v1-roadmap.md`：把 A1 状态从 "待开" 标记为 "已归档"，给下一步 A2 `arch-cloud-edge-split` 留 propose 指引
+- [ ] 5.1 跑 `openspec archive impl-real-at` 把 change 归档到 `openspec/changes/archive/2026-MM-DD-impl-real-at/` —— **待用户触发 `/opsx:archive impl-real-at` skill**
+- [x] 5.2 更新 `openspec/v1-roadmap.md`：A1 状态注 "已 ship + 归档（hardware acceptance deferred to D1 §9）"；A2 propose 指引（A2 已 propose & impl-in-progress，不再需要新指引）

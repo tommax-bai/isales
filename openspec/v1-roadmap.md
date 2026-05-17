@@ -222,6 +222,15 @@ openspec capabilities / 依赖前置 change**。`spec deltas` 指 `openspec/chan
 ### A. 技术地基
 
 #### change A1 — `impl-real-at`
+
+> **Status 2026-05-17**：代码 / 单测 / spec deltas 全部 ship（PR `fa3167c` /
+> `3c7ffe8` / `acff6aa`，11 + 50 unit + integration tests passed as-landed），
+> acceptance.md 已写，**待 `/opsx:archive impl-real-at` 触发归档**。task §3.4
+> 真硬件 5 通验收 **deferred 至 D1 `windows-client-core` §9** —— A2 + D1 把 v1.0
+> prod 路径重定向为 "Aliyun ECS + Windows 边缘"，modem-controller 在 prod 只跑
+> Windows，A1 原计划的 Linux/macOS 硬件验收已无 prod 价值。完整说明见
+> `openspec/changes/impl-real-at/acceptance.md` § "Post-A2/D1 scope retraction"。
+
 - **问题**：modem-controller `main.py` 硬编码 `MockATClient`，engine 调用通过
   Protocol 但实际没真打通 modem，整套 AI 外呼 = 纸面。
 - **方案**：实现 `SerialATClient` 桥接 `drivers.ModemDriver`（已存在的 AT

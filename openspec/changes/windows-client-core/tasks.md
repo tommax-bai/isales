@@ -79,6 +79,8 @@
 ## 9. 端到端验证（与 A2 联合 MVP）
 
 > **执行者：用户 / QA**。本节是真硬件 + 真手机 + 真 SIM + 真云端联合 MVP 验证，等到 A2 云端 ship + Section 1/2 硬件就绪后跑。9.6 Defender 绕过步骤已在 README.md FAQ Q1 预先写入，硬件验收时只需把实测拦截行为补进 FAQ。
+>
+> **本节同时承担 A1 `impl-real-at` §3.4 deferred 硬件验收**（archive 在 2026-05-17 提前归档时显式 cross-link 过来）。具体增量：在 9.3 端到端的 happy-path 之外，**额外**采 3 通 `SerialATClient` 直接调 `scripts/at_smoke.py` 的 hangup_cause 样本——1 通脚本主动挂断（`manual_hangup`）+ 1 通对方不接（`no_answer`）+ 1 通对方按忙线/拒接（`user_busy`），事件流写到 `windows-client-core/acceptance.md`，并反向 cross-link 到 `archive/2026-MM-DD-impl-real-at/acceptance.md` § "Out-of-scope deferred items"。前置依赖：§3 footer 锁定的 "Windows ATClient 去 fcntl" 后续 PR 必须先落（让 `SerialATClient` 在 Windows 可 import）。
 
 - [ ] 9.1 干净 Windows PC 上：解压打包 zip → 跑 install.ps1 → tray app 自动起 → 弹激活码对话框 → 输码 → tray 转绿
 - [ ] 9.2 插 GSM modem → tray app 检测到 → modem-controller 初始化 + audio device 配对
