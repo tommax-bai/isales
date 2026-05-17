@@ -246,6 +246,57 @@ A2 时点边缘进程状态简化为：
 - "查看日志" → 在文件资源管理器打开 `%APPDATA%\isales\logs\`
 - "退出"
 
+### Decision 7：串口独占访问 = platform-aware shim（POSIX `fcntl.flock` / Windows OS exclusive open）
+
+**问题来源**：A1 `impl-real-at`（archived 2026-05-17）的 `SerialATClient` 在 `at_client.py:24` 顶层 `import fcntl`；`fcntl` 是 Unix-only stdlib，Windows 上 pytest 直接 collect 失败，5 个测试文件（`tests/modem_serial/test_serial_at_client.py` / `tests/test_modem_dial.py` / `tests/test_modem_pump_cancel.py` / `tests/test_fake_modem_e2e.py` / `tests/edge/test_orchestrator.py`）全挂；D1 §9 真硬件验收（含 A1 §3.4 deferred 的 5 通 `SerialATClient` 直接调）必须先解决这一阻塞。
+
+**平台行为差异**（事实层）：
+
+```
+平台                                 多进程开同一串口的 OS 默认行为
+─────────────────────────────────────────────────────────────────
+Linux /dev/ttyUSB*                  允许并发 open；需显式 fcntl.flock 锁
+macOS /dev/cu.usbmodem*             允许并发 open；同上
+Windows COM* / \\.\COM*             OS 层默认独占（CreateFile 不带
+                                    FILE_SHARE_* flag → dwShareMode=0），
+                                    第二个 open 直接 PermissionError(13)
+```
+
+**选项**：
+
+- (A) 抽 `isales_telephony/modem_controller/platforms/serial_lock.py` 一层（`sys.platform` dispatch；POSIX 走 lazy `import fcntl` + `flock`；Windows no-op handle + open-time `PermissionError` 翻译为 `BusyDeviceError`）← **选定**
+- (B) `msvcrt.locking` byte-range lock（Windows stdlib）：`msvcrt.locking` 为 disk file 设计、要求可 seek + nbytes 参数；COM 端口 handle 在这个 API 上的行为未定义，Python 文档未覆盖 → ✗ 拒绝
+- (C) `try: import fcntl except ImportError: fcntl = None` + 每处调用点 `if fcntl is not None:` 守卫：`at_client.py` 内 3 处碰 fcntl（顶层 import + `LOCK_EX` + 2 处 `LOCK_UN`），守卫会散到 3 处；与既有 `platforms/get_usb_watcher_class()` 抽象层风格不一致 → ✗ 拒绝
+
+**采纳 (A) 的理由**：
+
+- 与 modem_controller PR #2/#6 已落地的 `platforms/` 抽象层形态对齐——`sys.platform` dispatch + lazy import + 业务代码不感知平台分支（`get_usb_watcher_class()` 是同模式的先例）
+- surface area 极小（`acquire_exclusive` + `release` + `BusyDeviceError` 共 3 个 export），函数级抽象就够，不引 ABC
+- `BusyDeviceError` 在两个平台都从 `platforms/serial_lock.py` 抛出，调用方对"竞争失败"只有一处错误处理路径
+- POSIX 路径行为字面不变（`flock(LOCK_EX | LOCK_NB)` + `BlockingIOError` → `BusyDeviceError`），A1 已落地的 11 个 SerialATClient 单测 + 5 个跨模块测试零回归
+
+**Windows 路径的非显式锁语义**：
+
+`SerialATClient.create_from_tty()` 在 Windows 上的"取独占"动作 = 把 pyserial 的 access-denied 类异常翻译为 `BusyDeviceError`：
+
+```python
+# Pseudocode — actual implementation in 3.7+
+try:
+    reader, writer = await serial_asyncio.open_serial_connection(url=tty_path, ...)
+except PermissionError as exc:           # OS-level exclusive open conflict
+    raise BusyDeviceError(...) from exc
+except SerialException as exc:           # pyserial 包装的 access-denied
+    if "Access is denied" in str(exc) or isinstance(exc.__cause__, PermissionError):
+        raise BusyDeviceError(...) from exc
+    raise RuntimeError(f"failed to open {tty_path}: {exc}") from exc
+# OS 已经独占了 → Windows handle = None（platforms.serial_lock 实现层无副作用）
+handle = serial_lock.acquire_exclusive(fd=None, tty_path=tty_path)  # returns None on win32
+```
+
+POSIX 路径不变：`serial_asyncio.open_serial_connection` 成功 → 拿 fd → `serial_lock.acquire_exclusive(fd, tty_path)` 内部 `flock(LOCK_EX | LOCK_NB)` → 失败抛 `BusyDeviceError`。
+
+**spec delta 形态**：device-hardware spec § "URC → ATEvent 翻译契约" / "串口竞争互斥" Scenario 由 D1 `MODIFIED Requirements` 段全 Requirement 重写（OpenSpec delta 不支持 Scenario-only MODIFIED），新 body 把 fcntl 退到 POSIX-only 子句、补 Windows OS exclusive open 子句、显式约定 `serial_lock.py` 是跨平台抽象单一来源。
+
 ## Risks / Trade-offs
 
 - **[sounddevice WASAPI 实际延迟未实测]** → impl 阶段第一步：写最小脚本（capture → 立即 playback loopback）测端到端延迟。如 P95 > 50 ms，design Decision 3 接受切到 WASAPI Exclusive Mode 或换 PyAudioWPatch；如 > 200 ms 视为 backend 不可用，重新评估。

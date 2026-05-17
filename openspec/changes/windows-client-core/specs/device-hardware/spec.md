@@ -63,3 +63,39 @@ modem-controller 在 Windows 上 SHALL 维护一份 USB GSM modem 白名单（�
 
 - **WHEN** 一个 COM 端口被识别为 GSM modem
 - **THEN** modem-controller SHALL 顺序发 `AT+CGMI`（厂商）/ `AT+CGMM`（型号）/ `AT+CGSN`（IMEI）/ `AT+CCID`（ICCID）等 AT 命令完成设备元数据登记；初始化失败（无响应 / 错误响应）SHALL 标记 device status = `error` 而非 `idle`，并通过 cloud-edge gRPC 上报 `HardwareAlert{kind="modem_init_failed"}`
+
+## MODIFIED Requirements
+
+### Requirement: URC → ATEvent 翻译契约
+
+`SerialATClient.dial()` SHALL 在 ATD 命令被 modem 接受（OK ACK）后立即返回 `(call_id, AsyncIterator[ATEvent])`；事件流 MUST 由后台协程订阅 `AtClient` 的 URC 通道（通过 `on_urc()` 回调或等价机制）翻译串口 URC 为 `ATEvent` 实例。
+
+#### Scenario: ATD ACK 不触发 connected 事件
+
+- **WHEN** `SerialATClient.dial(number)` 被调用，`ModemDriver.dial()` 返回 `DialResult(connected=True)`
+- **THEN** `SerialATClient` MUST NOT 立即 yield `ATEvent("connected", ...)`；MUST 仅返回 `call_id` 与事件流，并等待真正的 CONNECT URC 到达后才 yield connected 事件
+- ATD 命令被 modem 拒绝（`DialResult(connected=False)` 含 `hangup_cause`）时 MUST 立即 yield `ATEvent("remote_hangup", call_id, cause=<DialResult.hangup_cause>)` 并结束事件流
+
+#### Scenario: 接通 URC 翻译
+
+- **WHEN** AtClient URC 通道推出表示对端接听的信号（A7670 默认是 `+CIEV` 的语音呼叫激活通知；不同 vendor 可能用 `CONNECT` 等价 token）
+- **THEN** 事件流 MUST yield 一次 `ATEvent("connected", call_id)`；同一通话生命周期内 MUST NOT 重复 yield connected；若 vendor 不主动推该 URC（例如某些固件只在响铃后短暂的 OK 之后才推），实现 MAY 用 vendor driver 子类内的 polling 兜底（如周期性 `AT+CLCC` 查询活动呼叫状态），但 SHALL NOT 把 ATD 命令本身的 OK ACK 当作 connected 信号
+
+#### Scenario: 远端挂断 URC 翻译与 cause 映射
+
+- **WHEN** AtClient URC 通道推出 `NO CARRIER` / `BUSY` / `NO ANSWER` / `NO DIALTONE` 等远端挂断 URC
+- **THEN** 事件流 MUST 用 `drivers.HANGUP_CAUSE_MAP` 把原始 URC token 映射为 `hangup_cause` 值（见 `isales_common.enums.HangupCause`（`user_hangup` / `user_busy` / `no_answer` / `network_out_of_order` / `temporary_failure` / `normal_clearing` / `call_rejected`）），yield `ATEvent("remote_hangup", call_id, cause=<mapped>)` 并结束事件流；映射缺失 MUST 落到 `network_out_of_order`（保守归类为网络层问题，retry-followup 会触发重试）
+- 若需要更精细 cause 区分（如把 `+CEER: 41`（Temporary failure）从 fallback 的 `network_out_of_order` 升级到精确的 `temporary_failure`），driver 子类 MAY 在 URC 到达后异步触发 `AT+CEER` 查询并把 `+CEER` cause code 经 `HANGUP_CAUSE_MAP` 二次映射；该路径属增强能力，v1 不要求
+
+#### Scenario: 本端主动挂断
+
+- **WHEN** `SerialATClient.hangup(call_id)` 被调用
+- **THEN** 实现 MUST 调 `ModemDriver.hangup()` 发 ATH / `+CHUP`；事件流 MUST yield `ATEvent("remote_hangup", call_id, cause="manual_hangup")` 并结束；该 cause 值 SHALL 加入 `call-state-machine` 的 hangup_cause enum（见对应 spec delta）
+
+#### Scenario: 串口竞争互斥
+
+- **WHEN** 同一串口设备（POSIX 平台 `/dev/ttyUSB*` / `/dev/cu.usbmodem*`；Windows 平台 `COM*` / `\\.\COM*`）被另一个进程已打开
+- **THEN** `SerialATClient` 构造时 MUST 通过 platform-appropriate exclusive access 取得独占；任一平台竞争失败 MUST 抛 `BusyDeviceError` 并阻止进程启动；deploy 层 SHALL 确保 modem-controller 单实例
+  - POSIX 平台（Linux / macOS）：`fcntl.flock(LOCK_EX | LOCK_NB)` 显式 flock 锁；`BlockingIOError` MUST 翻译为 `BusyDeviceError`
+  - Windows 平台：依赖 OS-level exclusive open（`CreateFile` 不带 `FILE_SHARE_*` flag，pyserial 走默认 `dwShareMode = 0`），第二个 open 由 OS 直接拒绝；pyserial 抛出的 access-denied 类异常（`PermissionError` / `SerialException("Access is denied")` / 等价 `OSError(13, ...)`）MUST 由 `SerialATClient.create_from_tty` 单独识别并翻译为 `BusyDeviceError`，其他 open 失败（设备不存在 / 波特率不支持）继续走 `RuntimeError`
+- 跨平台抽象 SHALL 通过 `isales_telephony/modem_controller/platforms/serial_lock.py` 提供（`sys.platform` dispatch + lazy import；POSIX 实现持有 fd / Windows 实现返回 no-op handle）；`at_client.py` MUST NOT 在顶层 `import fcntl`（否则 Windows pytest collect 即失败）
