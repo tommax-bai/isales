@@ -397,25 +397,32 @@ openspec capabilities / 依赖前置 change**。`spec deltas` 指 `openspec/chan
 
 ### D. 边缘 Windows 客户端
 
-#### change D1 — `windows-client-core` *(2026-05-16: 代码 / 脚本 / 测试落地，待 PoC 周硬件 ship)*
+#### change D1 — `windows-client-core` *(2026-05-17: archived — 代码 / spec / hardware spike ship；§1/§2/§9 deferred 至 A2 联合 MVP)*
 - **问题**：A2 后边缘形态是 Mac mini，需要工程师上门部署；商用形态目标是
   客户员工自己装在自有 Windows PC 上。
 - **方案**：modem_controller / audio_pipe 增加 Windows backend：USB watcher
-  复用 PR #2 的 pyserial polling（Windows 原生有效）；audio backend 新增
-  `WindowsWASAPICapture/Playback`（sounddevice 透明走 WASAPI）；**技术栈用
-  PyInstaller + pystray + PySide6**——单一 Python 栈零迁移，pystray 做 tray
-  + 通知、PySide6 做诊断小窗口、qasync 融合 PySide6 主循环 + asyncio；进程
-  形态登录即启 tray app；激活码注册流程（启动时无身份 → 输码 → 调云
-  register → seat 绑定）。
-- **specs (deltas)**: `device-hardware`（Windows 平台 backend 契约）、
-  `deployment-topology`（Windows 边缘形态、安装路径、托管方式、单进程异步
-  架构）。
+  复用 PR #2 的 pyserial polling（Windows 原生有效）；audio backend 实测
+  推翻 USB Audio Class 假设 → `Decision 3` amend 改为 **SerialPcm-over-COM**
+  路径（modem MI_04 暴露为 `Class=Ports` 串口，按 SIMCom 私有 `AT+CPCMREG=1/0`
+  per-call 启停）；**技术栈用 PyInstaller + pystray + PySide6**——单一 Python
+  栈零迁移，pystray 做 tray + 通知、PySide6 做诊断小窗口、qasync 融合
+  PySide6 主循环 + asyncio；进程形态登录即启 tray app；激活码注册流程
+  （启动时无身份 → 输码 → 调云 register → seat 绑定）。
+- **specs (deltas)**: `device-hardware`（Windows 平台 backend 契约 +
+  SerialPcm-over-COM + CPCMREG lifecycle + 多 COM modem 识别 + 串口竞争互斥
+  跨平台抽象）、`deployment-topology`（Windows 边缘形态、安装路径、托管
+  方式、单进程异步架构）。已 sync 进 main specs。
 - **依赖**：A2（云-边接口）+ C2（激活码模型）。
-- **状态（2026-05-16）**：Section 3-8 + Section 10 文档全部落地（WASAPI
-  backend / tray + 激活码 UX / main_windows.py / PyInstaller spec + 部署
-  脚本 / Windows CI runner）；Section 1/2/9（硬件准备、PoC 周实测、端到端
-  联合 MVP 验证）等到员工买/借到一台 Windows PC + USB GSM modem 后跑。
-  归档触发条件：Section 1/2/9 全部勾上 + 跟 A2 联合 MVP 验收通过。
+- **状态（2026-05-17 archived）**：归档至
+  `openspec/changes/archive/2026-05-17-windows-client-core/`。Sections 3-8 +
+  Section 10 全部落地（PR #6 / #8 / #9 / #10 / #11 / #12 / #13）；Decision 3
+  amend 在 PR #13 把 WASAPI 替换为 SerialPcm-over-COM；硬件 spike 8/8 assert
+  对真 SIM7600G-H 命中（commit `aeff11e`）。**Sections 1/2/9 deferred 至 A2
+  联合 MVP**——硬件 PoC 周 + 真手机端到端验收依赖 A2 云端 ship + ARTC SDK
+  pybind production-grade，按 archive 通例（参考
+  `archive/2026-05-12-impl-deploy-macos` 把 12.4/12.5 deferred 给
+  `impl-real-at`）后续作为联合 MVP 验收 follow-up 处理，不阻塞 D1 归档。详
+  见 `archive/2026-05-17-windows-client-core/acceptance.md`。
 
 #### change D2 — `hardware-observability`
 - **问题**：D1 后 Windows 客户端能跑但是"哑客户端"——员工实际工作是硬件
