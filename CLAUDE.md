@@ -53,7 +53,15 @@ openspec status --change <name>         # progress on one change
 
 Each change folder contains `proposal.md` (why / what / impact), `design.md` (detail + tradeoffs), `tasks.md` (checklist with inline implementation notes), and `specs/<capability>/spec.md` deltas. Archived changes under `openspec/changes/archive/` are the source of truth for what's actually been built (the chronological `YYYY-MM-DD-<name>/` directories there encode the project's real history far better than git log alone).
 
-**`tasks.md` checkboxes are sign-in progress, not ground truth.** Before reporting any "X is pending / X is not done / X is blocked" for an in-flight change, verify against the actual artifact: `deploy/cloud/env/*.env` for cloud secrets / endpoints / SDK paths, `deploy/cloud/STATE.md § "v1.0 deployment posture"` and `§ "Next deployment steps"` for the authoritative cloud punch-list, `git log -S "<term>"` in the relevant sibling repo for code-level claims, and the most recent archived change's `acceptance.md` for what shipped. A `- [ ]` checkbox can survive long past the work being done; the env / state / commit log cannot lie. Cloud-side specifically: v1.0 is **IP-direct (`121.89.85.150`), no domain / no Let's Encrypt / no ICP** — the RUNBOOK §2.2 domain-and-TLS section is the v1.x future path, not a v1.0 task. STATE.md is canonical when RUNBOOK and OpenSpec disagree.
+**`tasks.md` checkboxes are sign-in progress, not ground truth.** Before reporting any "X is pending / X is not done / X is blocked" for an in-flight change, verify against the actual artifact:
+
+- `deploy/cloud/env/*.env` for cloud secrets / endpoints / SDK paths
+- **`deploy/cloud/STATE.md`** — authoritative ECS-side snapshot (services running, ports, alembic head, PAT on box, smoke verified). § "Bootstrap a new dev session" has 4 grep commands that verify each layer in ~40 s; a fresh session **MUST** run them before asserting any cloud-side state.
+- **`isales-telephony/deploy/edge/windows/STATE.md`** — authoritative Windows-dev-rig snapshot (Python 3.12 + CMake + VS BuildTools + ARTC SDK paths + pybind .pyd build state + SIM7600G-H modem state + cloud-edge smoke). Its § "Bootstrap a new dev session" has 5 PowerShell commands; run them before asserting any Windows-edge state.
+- `git log -S "<term>"` in the relevant sibling repo for code-level claims
+- The most recent archived change's `acceptance.md` for what shipped
+
+A `- [ ]` checkbox can survive long past the work being done; the env / state / commit log cannot lie. Cloud-side specifically: v1.0 is **IP-direct (`121.89.85.150`), no domain / no Let's Encrypt / no ICP** — the RUNBOOK §2.2 domain-and-TLS section is the v1.x future path, not a v1.0 task. **Both STATE.md files are canonical** when RUNBOOK / OpenSpec / memory disagree on cloud-vs-edge deployment state — they live next to the artifacts they describe, and each session that materially changes deployment state MUST update them in the same commit.
 
 Spec files use a strict format that `openspec validate` enforces: `## Requirements` → `### Requirement: ...` (with MUST/SHALL/SHOULD/MAY) → `#### Scenario:` blocks with `WHEN`/`THEN` bullets. Preserve this structure when editing.
 
