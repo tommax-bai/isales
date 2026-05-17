@@ -13,7 +13,7 @@ v1.0 SHALL 不引入任何开源 PBX；硬件控制 MUST 由自研 `modem-contro
 
 - **WHEN** 部署 v1.0
 - **THEN** isales-telephony 仓库 SHALL 提供单一边缘进程 entry point，进程内含以下 asyncio task：
-  - **modem-controller**：udev / pyserial polling + AT 命令通道 + PCM 设备 IO（macOS 平台用既有 macOS audio backend，Windows 由 D1 提供 WASAPI backend）
+  - **modem-controller**：udev / pyserial polling + AT 命令通道 + PCM 设备 IO（macOS 平台用既有 macOS audio backend，Windows 由 D1 提供 audio backend）
   - **audio-bridge**：阿里 ARTC SDK 客户端 + PCM 重采样 + 与 modem-controller 同进程环形 buffer 桥接
   - **cloud-edge gRPC client**：与云端 engine 维护 bidi stream + 本地 SQLite 离线 buffer
   - **telephony-api**（可选）：HTTP server 监听 loopback，提供本地设备查询接口（运维 / 本地 isales-web 使用，A2 后非云调用入口）

@@ -103,38 +103,66 @@ A2 的 modem_controller / audio_pipe 抽象层（platform backend ABC + asyncio 
 - D1 SHALL 通过 USB VID:PID + 顺序尝试 `AT` 试探（如果 VID:PID 在 known modem 列表）来判定哪个 COM 是 AT 通道
 - 音频通道在 Windows 上**不是**通过另一个 COM 端口取 PCM，而是通过 modem 在 Windows 注册的 audio device（部分 USB modem 注册为 USB Audio Class 1.0 输入输出设备）→ 见 Decision 3 第 2 段
 
-### Decision 3：音频 backend = sounddevice 透明走 WASAPI，PCM 帧 16 kHz / 16-bit / mono / 20 ms 框架
+### Decision 3：音频 backend = SerialPcm-over-COM（MI_04 audio 串口）默认；WASAPI 路径在 v1.0 不实现
+
+> **2026-05-17 amend 触发**：D1 PoC 实测 SIMCOM SIM7600G-H（v1.0 商用 SKU）+ Windows 10/11 上 modem **不注册任何 USB Audio Class endpoint**（`Get-PnpDevice -Class AudioEndpoint` 对该 modem 返回 ∅）。原 Decision 3 假设 "USB Audio Class 路径默认，主流 modem 都走这条" 在主 SKU 上字面错误。AT 通道（COM12）spike 同时确认 SIM7600G-H 走 SIMCom 私有 PCM 协议：**MI_04 接口（在 Windows 上以 `Class=Ports` 形式枚举为 audio COM 端口，本机实测 COM11）+ AT+CPCMREG=1/0 显式启停**。这条 amend 把原 (A) WASAPI 主路径降级为"v1.0 不实现"，新选 (E) SerialPcm 作主路径。原 Decision 3 文本完整保留为否决选项以便 archive 阶段 acceptance.md 引用完整故事。
 
 **选项**：
 
-- (A) sounddevice (PortAudio bindings) + WASAPI ← **选定**
-- (B) 直接调 Win32 WASAPI API（ctypes / pywin32）
-- (C) PyAudioWPatch（PyAudio 维护断档后的社区分支，加入 WASAPI loopback 等现代特性）
-- (D) PyAudio（原版）
+- (A) sounddevice (PortAudio bindings) + WASAPI ← **PoC 前选定，实测推翻**
+- (B) 直接调 Win32 WASAPI API（ctypes / pywin32） ← 排除（同 A，与 USB Audio Class 路径绑定）
+- (C) PyAudioWPatch（PyAudio 社区分支，WASAPI loopback 等） ← 排除（同 A）
+- (D) PyAudio（原版） ← 排除（同 A）
+- (E) SerialPcm-over-COM (MI_04 audio 串口) + AT+CPCMREG 启停 ← **现选定**
 
-**采纳 (A) 的理由**：
+**采纳 (E) 的理由**：
 
-- **跨平台抽象一致**：sounddevice 是 PortAudio Python bindings，PortAudio 在 Windows 上自动走 WASAPI（默认）/ MME / DirectSound，业务代码不感知；与 macOS 既有 sounddevice 用法对称
-- **延迟可控**：PortAudio + WASAPI Shared Mode 典型延迟 10-30 ms；Exclusive Mode 可压到 5-10 ms（独占设备，其他程序静音）。D1 默认 Shared Mode（兼容性更好，员工 PC 同时跑微信 / 浏览器不被静音）
-- **API 简单**：`sd.InputStream(samplerate=16000, channels=1, dtype='int16', callback=...)` 直接 callback 拿 PCM
-- 缺点：sounddevice 单进程内同设备并发开 stream 有时崩 → 强制单进程内一个 modem 只开一对 capture / playback stream
+- **v1.0 主 SKU 验证一致**：SIMCOM SIM7600G-H 在 Windows 实测**唯一**可行的音频 IO 路径——modem 把 MI_04 作 SIMCom 私有 USB endpoint 而非 USB Audio Class，Windows 枚举为 `Class=Ports`（与 AT / NMEA / Diagnostics 兄弟接口同形态），`sounddevice` / WASAPI / PortAudio **全部列不出**该设备
+- **AT 协议标准**：`AT+CPCMREG=1` 启用 PCM 字节流 / `AT+CPCMREG=0` 关闭，spike 实测 SIM7600G-H 固件 `LE20B04SIM7600G22` 上 `AT+CPCMREG=?` 返 `(0-1)`、no-call 状态发 `=1` 返 `ERROR`（确认 per-call lifecycle）；SIMCom 7000/7600/8200 系列均沿用该协议
+- **帧契约 modem-fixed**：spike 实测 `AT+CPCMFMT=?` 在 SIM7600G-H 当前固件返 `ERROR`（命令不存在），host 无配置项；按 SIMCom 应用手册 + GSM 物理通道标准统一为 8 kHz / 16-bit / LE / mono；与 `macos_coreaudio.py` / `linux_alsa.py` 既有 backend 的 8 kHz 帧约定**字面一致**（PR #9 的 `WindowsWASAPICapture` 已经按 8 kHz 实装，原 spec 16 kHz 措辞与 PR #9 deviation note 中点出过）
+- **依赖面收敛**：删 `sounddevice` / `PortAudio` Windows wheel 依赖（保留 macOS extras 仍用）；Windows extras 减一项；运行时不再依赖 PortAudio 在 Windows 上对 modem PCM 通道的能力假设
+- **故障模式更优**：原 WASAPI 路径 `_resolve_device_id()` fallback 到 `sd.default.device` 会**静默指向员工 PC 笔记本麦克风/扬声器**——这是 silent-wrong，没有 error，客户拿到一个"客户端起来了但 AI 听不到"的灾难体验；SerialPcm 路径若 audio 串口找不到 / CPCMREG 失败 / COM 端口被占，**全部硬 fail with HardwareAlert**
+- 缺点：与 macOS / Linux backend 不对称（前两者走 sounddevice，Windows 走 pyserial）→ backend abstraction 已用 Protocol（`CaptureBackend.read_chunk()`/`close()`），AudioPipe 不感知；缺点止于"代码风格不同"
+- 缺点：CPCMREG=1 必须在 call connected 之后发，比"backend 启动期常驻 stream"多一道编排——见 Decision 8 把这个 lifecycle 交给 orchestrator 而非 backend
 
-**排除 (B) 的理由**：自己写 ctypes 调 WASAPI 一千行代码 + 易踩 COM apartment / threading 坑；sounddevice 已经解决。
-
-**排除 (C/D) 的理由**：PyAudio 老 API、维护断档；PyAudioWPatch 不如 sounddevice 标准、社区小。
+**排除 (A)-(D) 的理由**（原 PoC 前理由作为否决记录）：四种 WASAPI 路径都依赖 modem 在 Windows 注册 USB Audio Class endpoint；v1.0 主 SKU SIM7600G-H 字面不满足前提，等价于"backend 启动即失败回退到笔记本默认音频"。如果未来引入显式注册 USB Audio Class 的 modem（社区报告 Huawei E398 / 部分 ZTE MF 系列在 Windows 注册标准 USB Audio Device），可在后续 change 重引入 WASAPI backend 作并列分支，**v1.0 范围不预留接口、不预留环境变量、不预留 dispatch hook**——按 CLAUDE.md "Don't design for hypothetical future requirements" 原则。
 
 **Windows USB GSM modem 音频路径**：
 
-部分 USB GSM modem 在 Windows 把音频通道暴露为标准 USB Audio Class（系统设备管理器里能看到"USB Audio Device"输入输出对）；部分老 modem 把音频走串口 PCM 数据帧（与 AT 通道复用 COM 端口）。D1 SHALL 同时支持两种：
+SIM7600G-H 类 SIMCom modem 在 Windows 把 MI_04 audio 接口暴露为**串口 COM 端口**（在 USB composite device 内与 AT/NMEA/Diagnostics 兄弟接口同 `Class=Ports`），其上承载的是 modem 私有 PCM 字节流协议（非 USB Audio Class、非 RNDIS、非 Mass Storage）。host 与 modem 的契约：
 
-- **USB Audio Class 路径**（默认，主流 modem 都走这条）：通过 sounddevice 选 modem 在 Windows 注册的音频设备 → WASAPI 拿 PCM；设备识别用 sounddevice 列举 + 名称模糊匹配（如包含 "Mobile" / "GSM" / VID:PID 关联）
-- **串口 PCM 路径**（兜底，给老 modem 用）：通过 pyserial 从 AT 通道之外的另一个 COM 端口取 PCM；A2 时点不强求实现，留给 D2 / D3 阶段补
+```
+┌────────────────────────────────────────────────────────────────────┐
+│              SerialPcm 通道的 per-call 生命周期                       │
+├────────────────────────────────────────────────────────────────────┤
+│                                                                    │
+│  AT PORT (COM12, MI_02)                                            │
+│    │                                                               │
+│    ├─ ATD<phone>;                  ─► modem 拨号                    │
+│    ├─ <CONNECT URC>                ─► call connected               │
+│    ├─ AT+CPCMREG=1                 ─► host 申请 PCM byte stream     │
+│    │       │                                                       │
+│    │       ▼                                                       │
+│  Audio Port (COM11, MI_04, Class=Ports)                            │
+│    ╔══════════════════════════════════════════════════════════════╗│
+│    ║   serial.Serial("COM11", baudrate=115200, timeout=0.020)    ║│
+│    ║   ◄── pcm_in  = ser.read(320)   # 160 samples × 2 bytes      ║│
+│    ║                                  # ≈ 20 ms @ 8 kHz int16 LE  ║│
+│    ║   ──► ser.write(pcm_out)         # 同帧契约                    ║│
+│    ╚══════════════════════════════════════════════════════════════╝│
+│    │                                                               │
+│    ├─ <NO CARRIER URC> / 本端 ATH ─► call ended                     │
+│    └─ AT+CPCMREG=0                  ─► host 释放 PCM byte stream    │
+│                                                                    │
+└────────────────────────────────────────────────────────────────────┘
+```
 
 **PCM 帧约定**（与 A2 audio-bridge 内部环形 buffer 约定一致）：
 
-- 上行 modem mic → audio-bridge：8 kHz / 16-bit / mono / 20 ms 帧（modem 原生）→ audio-bridge 重采样到 16 kHz
-- 下行 audio-bridge → modem speaker：16 kHz / 16-bit / mono / 20 ms 帧 → audio-bridge 重采样到 8 kHz
-- WASAPI capture / playback callback 帧长由 PortAudio 内部决定（典型 10-20 ms），audio-bridge 内做 chunk 拼接
+- 上行 modem mic → audio-bridge：**8 kHz / 16-bit / LE / mono / 20 ms 帧**（modem 物理通道原生，host 不配置）→ audio-bridge 内 `upsample_8k_to_16k` 重采样到 16 kHz
+- 下行 audio-bridge → modem speaker：16 kHz / 16-bit / LE / mono / 20 ms 帧 → audio-bridge 内 `downsample_16k_to_8k` 重采样到 8 kHz → 写入 audio COM
+- pyserial `serial.read(N)` 在 `timeout` 内阻塞返回最多 N 字节，N = 160 × 2 = 320 时自然产出 20 ms 帧；read 不需 callback、不需 PortAudio 时钟域，与 modem 8 kHz 物理时钟天然同步
+- 与 `macos_coreaudio.py` / `linux_alsa.py` 既有 backend 字面相同（同 8 kHz / 同 20 ms / 同 int16 LE / 同 mono）；AudioPipe 上层重采样代码零修改
 
 ### Decision 4：进程形态 = 单进程 asyncio + qasync + Windows 启动注册表 Run 项
 
@@ -297,9 +325,57 @@ POSIX 路径不变：`serial_asyncio.open_serial_connection` 成功 → 拿 fd �
 
 **spec delta 形态**：device-hardware spec § "URC → ATEvent 翻译契约" / "串口竞争互斥" Scenario 由 D1 `MODIFIED Requirements` 段全 Requirement 重写（OpenSpec delta 不支持 Scenario-only MODIFIED），新 body 把 fcntl 退到 POSIX-only 子句、补 Windows OS exclusive open 子句、显式约定 `serial_lock.py` 是跨平台抽象单一来源。
 
+### Decision 8：SerialPcm 生命周期 = orchestrator 在 call connected/teardown 时管 CPCMREG；backend 只做 byte stream IO
+
+**问题来源**：Decision 3 amend 后 audio backend 不再是启动期常驻 stream——`AT+CPCMREG=1` 必须在 modem 收到 CONNECT URC 之后发，no-call 状态 modem 返 ERROR（spike 实测）；`AT+CPCMREG=0` 必须在通话结束 / 远端挂断时发，否则 audio COM 端口持续 reserve modem 内部 DSP 资源直至下次重启。这与 PR #9 落地的 `_build_audio_backends()` "启动期构造、跨所有通话复用" 形态不一致。
+
+**选项**：
+
+- (A) backend 持 AT client 引用，暴露 `await open_for_call(call_id) / await close_for_call(call_id)`，内部发 CPCMREG ← 排除
+- (B) orchestrator 在 `_CallContext.setup` / `.teardown` 上发 CPCMREG，backend 保持纯 byte stream IO，只暴露 `read_chunk()` / `write_chunk()` / `close()` ← **选定**
+- (C) backend 在每次 `read_chunk()` 内 lazy ensure CPCMREG=1 ← 排除（每帧都查 AT 状态太重）
+
+**采纳 (B) 的理由**：
+
+- **关注切面对齐**：AT 命令是 modem-controller 已有的职责（`AtClient` / `SerialATClient` / `ModemDriver` 三层抽象都在 modem-controller 包内）；CPCMREG 是 AT 协议的一部分，归 AT 控制面而非 audio 数据面更顺
+- **backend 保持启动期单实例**：`_build_audio_backends()` 不需要改 lifecycle，仍是启动期开 audio COM 端口一次（pyserial `serial.Serial("COM11", ...)`），跨所有通话复用同一 file handle；CPCMREG=1 后 read/write 才有数据流，CPCMREG=0 后 read 阻塞直至下次 =1，pyserial 的 timeout 机制自然 absorb
+- **与 [[feedback-check-hardware-first]] 已确认的 EdgeOrchestrator hook 点对齐**：A2 既有 orchestrator 在 call connected/teardown 已经 wire 了 audio-bridge join/leave、jitter buffer 启停——CPCMREG 加进同一 hook 链是单点扩展
+- **避免 backend ↔ AT client 双向引用**：backend 持 AT client = 双向依赖 + 测试 mock 翻倍工作量；保持单向"orchestrator 调 backend + orchestrator 调 AT client"
+
+**排除 (A) 的理由**：backend → AT client 反向依赖污染 audio backend 的 Protocol（`CaptureBackend` / `PlaybackBackend` 现 surface 极简——`read_chunk()` / `close()`）；新增 `open_for_call(call_id)` 后 macOS/Linux backend 要 follow 实现 noop，spec 上"backend per-platform 同形态" 的约定打破。
+
+**排除 (C) 的理由**：高频路径（20 ms 一次 read）查 AT 状态机 = 浪费；CPCMREG 也不是 query-only 命令（=1 自身有 side effect）。
+
+**SerialPcm backend 与 orchestrator 协议**：
+
+```
+   EdgeOrchestrator._CallContext              SerialPcm{Capture,Playback}
+   ──────────────────────────────             ───────────────────────────
+   setup(call_id):                            __init__(serial_path, ...):
+     # call connected URC 已到                     # 启动期一次性 open
+     await at_client.cpcmreg_enable()                serial.Serial("COM11")
+     # ↑ 新增。AT+CPCMREG=1 → OK            ◄── read_chunk() 直接拿 PCM
+     audio_bridge.join_rtc()                  ── write_chunk() 写下行 PCM
+     audio_pipe.start_capture_playback()
+                                              # 通话期间 backend handle
+                                              # 一直 open，CPCMREG 二态 gate
+
+   teardown(call_id):
+     audio_pipe.stop()
+     audio_bridge.leave_rtc()
+     await at_client.cpcmreg_disable()
+     # ↑ 新增。AT+CPCMREG=0 → OK              # 跨通话 backend handle 不关
+                                              # 进程退出时才 close()
+```
+
+`at_client.cpcmreg_enable / cpcmreg_disable` 是 `AtClient` 上新增的 2 个 helper（薄包装 `send_command("AT+CPCMREG=1")` + 检查 `OK`），与 `AtClient.dial` / `.hangup` 同层。`ModemDriver` 子类可以 override 给非 SIMCom 协议变体（v1.0 不需要）。
+
+**Risk**：v1.0 之外的 modem SKU 可能不支持 CPCMREG（如 Huawei E398 走 USB Audio Class、Quectel EC200 用另一套 AT），等价于该 modem 不属于 v1.0 兼容 SKU。spec 上 SHALL 把 "AT+CPCMREG 支持" 作为 D1 v1.0 modem SKU 准入条件之一，未来扩 SKU 时单开 change 评估。
+
 ## Risks / Trade-offs
 
-- **[sounddevice WASAPI 实际延迟未实测]** → impl 阶段第一步：写最小脚本（capture → 立即 playback loopback）测端到端延迟。如 P95 > 50 ms，design Decision 3 接受切到 WASAPI Exclusive Mode 或换 PyAudioWPatch；如 > 200 ms 视为 backend 不可用，重新评估。
+- **[原 sounddevice WASAPI 实际延迟未实测]** → **已废止**（Decision 3 amend 2026-05-17）。PoC 实测推翻 USB Audio Class 假设，WASAPI 路径退场。
+- **[SerialPcm-over-COM 实际延迟未实测]** → impl 阶段第一步（替代原 WASAPI loopback 测试）：写最小脚本（`AT+CPCMREG=1` 后 `pyserial.read(320)` × N 同时 `.write(pcm_silence)` × N，测 modem → 远端 echo → modem 端到端延迟），目标 P95 ≤ 50 ms 与 spec § "音频延迟 SLA" 一致。pyserial 在 Windows 上典型 read 调度延迟 < 5 ms（modem 内部 8 kHz buffer 决定主延迟），预期落在 SLA 内；若超 200 ms 视为 SerialPcm 路径不可用，重新评估 SKU 或 USB driver 版本。
 - **[ARTC SDK Windows DLL 与 PyInstaller 打包]** → ARTC SDK Windows native 是一组 `.dll` + Python wrapper；PyInstaller `binaries` 节显式加 DLL，`hidden imports` 加 wrapper 模块；运行时验证 `sys._MEIPASS` 解压目录的 DLL 可加载。如失败，回退到"不 freeze，发 zip + venv 套件"（A2 时点可接受，D3 阶段彻底解决）。
 - **[Windows Defender / SmartScreen 拦未签名 exe]** → 已知问题；D3 EV 签名解决；D1 范围给员工 RUNBOOK 教如何右键"允许"或临时关闭 SmartScreen 启发式检查；如客户机器有企业级 AV 拦严，部署受阻 → 这种客户走"装 macOS Mac mini 工程师部署"老路径作为 fallback（已有 impl-deploy-macos 套件）
 - **[pystray + qasync + PySide6 三者协作的踩坑]** → 已有社区方案（搜 "pystray qasync PySide6"），但小众；impl 阶段做最小 demo（tray icon + 弹 Qt 窗口 + asyncio task 跑 1000 次 sleep）验证三者能共存 1 小时无 crash；如有阻塞性问题，备选方案 = pystray 不用，改为 Qt6 `QSystemTrayIcon`（PySide6 自带 tray API），但代价是 tray 弹通知能力下降 / 跨平台失去
@@ -315,11 +391,12 @@ D1 是**纯新增**，没有 production Windows 客户端要迁移。impl 阶段
    - 装 VS Build Tools（PyInstaller / sounddevice / pywin32 编译依赖）
    - 装 Wireshark + 阿里 RTC 控台 SDK 下载
 2. **第一周（PoC 性质）**：
-   - 实测 sounddevice WASAPI loopback 延迟
+   - 实测 SerialPcm-over-COM 延迟（`AT+CPCMREG=1` + audio COM 端口 read/write loop；原 sounddevice WASAPI loopback 任务因 Decision 3 amend 已废止）
    - 实测 pyserial polling 列举 COM + AT 试探
    - 实测 pystray + qasync + PySide6 三者共存（10 分钟无 crash 即过关）
    - 实测 PyInstaller 打包 + ARTC SDK DLL 加载
    - 上述实测如有 1 项不达标，**触发 design.md 对应 Risk 的备选方案**，本文档对应章节更新
+   - **note**：Decision 3 amend 本身就是 PoC week 1 第一条任务的产物——2026-05-17 实测 SIM7600G-H 不注册 USB Audio Class endpoint，触发 design.md Decision 3 + spec § "USB GSM modem 音频设备路径" 反转，详见 amend 注记
 3. **第二周（Windows backend 接入既有抽象层）**：
    - `windows_serial.py` + `windows_wasapi.py` 实现，跑 modem-controller 单测
    - audio-bridge 在 Windows 上跑通 ARTC SDK 入会 + PCM 推送（QA 环境）
@@ -336,7 +413,7 @@ D1 是**纯新增**，没有 production Windows 客户端要迁移。impl 阶段
 ## Open Questions
 
 1. **pystray 在 Windows 11 新 tray UI（隐藏 vs 显示）下的表现**：Win11 默认折叠所有 tray icon 到一个箭头里；用户需要手动"始终显示" → 这影响员工首次体验。impl 阶段写入注册表 `HKCU\Control Panel\NotifyIconSettings\<UID>` 让 icon 默认始终显示？还是接受首次需要用户手动配置？→ 先实测看默认行为
-2. **WASAPI Exclusive Mode 是否需要做成可配置**：Exclusive Mode 延迟低但独占设备（员工 PC 同时跑微信会议等会被静音）。默认 Shared Mode 保兼容性 + 提供 env `ISALES_WASAPI_MODE=exclusive` 切到独占？→ 倾向是，但 D1 先实现 Shared Mode、Exclusive Mode 留 D2 / D3 调优时再加
+2. ~~**WASAPI Exclusive Mode 是否需要做成可配置**~~ → **已废止**（Decision 3 amend）。WASAPI 路径在 v1.0 不实现，相关 env `ISALES_WASAPI_MODE` 在 amend 后续 task §4.11 一并移除。
 3. **PyInstaller onefile vs onedir**：onefile 启动慢但单 exe；onedir 启动快但用户看到 _internal 目录可能误删 → 倾向 onedir + 用户手册说明（D3 MSI 后变成"安装目录"用户无感知）
 4. **Windows 多用户 PC**：D1 用 HKCU，每个用户独立 token；如果两用户同时登录 → 两进程同时跑 → 都连云端 → 都拿同一 token？这违反 cloud-edge bearer token "一边缘机一 token" 假设。 → v1.0 文档约定 "员工 PC 单用户使用"，多用户场景拒绝支持，由 C2 seat 模型解决
 5. **激活码运维下发流程**：D1 时点云端 isales-api 是否暴露 "签发边缘 token" 按钮？还是 boss 自己跑 Python 脚本生成？→ 倾向 D1 时点用脚本（minimum viable），C1 boss console 时把按钮加进去

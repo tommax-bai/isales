@@ -2,9 +2,11 @@
 
 ### Requirement: Windows 平台 backend
 
-边缘 isales-telephony 进程在 Windows 10 21H2+ / Windows 11（x64）上 SHALL 通过 `isales_telephony/modem_controller/platforms/windows_serial.py` 与 `isales_telephony/audio_pipe/platforms/windows_wasapi.py` 两个 Windows-specific 模块提供 USB watcher 与音频 IO 实现。本 Requirement 补完 A2 `arch-cloud-edge-split` 中 "Windows backend 由 D1 提供" 占位。
+边缘 isales-telephony 进程在 Windows 10 21H2+ / Windows 11（x64）上 SHALL 通过 `isales_telephony/modem_controller/platforms/windows_serial.py`（USB watcher）与 `isales_telephony/modem_controller/audio/windows_serial_pcm.py`（音频 IO）两个 Windows-specific 模块实现。本 Requirement 补完 A2 `arch-cloud-edge-split` 中 "Windows backend 由 D1 提供" 占位。
 
-Windows backend 与 macOS / Linux backend 共享相同的 platform ABC（`UsbWatcherBackend` / `AudioCaptureBackend` / `AudioPlaybackBackend`），上层 modem-controller / audio-bridge 业务逻辑 MUST NOT 因平台不同而分支判断。
+Windows backend 与 macOS / Linux backend 共享相同的 platform Protocol（`CaptureBackend.read_chunk()`/`close()` 与 `PlaybackBackend.write_chunk()`/`close()`，定义在 `modem_controller/audio_pipe.py`），上层 modem-controller / audio-bridge 业务逻辑 MUST NOT 因平台不同而分支判断。
+
+> **2026-05-17 amend**：原 Requirement 体下的 "WASAPI 音频 backend 默认 Shared Mode" / "音频帧格式" / "USB GSM modem 音频设备路径" 三个 Scenario 基于 "modem 在 Windows 注册 USB Audio Class endpoint" 假设；D1 PoC 实测 SIM7600G-H + Windows 10/11 完全无 USB Audio Class endpoint，假设字面失效。三个 Scenario 由本 amend 反转为 SerialPcm-over-COM 路径，windows_wasapi.py 在 v1.0 不实现。详见 design.md Decision 3 amend + 新增 Decision 8。
 
 #### Scenario: USB watcher 实现策略
 
@@ -17,33 +19,46 @@ Windows backend 与 macOS / Linux backend 共享相同的 platform ABC（`UsbWat
 
 #### Scenario: 多 COM 端口 modem 识别
 
-- **WHEN** 一个 USB GSM modem 在 Windows 上枚举出多个 COM 端口（AT 通道 / PCM 通道 / 调试通道，常见于华为 E398 类多模 modem）
-- **THEN** `windows_serial.py` SHALL 用 AT 试探判定 AT 通道（哪个 COM 返回 `OK`）；非 AT 通道 SHALL 忽略，MUST NOT 把它们当 modem 候选；PCM 音频在 Windows 上通过另外的设备路径取（见下条 USB Audio Class）而非 PCM 通道 COM 端口
+- **WHEN** 一个 USB GSM modem 在 Windows 上枚举出多个 COM 端口（AT 通道 / Audio PCM 通道 / 诊断通道 / NMEA 通道，典型如 SIMCom 7600 系列 5-COM composite）
+- **THEN** `windows_serial.py` SHALL 用 AT 试探判定 AT 通道（哪个 COM 返回 `OK`）；非 AT 通道 SHALL 不被当作 AT modem 候选；Audio PCM 通道（pyserial `description` 字段含 `Audio` 子串、与 AT 通道同 USB composite serial number / 同 VID:PID）SHALL 被识别并以 `audio_serial_path` 字段随 modem identity 一并 emit，供 SerialPcm backend 构造使用
 
-#### Scenario: WASAPI 音频 backend 默认 Shared Mode
+#### Scenario: SerialPcm-over-COM 音频 backend
 
 - **WHEN** Windows 边缘进程启动音频 capture / playback
-- **THEN** `windows_wasapi.py` SHALL 通过 `sounddevice`（PortAudio bindings）开 WASAPI stream；默认 Shared Mode（兼容员工 PC 同时跑微信 / 浏览器 / 视频会议）；MAY 通过 env `ISALES_WASAPI_MODE=exclusive` 切换到 Exclusive Mode（独占设备，延迟更低）；MUST NOT 使用 MME / DirectSound / WDM-KS 等老 API
+- **THEN** `windows_serial_pcm.py` SHALL 通过 `pyserial` 打开 modem 的 audio COM 端口（由 USB watcher 识别得到的 `audio_serial_path`），配置 `baudrate=115200, timeout≈0.020, bytesize=8, parity=N, stopbits=1`；MUST NOT 使用 sounddevice / PortAudio / WASAPI / MME / DirectSound 任何 Windows 音频 API
+- audio COM 端口本身 SHALL 在进程启动期一次性 open（与 AT 通道同时），跨所有通话复用同一 file handle；进程退出时 close
 
 #### Scenario: 音频帧格式
 
-- **WHEN** WASAPI capture 回调触发或 playback 推流
-- **THEN** capture stream SHALL 配置为 16 kHz / 16-bit / mono / 输入帧长由 PortAudio 决定（典型 10-20 ms），audio-bridge 内 chunk 拼接为 20 ms 帧；playback stream SHALL 接受 16 kHz / 16-bit / mono PCM 输入；与 modem 物理通道之间的 8 kHz ↔ 16 kHz 重采样由 audio-bridge 内完成（既有 A2 audio-bridge 重采样路径）
+- **WHEN** SerialPcm capture 读取或 playback 推流
+- **THEN** capture SHALL 以 8 kHz / 16-bit / LE / mono / 20 ms 帧（160 samples = 320 字节）为单位 read；playback SHALL 接受同帧格式 PCM 字节流 write；与 audio-bridge 之间的 8 kHz ↔ 16 kHz 重采样由 `modem_controller/audio_pipe.py` 内既有 `upsample_8k_to_16k` / `downsample_16k_to_8k`（与 macOS / Linux backend 共用路径）完成
+- host MUST NOT 假设可通过 AT 命令配置帧格式：SIMCOM SIM7600 系列在主流固件（含本机实测 `LE20B04SIM7600G22`）上 `AT+CPCMFMT=?` 返 `ERROR`，帧格式 modem-fixed；其他兼容 SKU MUST 以同帧约定接入
 
 #### Scenario: USB GSM modem 音频设备路径
 
 - **WHEN** Windows 边缘进程对接 USB GSM modem 音频
-- **THEN** v1.0 SHALL 走"USB Audio Class"路径（modem 在 Windows 注册为标准音频输入输出设备，通过 sounddevice 列举音频设备 + 名称模糊匹配 / VID:PID 关联选中）；MAY 在后续 change 中补充"串口 PCM 数据帧"路径（兜底给老 modem）；本 change 不强求实现串口 PCM 路径
+- **THEN** v1.0 SHALL 走 **SerialPcm-over-COM** 路径——modem 在 Windows composite USB device 内把 audio 接口（典型 SIMCom MI_04）暴露为 `Class=Ports` 串口而非 USB Audio Class endpoint；host 通过 pyserial 在该 COM 端口 read / write 原始 int16 LE PCM 字节流
+- v1.0 MUST NOT 走 "USB Audio Class / WASAPI / sounddevice" 路径：D1 PoC 实测 v1.0 主 SKU SIM7600G-H 在 Windows 上 `Get-PnpDevice -Class AudioEndpoint` 对该 modem 返回 ∅；WASAPI fallback 会静默切到员工 PC 笔记本麦克风/扬声器，构成 silent-wrong 故障模式
+- 未来如引入显式注册 USB Audio Class endpoint 的 modem SKU（社区报告华为 E398 / 部分 ZTE MF 系列），MAY 在后续 change 单独评估重引入 WASAPI backend 作并列分支；v1.0 范围 MUST NOT 预留 env / dispatch hook / dual-backend abstraction
+
+#### Scenario: PCM 通道按 SIMCom AT 协议启停（CPCMREG）
+
+- **WHEN** modem 收到 CONNECT URC（call connected）或 NO CARRIER URC（远端挂断）/ 本端 ATH
+- **THEN** EdgeOrchestrator 的 `_CallContext` 生命周期 SHALL：
+  - 在 connected 之后、`audio_bridge.join_rtc()` 之前发 `AT+CPCMREG=1`（启用 audio COM 端口 PCM 字节流），收到 `OK` 才进入下一步；收到 `ERROR` MUST 上报 `HardwareAlert{kind="pcm_enable_failed"}` 并触发挂断
+  - 在 teardown 时 `audio_bridge.leave_rtc()` 之后发 `AT+CPCMREG=0`（释放 PCM 字节流）；该命令失败 SHALL 记 warning log 但 MUST NOT 阻塞 teardown
+- audio backend `SerialPcm{Capture,Playback}.read_chunk()` / `write_chunk()` 在 CPCMREG=0 期间自然返回 0 字节 / 超时（pyserial timeout 机制），MUST NOT 抛异常
+- `AtClient` SHALL 新增 `cpcmreg_enable()` / `cpcmreg_disable()` 两个 helper，与 `dial()` / `hangup()` 同层；其他 modem SKU 接入时若 AT 协议不同，由 `ModemDriver` 子类 override 这两个 helper
 
 #### Scenario: 音频延迟 SLA
 
 - **WHEN** 边缘进程在 Windows 上跑通常通话
-- **THEN** WASAPI capture / playback 端到端延迟（从 modem mic 采样到 audio-bridge 拿到 PCM；以及反向 audio-bridge push 到 modem speaker 输出）P95 SHALL ≤ 50 ms；如不达标，impl 阶段 MAY 切到 WASAPI Exclusive Mode 或更小的 buffer size；持续不达标 MUST 上报 `HardwareAlert` 并触发挂断
+- **THEN** SerialPcm capture / playback 端到端延迟（从 modem mic 采样到 audio-bridge 拿到 PCM；以及反向 audio-bridge push 到 modem speaker 输出）P95 SHALL ≤ 50 ms；如不达标，impl 阶段 MAY 调小 pyserial read timeout 或减小 chunk 帧数；持续不达标 MUST 上报 `HardwareAlert` 并触发挂断
 
 #### Scenario: Windows backend 不影响 macOS / Linux backend
 
 - **WHEN** 实施 D1
-- **THEN** `isales_telephony/modem_controller/platforms/macos_*.py` 与 `isales_telephony/audio_pipe/platforms/macos_*.py`（已 ship）MUST 不被修改；platform 选择 SHALL 在边缘进程启动时根据 `sys.platform` 自动决定，MUST NOT 通过环境变量强制覆盖
+- **THEN** `isales_telephony/modem_controller/platforms/macos_*.py` 与 `isales_telephony/modem_controller/audio/{macos_coreaudio,linux_alsa}.py`（已 ship）MUST 不被修改；platform 选择 SHALL 在边缘进程启动时根据 `sys.platform` 自动决定，MUST NOT 通过环境变量强制覆盖
 
 ### Requirement: Windows USB GSM modem 设备识别
 
