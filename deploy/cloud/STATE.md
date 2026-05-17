@@ -1,6 +1,6 @@
 # cloud deployment — current state snapshot
 
-**Last updated**: 2026-05-17 (ARTC Linux SDK vendored; previous: interactive provisioning session)
+**Last updated**: 2026-05-17 (v1.0 posture clarified: IP-direct, no domain; ARTC Linux SDK vendored)
 
 This file is a **point-in-time snapshot** of what's actually deployed to the
 iSales cloud, distinct from `deploy/RUNBOOK-cloud.md` which describes *how*
@@ -8,6 +8,27 @@ to deploy from scratch. Update this file whenever cloud topology changes.
 
 If you're picking up the project on a fresh dev machine, this is the
 fastest way to learn the current state of the cloud-side world.
+
+## v1.0 deployment posture (project decision)
+
+| Decision | v1.0 | Future (v1.x+) |
+|---|---|---|
+| Public endpoint | **IP-direct** `121.89.85.150` — edge connects straight to the ECS public IP | optional domain + ICP 备案 + Let's Encrypt (deferred until commercial scale or compliance pressure) |
+| TLS posture | **TBD when first edge ships** — plain gRPC over IP is the cheapest option for a customer-VPN / pilot deploy; nip.io-style sslip plus Let's Encrypt is the lowest-friction TLS path that does not require a registered domain; self-signed pinned at edge is also viable. Pick when first edge actually deploys. | full PKI tied to domain |
+| ICP 备案 | **not required** — no public domain in v1.0 | required if/when domain is registered |
+| nginx | **deferred** — `deploy/cloud/scripts/install.sh` § "nginx" step is optional in v1.0 mode; engine gRPC can `bind 0.0.0.0:50051` directly (firewall-restricted by Aliyun security group), and isales-web / api can be served by the same gRPC-less reverse-proxy-less listener pair when needed | nginx terminates TLS + reverse-proxies in front of all 4 cloud services |
+
+`deploy/RUNBOOK-cloud.md` §2 ("域名与 TLS") still describes the **future** path,
+not the v1.0 default. Reading the RUNBOOK end-to-end as "what to do for v1.0"
+is wrong; consult this section first.
+
+The decision rationale: v1.0 ship target is single-customer pilot installs
+where the edge runs on the customer's own Windows PC and dials the ECS
+over the public internet (or a customer-provided VPN). Domain registration
++ ICP 备案 alone takes 2-4 weeks in China and is not on the critical path
+for proving the AI sales-call flow works. Re-add the domain step when (a)
+there are multiple customer deployments needing a stable endpoint label or
+(b) compliance / brand requirements come in.
 
 ## ECS
 
@@ -66,7 +87,12 @@ nodes. Single-host posture acceptable for v1.0 PoC (no HA).
 PostgreSQL data dir: `/var/lib/pgsql/data/`.
 Redis config: `/etc/redis.conf`.
 
-**No** nginx, no Let's Encrypt cert, no domain — A2 §1.1 still pending.
+**No** nginx, no Let's Encrypt cert, no domain — and per the v1.0
+posture above these are **not pending**, they are *deferred to v1.x*.
+For v1.0 the edge connects to `121.89.85.150:50051` (gRPC) and
+`121.89.85.150:443` (api / web) directly through Aliyun security-group
+firewall rules.
+
 **No** isales-api / engine / scheduler / worker / web deployed yet —
 provisioned the data plane only.
 
@@ -187,16 +213,31 @@ directories:
 
 ## Next deployment steps (what's still pending)
 
-In rough order:
+In rough order. **This list is authoritative for cloud-side punch-list
+status — A2 OpenSpec `tasks.md` checkboxes are signed-in progress, not
+ground truth.**
 
 1. Mirror `deploy/cloud/env/*.env` to `/etc/isales/env/` on the ECS.
+   *(Inside the env files, `ISALES_RTC_APP_ID` / `ISALES_RTC_APP_KEY` /
+   `ISALES_JWT_SECRET` / DB+Redis creds are all populated — no `<change-me>`
+   placeholders remain. Verified 2026-05-17.)*
 2. Adapt `deploy/cloud/scripts/install.sh` for AL3 dnf (file an issue
-   or a small fix-up PR).
+   or a small fix-up PR). The nginx step within this script is now
+   **optional / off by default** per the v1.0 IP-direct posture above.
 3. ~~Upload ARTC SDK Linux Python tarball.~~ **DONE 2026-05-17** —
    wget'd from alicdn to `/opt/isales/vendor/`, symlinked to
    `aliyun-artc-linux-python`, import-smoke on Python 3.6.8 passed.
 4. Clone 5 sibling repos to `/opt/isales/releases/<ts>/` on the ECS,
-   create venvs, alembic migrate, register systemd units.
-5. nginx + Let's Encrypt + domain (A2 §1.1).
+   create venvs, alembic migrate, register systemd units. Switch engine
+   gRPC bind from `127.0.0.1:50051` to `0.0.0.0:50051` (env override
+   `ISALES_ENGINE_CLOUD_EDGE_GRPC_BIND`) and confirm Aliyun security
+   group allows 50051/tcp + 443/tcp from the edge's outbound IP range.
+5. ~~nginx + Let's Encrypt + domain.~~ **DEFERRED to v1.x** per the
+   posture decision above. Re-add to this list only when a domain is
+   actually being procured.
 6. End-to-end smoke: scheduler dispatches a fake lead → engine joins
    ARTC channel → edge (Windows) joins same channel → audio flows.
+   This is the **A2 §12 / D1 §9 joint MVP gate**; the edge-side
+   readiness has its own punch-list in
+   `archive/2026-05-17-windows-client-core/acceptance.md` §
+   "Out-of-scope deferred items".

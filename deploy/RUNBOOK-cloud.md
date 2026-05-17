@@ -8,7 +8,7 @@
 ## 目录
 
 1. [阿里云资源开通](#1-阿里云资源开通)
-2. [域名与 TLS](#2-域名与-tls)
+2. [公网入口（v1.0 IP 直连 / v1.x 域名）](#2-公网入口v10ip-直连v1x域名--tls)
 3. [首次部署](#3-首次部署)
 4. [常规发版](#4-常规发版)
 5. [回滚](#5-回滚)
@@ -32,7 +32,7 @@
 | Redis | Tair 标准 1G 或 Redis 标准 1G | 内网连接；AOF 持久化 |
 | OSS | 私有 bucket `isales-prod` | 录音 / 开场白预渲染 / ARTC SDK vendor 包 |
 | RTC 应用 | 阿里云 RTC console | 拿 `AppId` / `AppKey`，工单确认计费套餐（见 PoC §9 三题工单稿） |
-| 域名 + ICP | `isales.example.com` | 备案完成才能签 Let's Encrypt 证书 |
+| 域名 + ICP | **v1.0 不需要**；v1.x 切换到 §2.2 时再申请 | v1.0 用 IP 直连 `121.89.85.150`，详见 `deploy/cloud/STATE.md § "v1.0 deployment posture"` |
 
 **ARTC SDK 上传 OSS**（一次性）：
 
@@ -53,7 +53,48 @@ ossutil cp /tmp/artc-linux-7.10.2.tgz \
 
 ---
 
-## 2. 域名与 TLS
+## 2. 公网入口（v1.0：IP 直连；v1.x：域名 + TLS）
+
+> **v1.0 默认是 IP 直连，不经域名 / nginx / Let's Encrypt**。详见
+> `deploy/cloud/STATE.md` § "v1.0 deployment posture"。本节 §2.1 是
+> v1.0 的实际操作步骤；§2.2 (域名 + TLS) 留作 v1.x 切换路径，**v1.0
+> 部署 SKIP 整段 §2.2**。
+
+### 2.1 v1.0 IP 直连（默认）
+
+边缘客户端配置 `ISALES_CLOUD_GRPC_ENDPOINT=121.89.85.150:50051` 直接连
+ECS 公网 IP；isales-api / isales-web 同样直接 `121.89.85.150:443`（如启用）
+/ `121.89.85.150:8080`。没有域名、没有证书申请、没有 ICP 备案、没有
+nginx——engine gRPC 自己 listen `0.0.0.0:50051`：
+
+```bash
+# Aliyun 安全组放行（控制台 → ECS 实例 → 安全组 → 入方向）
+# - 50051/tcp  允许来源 0.0.0.0/0（cloud-edge gRPC；如果边缘出口 IP
+#              可枚举，建议收紧为白名单）
+# - 8080/tcp   允许来源 0.0.0.0/0（isales-api HTTP；如果暴露后台才需要）
+# - 22/tcp     允许来源 <运维 IP 段>（SSH）
+# 不需要 80/443，没有 nginx
+```
+
+engine env 把 gRPC bind 从 loopback 改公网：
+
+```ini
+# /etc/isales/env/engine.env（覆盖 deploy/cloud/env/engine.env 的 127.0.0.1）
+ISALES_ENGINE_CLOUD_EDGE_GRPC_BIND=0.0.0.0:50051
+```
+
+> **TLS 取舍**（v1.0 待决，部署时再定）：
+> - **plain gRPC over IP**：最省事，customer-VPN / 内网部署可接受；公网部署只在试点 PoC 时勉强可用，bearer token 走 metadata 仍能验证身份，但流量明文。
+> - **self-signed cert pinned at edge**：edge 客户端打包时 ship 一份固定 CA cert；server 绑 self-signed；中间人无效。需要边客户端代码读 `ISALES_CLOUD_GRPC_CA_PEM` env。
+> - **sslip.io / nip.io + Let's Encrypt**：把 `121-89-85-150.sslip.io` 当域名拿免费 LE 证书，**绕过 ICP 备案**。可以视为 §2.2 的简化版。
+>
+> 第一个真实交付前选定，更新本节 + STATE.md 记结论。
+
+### 2.2 v1.x 切换到注册域名 + Let's Encrypt（DEFERRED）
+
+> **v1.0 部署不需要执行本小节**。仅在 (a) 真有多客户部署需要稳定 endpoint
+> 标签、或 (b) 合规 / 品牌要求公开域名时启用。前置：完成 ICP 备案（中国
+> 大陆 2-4 周）。
 
 ```bash
 # 装 nginx + certbot + ossutil

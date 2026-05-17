@@ -53,6 +53,8 @@ openspec status --change <name>         # progress on one change
 
 Each change folder contains `proposal.md` (why / what / impact), `design.md` (detail + tradeoffs), `tasks.md` (checklist with inline implementation notes), and `specs/<capability>/spec.md` deltas. Archived changes under `openspec/changes/archive/` are the source of truth for what's actually been built (the chronological `YYYY-MM-DD-<name>/` directories there encode the project's real history far better than git log alone).
 
+**`tasks.md` checkboxes are sign-in progress, not ground truth.** Before reporting any "X is pending / X is not done / X is blocked" for an in-flight change, verify against the actual artifact: `deploy/cloud/env/*.env` for cloud secrets / endpoints / SDK paths, `deploy/cloud/STATE.md § "v1.0 deployment posture"` and `§ "Next deployment steps"` for the authoritative cloud punch-list, `git log -S "<term>"` in the relevant sibling repo for code-level claims, and the most recent archived change's `acceptance.md` for what shipped. A `- [ ]` checkbox can survive long past the work being done; the env / state / commit log cannot lie. Cloud-side specifically: v1.0 is **IP-direct (`121.89.85.150`), no domain / no Let's Encrypt / no ICP** — the RUNBOOK §2.2 domain-and-TLS section is the v1.x future path, not a v1.0 task. STATE.md is canonical when RUNBOOK and OpenSpec disagree.
+
 Spec files use a strict format that `openspec validate` enforces: `## Requirements` → `### Requirement: ...` (with MUST/SHALL/SHOULD/MAY) → `#### Scenario:` blocks with `WHEN`/`THEN` bullets. Preserve this structure when editing.
 
 ## Architecture reading order
