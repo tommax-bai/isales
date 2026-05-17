@@ -4,5 +4,12 @@ __pycache__/
 *.pyc
 .DS_Store
 .env
+# Real cloud env values (4 services) are tracked in this private repo per
+# explicit user decision (single-collaborator + internal PoC). See
+# deploy/cloud/env/README.md for the policy and rotation procedure.
+!deploy/cloud/env/api.env
+!deploy/cloud/env/engine.env
+!deploy/cloud/env/scheduler.env
+!deploy/cloud/env/worker.env
 .venv
 node_modules/
