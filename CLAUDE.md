@@ -77,11 +77,17 @@ When working on architecture, deployment-topology, service-communication, or dev
 ## Deploy / runbook anchors
 
 - `deploy/RUNBOOK.md` — operational source of truth (first-time deploy, routine deploy, rollback, backup drill, pre-launch hard-gates, failure cheatsheet). Linux is mainline; macOS sections are in `<details>` blocks.
+- `deploy/RUNBOOK-cloud.md` — cloud-edge variant: how to do a clean cloud-side deploy from scratch (Aliyun ECS / RDS / Redis / OSS / domain / TLS) plus debug/backup procedures.
+- `deploy/cloud/STATE.md` — **current deployment snapshot** (ECS IP, OS, installed versions, vendor paths, deviations, pending steps). Read this first when picking up cloud work on a new dev machine — it's the fastest way to learn what's actually running. Update it whenever cloud topology changes.
+- `deploy/cloud/env/` — real secret values for the 4 cloud services (private-repo policy; see `deploy/cloud/env/README.md` for rotation + migration-out-of-git steps).
 - `deploy/cloud/` + `deploy/edge/` — cloud-edge split deployment artifacts (current direction).
 - `deploy/linux/` + `deploy/macos/` — legacy single-host deployment artifacts (still operational).
 - `deploy/env/*.env.example` — centralized EnvironmentFile templates; `make deploy-check` enforces they stay in sync with each service repo's README "Environment" section.
 
 The deploy scripts assume `/opt/isales/{releases,current,backups,logs}` + `/etc/isales/env/` layout and an `isales` system user (Linux) or `_isales` (macOS).
+
+ARTC SDK binaries are proprietary and gitignored everywhere; vendor paths
+and download URL are pinned in `deploy/cloud/STATE.md` § "ARTC SDK vendor".
 
 ## Conventions worth knowing before editing
 
