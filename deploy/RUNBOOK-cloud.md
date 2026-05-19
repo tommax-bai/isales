@@ -153,6 +153,60 @@ curl -fsS https://cloud.isales.example.com/api/health
 sudo journalctl -u isales-engine -n 50 | grep -i "grpc.*listening"
 ```
 
+### 5. nginx + isales-web SPA 部署（v1.0 IP-direct, `web-admin-deploy`）
+
+`install.sh` 的 nginx 步骤要单独跑（也可以手动 drop 配置）。当前 v1.0
+posture：HTTP-only :80，无 TLS / 域名。
+
+```bash
+# 1. 装 nginx (Aliyun Cloud Linux 3 默认仓库)
+sudo dnf install -y nginx
+nginx -v   # 期望 1.20+
+
+# 2. 准备 SPA 静态根
+sudo mkdir -p /var/www/isales-web
+sudo chown nginx:nginx /var/www/isales-web
+sudo chmod 755 /var/www/isales-web
+
+# 3. drop server 配置 (从 isales-web/deploy/nginx.conf 改; 去 server_name)
+sudo install -m 644 /tmp/isales-nginx.conf /etc/nginx/conf.d/isales.conf
+# 关键: listen 80 default_server; 无 server_name; /api/ -> 127.0.0.1:8000;
+# /ws/ -> 127.0.0.1:8000/ws/; proxy_connect_timeout 5s; proxy_read_timeout 300s
+
+sudo nginx -t       # 期望 syntax ok + test successful
+
+# 4. SELinux (Aliyun Cloud Linux 3 默认 disabled, 但 idempotent 跑了不亏)
+sudo setsebool -P httpd_can_network_connect 1 2>/dev/null || true
+sudo chcon -R -t httpd_sys_content_t /var/www/isales-web/ 2>/dev/null || true
+
+# 5. 启动
+sudo systemctl enable --now nginx
+sudo systemctl is-active nginx        # active
+ss -tln | grep ':80'                   # LISTEN 0.0.0.0:80
+
+# 6. 部署 SPA 工件 (本地 build, scp 到 cloud)
+# === 在 dev mac 上 ===
+cd ~/codes/isales-web
+npm install
+npm run build                          # vue-tsc + vite build, ~3s
+scp -r dist/. root@121.89.85.150:/var/www/isales-web/
+
+# === 回到 cloud ===
+sudo chown -R nginx:nginx /var/www/isales-web/
+sudo find /var/www/isales-web -type d -exec chmod 755 {} \;
+sudo find /var/www/isales-web -type f -exec chmod 644 {} \;
+
+# 7. 验收
+curl -sI http://127.0.0.1/                  # 200 OK, Content-Type: text/html
+curl -sI http://127.0.0.1/api/docs           # 200 OK (FastAPI Swagger via /api 反代)
+curl -s http://127.0.0.1/ | grep '<title>'   # <title>iSales 智能外呼</title>
+```
+
+Aliyun 安全组 inbound: 加 TCP 80/80 0.0.0.0/0 允许 (或确认现有 "全部端口
+TCP" 类规则已涵盖)。
+
+浏览器打开 `http://121.89.85.150/` → 见 LoginView。
+
 ---
 
 ## 4. 常规发版
@@ -171,6 +225,32 @@ sudo bash deploy/cloud/scripts/install.sh --activate <new-release-ts>
 # 4. 监控前 5 分钟
 watch -n 5 'systemctl is-active isales-{api,engine,scheduler,worker} nginx'
 ```
+
+### 4.1 更新 isales-web SPA（前端独立发版，cloud-side 不动后端）
+
+后端 + 前端独立发版：前端 SPA 只是静态文件，发版 ≈ 重新 build + scp +
+reload nginx。
+
+```bash
+# === dev mac ===
+cd ~/codes/isales-web
+git pull
+npm install
+npm run build                           # 重新 build dist/
+
+# === scp dist 到 cloud ===
+scp -r dist/. root@121.89.85.150:/var/www/isales-web/
+
+# === cloud ===
+sudo chown -R nginx:nginx /var/www/isales-web/
+sudo nginx -s reload                    # graceful, 不断已建立连接
+
+# === 验收 ===
+curl -sI http://121.89.85.150/ | head -3    # 期望 200 OK
+```
+
+中断窗口：reload 期间已经握手的 HTTP/2 / WebSocket 流不断，新的请求
+fault-over 到新 worker（典型 < 1 s）。无 systemd restart。
 
 发版策略：
 
@@ -360,5 +440,7 @@ sudo bash deploy/cloud/scripts/rollback.sh <target-ts>
 | RDS 连接被打满 | scheduler / engine 各自的连接池上限 → 走 `RUNBOOK.md §pg-pool` |
 | nginx 502 in grpc | engine 崩了 → `systemctl restart isales-engine` + 看 core dump |
 | LE 证书快过期 | `certbot renew --dry-run` 验证；timer 应自动续 |
+| `http://121.89.85.150/` 502 / 空白 / 打不开 | (a) `systemctl is-active nginx` → 不 active 就 restart；(b) `curl http://121.89.85.150:8000/docs` 直连 Swagger 验证 isales-api 健在（Swagger 是 :8000 fallback）；(c) `nginx -t` 查配置语法；(d) `journalctl -u nginx -n 50` 看 502 upstream 错 |
+| isales-web SPA 加载但 admin 操作全 401 | JWT 过期 / 失效 → 重新登录 LoginView 拿新 token；如果登不上，看 isales-api `journalctl -u isales-api` 找 `authenticate` 失败原因 |
 
 > 注：本 RUNBOOK 假设运维已熟悉单主机 `RUNBOOK.md` 的通用部分（systemd 操作、journalctl 用法、ssh 应急访问）。本文件仅描述云-边形态独有部分。

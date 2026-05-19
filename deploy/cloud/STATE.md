@@ -21,7 +21,7 @@ to deploy from scratch. Update this file whenever cloud topology changes.
 | Public endpoint | **IP-direct** `121.89.85.150` — edge connects straight to the ECS public IP | optional domain + ICP 备案 + Let's Encrypt (deferred until commercial scale or compliance pressure) |
 | TLS posture | **TBD when first edge ships** — plain gRPC over IP is the cheapest option for a customer-VPN / pilot deploy; nip.io-style sslip plus Let's Encrypt is the lowest-friction TLS path that does not require a registered domain; self-signed pinned at edge is also viable. Pick when first edge actually deploys. | full PKI tied to domain |
 | ICP 备案 | **not required** — no public domain in v1.0 | required if/when domain is registered |
-| nginx | **deferred** — `deploy/cloud/scripts/install.sh` § "nginx" step is optional in v1.0 mode; engine gRPC `bind 0.0.0.0:50051` directly (firewall-restricted by Aliyun security group), isales-api listens `0.0.0.0:8000` directly. isales-web not yet deployed (also deferred until admin console is needed). | nginx terminates TLS + reverse-proxies in front of all 4 cloud services + serves isales-web SPA |
+| nginx | **active (2026-05-19, `web-admin-deploy`)** — nginx 1.20.1 listening `:80` serving `isales-web` SPA from `/var/www/isales-web/` + reverse-proxying `/api/` → `127.0.0.1:8000` + `/ws/` → `127.0.0.1:8000/ws/`. engine gRPC still binds `0.0.0.0:50051` directly (un-fronted); isales-api still binds `0.0.0.0:8000` directly (retained as Swagger fallback). | nginx terminates TLS + serves all SPA + reverse-proxies the four cloud services (full domain + 备案 path) |
 
 `deploy/RUNBOOK-cloud.md` §2.2 ("域名与 TLS") describes the **future** path,
 not the v1.0 default. §2.1 ("v1.0 IP 直连") is the current canonical recipe.
@@ -150,9 +150,11 @@ all 5 isales packages installed editable (`pip install -e`).
 | Service | systemd unit | Listen | Notes |
 |---|---|---|---|
 | isales-engine | `isales-engine.service` enabled+active | `0.0.0.0:50051` (cloud-edge gRPC, plaintext per v1.0 IP-direct) | HS256 JWT bearer in initial metadata; secret in `engine.env::ISALES_JWT_SECRET`. Log line `cloud_edge_grpc_server_started` confirms boot. |
-| isales-api | `isales-api.service` enabled+active | `0.0.0.0:8000` (FastAPI + Uvicorn + WebSocket) | Web admin / boss console backend; see `api.env`. |
+| isales-api | `isales-api.service` enabled+active | `0.0.0.0:8000` (FastAPI + Uvicorn + WebSocket) | Web admin / boss console backend; see `api.env`. Both public direct (Swagger fallback) AND fronted by nginx `/api/` reverse proxy. |
 | isales-scheduler | `isales-scheduler.service` enabled+active | (no socket — pure background) | Lead dispatcher; idle until campaign + leads inserted. |
 | isales-worker | `isales-worker.service` enabled+active | (no socket — pure background) | Post-call summary / webhook fan-out. |
+| nginx | `nginx.service` enabled+active (2026-05-19, `web-admin-deploy`) | `0.0.0.0:80` (HTTP only, v1.0 IP-direct, no TLS) | Serves `isales-web` SPA from `/var/www/isales-web/` + reverse-proxies `/api/` → `127.0.0.1:8000/` + `/ws/` → `127.0.0.1:8000/ws/`. Config drop-in: `/etc/nginx/conf.d/isales.conf` (from `isales-web/deploy/nginx.conf`, `server_name` stripped). |
+| isales-web (SPA) | static files under nginx | served at `http://121.89.85.150/` | Vue 3 + Element Plus admin / boss console. Built artifact path `/var/www/isales-web/{index.html,assets/}` (47 files, 2.5 MB). Re-deploy: `pnpm run build` on dev mac → `scp dist/ → ECS:/var/www/isales-web/` → `nginx -s reload`. |
 
 Service env files at `/etc/isales/env/{api,engine,scheduler,worker}.env`
 (root:isales 0640), mirrored from this repo's `deploy/cloud/env/*.env`. Each
@@ -169,10 +171,15 @@ ssh ... 'cd /opt/isales/current/isales-common && set -a && source /etc/isales/en
     /opt/isales/current/venv/bin/alembic current'
 ```
 
-**Not deployed in v1.0**: nginx, isales-web, Prometheus / Grafana
-monitoring stack — all per the "v1.0 deployment posture" decision. Re-add
-these to the punch-list only when domain + TLS / admin console / production
+**Not deployed in v1.0**: Prometheus / Grafana monitoring stack —
+per the "v1.0 deployment posture" decision. Re-add when production
 observability scope opens.
+
+> **2026-05-19 (`web-admin-deploy`)**: nginx + isales-web were
+> previously listed here as "not deployed in v1.0"; that decision is
+> now reversed. Both are active under v1.0 IP-direct + HTTP-only
+> posture (no TLS, no domain). v1.x adds TLS termination + 备案
+> domain on the same nginx instance.
 
 ### Why PG 13 not PG 16
 
