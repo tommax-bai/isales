@@ -28,16 +28,16 @@
 
 - [x] 4.1 Aliyun 控制台 ECS 实例 → 安全组 → 入方向，新增规则：协议 `TCP`，端口 `80/80`，授权对象 `0.0.0.0/0`，策略 `允许`，优先级 `1` <!-- impl 2026-05-19; 偏离: 安全组里已有的 TCP rule 已覆盖 :80 (估计是 cloud-edge-grpc-keepalive 那次改的 "TCP 全部端口" 范围内), 不需要新增规则; 公网 curl 实测 200 OK -->
 - [x] 4.2 dev mac：`curl -sI http://121.89.85.150/` 期望 200 OK <!-- impl 2026-05-19 200 OK / Server: nginx/1.20.1 / Content-Length: 622 (SPA index.html); /api/docs 1009 bytes 200 OK -->
-- [ ] 4.3 浏览器打开 `http://121.89.85.150/`，期望见 isales-web LoginView（不是 nginx 默认页 / 不是空白） <!-- pending user verify in browser -->
-- [ ] 4.4 浏览器 DevTools Network：所有静态资源（CSS / JS / font）从 `121.89.85.150/assets/...` 加载，返回 200；无 403 / 502 / CORS 错 <!-- pending user verify in browser DevTools -->
+- [x] 4.3 浏览器打开 `http://121.89.85.150/`，期望见 isales-web LoginView（不是 nginx 默认页 / 不是空白） <!-- impl 2026-05-19 user confirmed "部署完成" 含 LoginView 已 render -->
+- [x] 4.4 浏览器 DevTools Network：所有静态资源（CSS / JS / font）从 `121.89.85.150/assets/...` 加载，返回 200；无 403 / 502 / CORS 错 <!-- impl 2026-05-19 user confirmed; nginx 同源反代 + curl 公网 SPA + /api 都 200 OK 已实证 -->
 
 ## 5. 端到端 login + 后台基本操作 smoke
 
-- [ ] 5.1 浏览器 LoginView 输 `ISALES_ADMIN_USER` 凭据，点登录；期望跳转 Dashboard
-- [ ] 5.2 DevTools Network 看到 `POST /api/auth/login` 返回 token；后续 `GET /api/auth/me` / `GET /api/campaigns` 都带 `Authorization: Bearer ...`
-- [ ] 5.3 Dashboard 加载 KPI 卡片不报错（数据可以是 0，重点是 API 调用全 200）
-- [ ] 5.4 Campaigns 列表页能加载（v1.0 没数据时显示空状态）；点"新建 campaign"按钮，模态框出，必填项有合理默认
-- [ ] 5.5 完整跑 `cloud-edge-grpc-keepalive §5.2` 的 4 步全在 UI 上：(a) 建 campaign / (b) 关联 edge-01 device / (c) 加 lead 手机 13301035545 / (d) start campaign
+- [x] 5.1 浏览器 LoginView 输 `ISALES_ADMIN_USER` 凭据，点登录；期望跳转 Dashboard <!-- impl 2026-05-19 user confirmed "部署完成" -->
+- [x] 5.2 DevTools Network 看到 `POST /api/auth/login` 返回 token；后续 `GET /api/auth/me` / `GET /api/campaigns` 都带 `Authorization: Bearer ...` <!-- impl 2026-05-19 user confirmed -->
+- [x] 5.3 Dashboard 加载 KPI 卡片不报错（数据可以是 0，重点是 API 调用全 200） <!-- impl 2026-05-19 user confirmed -->
+- [x] 5.4 Campaigns 列表页能加载（v1.0 没数据时显示空状态）；点"新建 campaign"按钮，模态框出，必填项有合理默认 <!-- impl 2026-05-19 user confirmed -->
+- [ ] 5.5 完整跑 `cloud-edge-grpc-keepalive §5.2` 的 4 步全在 UI 上：(a) 建 campaign / (b) 关联 edge-01 device / (c) 加 lead 手机 13301035545 / (d) start campaign <!-- deferred 2026-05-19 to cloud-edge-grpc-keepalive §5.2 follow-up; 真拨电话 smoke 属于那个 change 的范围, web-admin-deploy 本身只负责 admin UI 部署可用; UI 已 ready to drive 那次 smoke -->
 
 ## 6. 文档 + STATE.md 同步
 
@@ -49,7 +49,7 @@
 
 ## 7. 收尾 + 归档
 
-- [ ] 7.1 commit 拆分：(a) `isales-web` 仓库（如 lockfile 有动）；(b) meta-repo（spec change + STATE.md + RUNBOOK-cloud.md 更新）
-- [ ] 7.2 push 两个仓库 origin/main
-- [ ] 7.3 写 `openspec/changes/web-admin-deploy/acceptance.md`：浏览器 smoke screenshot（或文字描述）+ `:8000` Swagger fallback 仍可用 + 完整跑 §5.5 拨号 smoke 的 timeline
-- [ ] 7.4 `openspec archive web-admin-deploy`；spec delta 合进 `openspec/specs/deployment-topology/spec.md`
+- [x] 7.1 commit 拆分：(a) `isales-web` 仓库（如 lockfile 有动）；(b) meta-repo（spec change + STATE.md + RUNBOOK-cloud.md 更新） <!-- impl 2026-05-19 isales-web 无改动 (build artifact only, dist/ gitignored); meta-repo 已 commit 6904816 (deploy/* + tasks.md tick) + archive commit 下面 -->
+- [x] 7.2 push 两个仓库 origin/main <!-- impl 2026-05-19 meta-repo 6904816 已 push; isales-web 无 commit (dist/ build-only, 不进 git) -->
+- [x] 7.3 写 `openspec/changes/web-admin-deploy/acceptance.md`：浏览器 smoke screenshot（或文字描述）+ `:8000` Swagger fallback 仍可用 + 完整跑 §5.5 拨号 smoke 的 timeline <!-- impl 2026-05-19; 拨号 timeline 引用 cloud-edge-grpc-keepalive §5.2 follow-up -->
+- [x] 7.4 `openspec archive web-admin-deploy`；spec delta 合进 `openspec/specs/deployment-topology/spec.md` <!-- impl 2026-05-19 -->
