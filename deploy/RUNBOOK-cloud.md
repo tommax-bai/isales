@@ -250,6 +250,49 @@ grpcurl -H "authorization: Bearer $EDGE_DEVICE_TOKEN" \
 sudo tail -f /var/log/nginx/access.log | grep 50051
 ```
 
+#### 50051 TCP idle-timeout 配置（cloud-edge-grpc-keepalive）
+
+外部到 ECS `:50051` 的 cloud-edge bidi stream 必须能在中间网络层（Aliyun
+ECS 安全组 stateful tracking / SLB 七层 idle-cleanup / 客户机 NAT /
+公司防火墙）的 idle 抑制下存活；否则 stream 在初次 `initial_metadata` 返回后
+~1 ms 就被 cut（2026-05-19 实测）。OpenSpec change `cloud-edge-grpc-keepalive`
++ `isales-telephony` + `isales-engine` 双侧加 HTTP/2 keepalive
+（30s 周期 / 10s ack timeout / `permit_without_calls=1` / server `max_ping_strikes=0`），
+但客户端 keepalive 是**必要不充分**条件，仍需以下部署侧配置：
+
+- **Aliyun ECS 安全组** inbound 50051 TCP：开放给业务 IP / 0.0.0.0/0 即可，
+  **不**配 stateful idle-cleanup（如果 console 提供"会话保持时间"/
+  "空闲断开"这种选项，应关闭或调到最长）。Aliyun console: ECS 实例 → 安全组 →
+  入方向规则 → 编辑 50051 规则 → 高级设置。
+- **SLB（如已 / 计划接入）**：必须七层 HTTP/2 或四层 TCP 模式，且
+  idle-timeout 调到 ≥ 60 min。WAF 七层模式经常默认 ≤ 1 min 不支持 HTTP/2
+  长连接，**不**适合 cloud-edge gRPC。
+- **HTTP/2 keepalive 期望参数**（server 已固化代码内）：
+  ```
+  grpc.keepalive_time_ms                       = 30000
+  grpc.keepalive_timeout_ms                    = 10000
+  grpc.keepalive_permit_without_calls          = 1
+  grpc.http2.max_ping_strikes                  = 0
+  grpc.http2.min_time_between_pings_ms         = 10000
+  grpc.http2.min_ping_interval_without_data_ms = 10000
+  ```
+  Client 对称参数见 `isales-telephony/transport/grpc_client.py`
+  `_KEEPALIVE_CHANNEL_OPTIONS`。
+
+**验收命令**（dev 机连真 cloud）：
+
+```bash
+.venv/bin/python scripts/cloud_edge_smoke.py \
+    --endpoint <ECS_IP>:50051 \
+    --token-file ~/.isales/edge-dev.jwt \
+    --soak 600 --report-file /tmp/soak.json
+```
+
+合格门槛：**stream lifetime p95 ≥ 300 s**（脚本内常量
+`SOAK_P95_TARGET_S`，acceptance pass 时 exit code 0；否则 3）。
+如果 p95 远低于 300 s（特别是 < 5 s 即 cut），先排查上面"安全组 / SLB"
+两节，再回 `cloud-edge-grpc-keepalive` change 的 design notes。
+
 ### 签发 EDGE_DEVICE_TOKEN（A2 静态长 token）
 
 ```bash

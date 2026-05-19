@@ -248,6 +248,44 @@ Edge-side smoke script: `isales-telephony/scripts/cloud_edge_smoke.py`
 `CloudEdgeGrpcClient` so it exercises the same code path D1 §9.1 ("tray
 goes green on activation") would.
 
+### Known trap — mac → ECS 50051 idle-stream cut (2026-05-19)
+
+While running the §3.9 real-cloud smoke for archived
+`macos-artc-pyobjc-binding` (`archive/2026-05-19-macos-artc-pyobjc-binding/
+acceptance.md`), the bidi stream was observed to be **cut by an
+intermediate Aliyun network layer ~1 ms after `call.initial_metadata()`
+returns**. Pattern:
+
+- TCP three-way handshake: 100 % succeeds (`nc -zv` instant OK)
+- HTTP/2 setup: `call.initial_metadata()` returns
+- Next `async for response in call:` iteration: `UNAVAILABLE: Socket
+  closed`
+- Engine localhost smoke (`127.0.0.1:50051` from the ECS itself):
+  3 / 3 reliable — so engine code is fine
+- Adding `grpc.keepalive_time_ms=30000` etc. channel options on client
+  alone **did not** mitigate; the cut is upstream of the keepalive
+  ping cadence
+
+The current diagnosis is an Aliyun-side stateful idle-cleanup (ECS
+security group / SLB if interposed / connection-tracking GC). Fix is
+tracked in OpenSpec change `cloud-edge-grpc-keepalive`:
+
+1. **Code side** (both sub-repos, this change): symmetric HTTP/2
+   keepalive options on `grpc_client.py` and `grpc_server.py` +
+   `cloud_edge_stream_connected` / `cloud_edge_stream_opened` INFO
+   logs so ops can correlate.
+2. **Aliyun console side** (this RUNBOOK): re-confirm the inbound
+   50051 security group rule has no idle-cleanup; if an SLB is
+   introduced in front, require seven-layer HTTP/2 + idle-timeout
+   ≥ 60 min. See `deploy/RUNBOOK-cloud.md` § "50051 TCP idle-timeout
+   配置".
+3. **Acceptance gate**: `scripts/cloud_edge_smoke.py --soak 600
+   --report-file <path>` from a real dev rig MUST report stream
+   lifetime p95 ≥ 300 s.
+
+Update this section after the soak gate clears; cite the
+`cloud-edge-grpc-keepalive` archive commit for closure.
+
 ## Secrets
 
 ### Cloud service env files
