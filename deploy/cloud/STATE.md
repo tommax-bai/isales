@@ -57,25 +57,45 @@ The `.pem` private key must be on your machine. The SSH command shape:
 ssh -i <path-to>/isales.pem root@121.89.85.150
 ```
 
-The current developer keeps the key at `C:\Users\tianx\codes\isales.pem`
-(Windows). On a new machine: copy the `.pem` from a secure location
-(e.g. password manager attachment, USB drive, another dev machine's
+| dev rig | path | notes |
+|---|---|---|
+| Windows (primary) | `C:\Users\tianx\codes\isales.pem` | Original key, used during install |
+| macOS (dev) | `~/codes/isales-3.pem` | **2026-05-19**: rotated keypair; this is the only `.pem` currently bound to the ECS instance |
+
+On a new machine: copy the **current** `.pem` from a secure location
+(password manager attachment, USB drive, another dev machine's
 `~/.ssh/`), `chmod 600` it on macOS/Linux, then test:
 
 ```
-ssh -i ~/.ssh/isales.pem root@121.89.85.150 'hostname'
+ssh -i ~/codes/isales-3.pem root@121.89.85.150 'hostname'
+# expect: iZ0jlev0nr9m65tj6546zyZ
 ```
 
-The key's fingerprint (so you can verify you have the right `.pem`):
+Current bound keypair fingerprint (verify you have the right `.pem`):
 
 ```
-2048 SHA256:ESKEddFU95g0ytlCZyTYEg3T4SHYNe7oBVPHpWQI5k0 (RSA)
+2048 SHA256:Xz3C4DtqUBvdENUZk5Biw+GYKw3gGmjt1UwEzL9yOHQ (RSA)
 ```
 
-If `Permission denied (publickey)`: the key is either wrong, not bound
-to this ECS in the Aliyun console, or has wrong file permissions on a
-Unix host. Aliyun console → ECS instance → "更多 > 密钥对 > 绑定/解绑
-密钥对".
+> **2026-05-19 rotation note.** Prior fingerprint
+> `SHA256:ESKEddFU95g0ytlCZyTYEg3T4SHYNe7oBVPHpWQI5k0` was the install-time
+> keypair; it has since been replaced via Aliyun console. A stale
+> `isales.pem` (e.g. older `~/Downloads/isales.pem`) WILL fail with
+> `Permission denied (publickey)` — `ssh-keygen -lf <path>` to verify
+> before troubleshooting host bindings.
+
+ECS host key fingerprints (for first-time `Are you sure you want to
+continue connecting (yes/no/[fingerprint])?` accept):
+
+```
+ED25519 SHA256:3aQzOCsr17BHqpH9o/4cQI0oJ2g9e6MO8A+j2dFBVmo
+ED25519 MD5:20:b5:69:4f:15:1e:c8:3c:c7:5e:1b:29:e3:e3:0e:0a
+```
+
+If `Permission denied (publickey)`: the key is either wrong (stale
+rotation — see above), not bound to this ECS in the Aliyun console, or
+has wrong file permissions on a Unix host. Aliyun console → ECS
+instance → "更多 > 密钥对 > 绑定/解绑密钥对".
 
 Claude Code permission rule (`.claude/settings.local.json` at repo root)
 already allows `Bash(ssh -i C:/Users/tianx/codes/isales.pem*)` and
