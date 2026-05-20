@@ -1,7 +1,8 @@
 # cloud deployment — current state snapshot
 
-**Last updated**: 2026-05-17 23:25 CST — **4 cloud services deployed + active**;
-cloud-edge gRPC control plane end-to-end smoke verified from Windows dev box.
+**Last updated**: 2026-05-20 11:30 CST — **web-admin-ui-redesign deployed**;
+new `appointment` table + 6-endpoint router live; redesigned SPA at
+`http://121.89.85.150/`. Prior 4-service + cloud-edge gRPC posture intact.
 
 This file is a **point-in-time snapshot** of what's actually deployed to the
 iSales cloud, distinct from `deploy/RUNBOOK-cloud.md` which describes *how*
@@ -160,9 +161,12 @@ Service env files at `/etc/isales/env/{api,engine,scheduler,worker}.env`
 (root:isales 0640), mirrored from this repo's `deploy/cloud/env/*.env`. Each
 systemd unit has a `*.service.d/env.conf` drop-in pointing at its env file.
 
-Database schema: alembic head `580b817550c8` (latest in
-`isales-common/alembic/versions/`). 19 tables created in `public` schema
-(`agent`, `lead`, `campaign`, `device`, `sim_card`, `call_record`, etc.).
+Database schema: alembic head `a1b2c3d4e5f6` (latest in
+`isales-common/alembic/versions/`, advanced from `580b817550c8` on
+2026-05-20 by `web-admin-ui-redesign §6.4`). 20 tables in `public`
+(19 from the initial schema + new `appointment` with FKs to `lead`
+CASCADE and `call_record` SET NULL; status enum
+pending/confirmed/completed/cancelled).
 Verify with:
 
 ```bash
@@ -180,6 +184,42 @@ observability scope opens.
 > now reversed. Both are active under v1.0 IP-direct + HTTP-only
 > posture (no TLS, no domain). v1.x adds TLS termination + 备案
 > domain on the same nginx instance.
+
+> **2026-05-20 (`web-admin-ui-redesign`)**: SPA redesigned — sticky
+> top-nav (`[线索 ｜ 外呼 ｜ 预约]` + 3 config circles) replaces
+> sidebar; 10 operational views demoted under `/operations/*` with
+> client-side 301 from old top-level paths (preserves bookmarks).
+> Backend gained `/api/appointments` (6 endpoints + state-machine).
+> Deploy steps actually executed:
+>
+> 1. backup `/var/www/isales-web/` → `/var/www/isales-web.bak-20260520-112349/`
+> 2. `git pull` on isales-common / isales-api / isales-engine /
+>    isales-scheduler / isales-worker (engine stashed a stale
+>    cloud-edge-grpc-keepalive hotfix under
+>    `stash@{0}: On main: pre-deploy-202605-keepalive-hotfix` — main
+>    branch already contains the equivalent code, drop the stash next
+>    cleanup pass)
+> 3. `pip install -e` rerun for all 5 packages; `pip check` clean
+> 4. `alembic upgrade head` advanced `580b817550c8 → a1b2c3d4e5f6`;
+>    `\d appointment` shows 10 cols / 4 indexes / 2 FKs as expected
+> 5. `systemctl restart isales-api`; startup log shows
+>    `Application startup complete` + `Uvicorn running on http://0.0.0.0:8000`
+> 6. `rsync -avz --delete dist/ → /var/www/isales-web/` (had to
+>    `dnf install -y rsync` first — not pre-installed on AL3); 71
+>    asset files; `chown -R nginx:nginx` + `755/644` perms
+> 7. Public smoke from dev mac:
+>    - `GET http://121.89.85.150/` 200 (SPA index)
+>    - `GET http://121.89.85.150/api/docs` 200
+>    - `GET http://121.89.85.150/api/appointments` 401 (JWT enforced)
+>    - `GET http://121.89.85.150/dashboard` 200 (SPA fallback; client
+>      router redirects to `/operations/dashboard`)
+>    - `GET http://121.89.85.150/operations` 200
+>
+> Known follow-up: full in-browser smoke (login → 6 entries → leads →
+> call → create-appointment → appointments flow → 3 config views) still
+> owed; cite when `web-admin-ui-redesign §6.7` ticks. Until then, the
+> infrastructure and HTTP layers are confirmed but UX validation is
+> from curl only.
 
 ### Why PG 13 not PG 16
 

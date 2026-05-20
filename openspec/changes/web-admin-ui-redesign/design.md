@@ -129,6 +129,15 @@ Constraints:
 
 ## Open Questions
 
-1. **`transcript` JSONB schema** — does the current engine store `{role: "ai"|"customer", text: string, ts: timestamp}` per turn, or a different shape? Need a read pass on `isales-engine` before T3.2 (CallList bubble component). Falls back gracefully per D6 if unknown.
-2. **Existing admin API coverage for `role_config` / `filler_set` / `voice_model` / `time_windows`** — confirmed during T1.2 audit. If any required CRUD endpoint is missing, T2 grows by the number of missing endpoints; we treat that as an estimable expansion, not a blocker.
+1. **`transcript` JSONB schema** — **RESOLVED (T1.4 audit, 2026-05-19)**. `isales_common/schemas/jsonb/transcript.py` defines a discriminated union of 13 event types, all sharing `type` (discriminator) and `ts` (int, ms relative to call start). AI-bubble candidates (with `text`): `greeting | ai_reply | filler | default_reply_used`. Customer-bubble candidate (with `text`): `user_speech`. Remaining types (`interruption / silence_activation / transfer_initiated / transfer_marked / goal_achieved / wrap_up_started / wrap_up_completed / hangup`) are control events; `useTranscriptAdapter` (T4.2) MUST filter them out of the bubble stream.
+2. **Existing admin API coverage for `role_config` / `filler_set` / `voice_model` / `time_windows`** — **RESOLVED (T1.5 audit, 2026-05-19)**. Audit of `isales-api/isales_api/routers/`:
+   - ✅ `voice_models.py` — full CRUD (`voice-models` view stays operational)
+   - ✅ `campaigns.py` — `campaign.time_windows` accessible via `PATCH /campaigns/{id}` nested write (no separate endpoint needed)
+   - ✅ `holidays.py`, `leads.py`, `calls.py` — full CRUD
+   - ❌ `role_config` — NO standalone CRUD endpoint (only readable through `campaign.role_configs` nested response)
+   - ❌ `prompt_version` — NO endpoint
+   - ❌ `filler_set` / `filler_phrase` — NO endpoint
+   - ❌ provider-credentials — NEITHER endpoint NOR model exists (no `provider_credential` table); current convention reads API keys from env files
+   
+   **Resolution for §3.8**: introduce minimal CRUD endpoints for `role_config` + `prompt_version` + `filler_set` + `filler_phrase` (these tables already exist; only HTTP surface is missing). Provider-credentials remains out-of-scope for this change — `ModelProviderConfig.vue` (T5.7) reads/writes a frontend-only stash (localStorage), with a "Backend storage pending" banner. Schema work for `provider_credential` becomes a separate change in v1 roadmap.
 3. **Will operational views eventually move to their own SaaS-admin layout** ([[project_v1_blueprint]] multi-tenant plan)? Out of scope here; the `/operations/*` namespace anticipates a future split with zero rework.
