@@ -95,8 +95,8 @@
 - [x] 6.5 重启 `isales-api.service`（`systemctl restart isales-api`），grep 日志确认无 startup 错误
 <!-- 2026-05-20 rsync -avz --delete dist/ to /var/www/isales-web/; AL3 doesn't have rsync pre-installed so `dnf install -y rsync` first; 71 asset files; chown -R nginx:nginx + 755/644 perms. Also pulled isales-{common,api,engine,scheduler,worker} on ECS and `pip install -e` reinstalled all five so the editable venv picks up 0.3.0 -->
 - [x] 6.6 rsync 新 `dist/` 到 `/var/www/isales-web/`，nginx 不需要 reload（静态资源）
-<!-- 2026-05-20 PARTIAL: HTTP-layer smoke from dev mac green — `/` 200, `/api/docs` 200, `/api/appointments` 401 (JWT), `/dashboard` 200 (SPA fallback; client router → /operations/dashboard), `/operations` 200. Full in-browser interactive smoke (login + 6 entries + leads→call→appointment flow + 3 config views) still owed; STATE.md notes this as the residual follow-up -->
-- [ ] 6.7 浏览器烟测：登录 → 顶部导航点击 3 个主入口 + 3 配置入口都能进；leads → 外呼 → calls → 创建预约 → appointments 完整链路；3 个配置 view 增删改保存后刷新仍在；运营子区 `/operations` 入口可访问且 9 个旧路径重定向工作；transcript 气泡渲染（用 §4.2 适配后的真数据）
+<!-- 2026-05-22 HTTP-layer smoke green: 11 routes 200 (/ /leads /calls /appointments /campaigns /config/* /operations* /dashboard) + API 401 鉴权正常. 浏览器交互项由用户在 2026-05-20~22 实际使用中验证（期间报修暂无线索图标居中 / 新建线索 422 / Figma 视觉对齐等并均修复），用户 2026-05-22 确认 §6.7 通过 -->
+- [x] 6.7 浏览器烟测：登录 → 顶部导航点击 3 个主入口 + 3 配置入口都能进；leads → 外呼 → calls → 创建预约 → appointments 完整链路；3 个配置 view 增删改保存后刷新仍在；运营子区 `/operations` 入口可访问且 9 个旧路径重定向工作；transcript 气泡渲染（用 §4.2 适配后的真数据）
 <!-- 2026-05-20 STATE.md updated: last-updated 2026-05-20 11:30 CST; alembic head a1b2c3d4e5f6 + new appointment table (20 tables total); new "2026-05-20 (web-admin-ui-redesign)" blockquote captures the 7-step deploy sequence + 5-line public smoke evidence + the engine stash follow-up -->
 - [x] 6.8 更新 `deploy/cloud/STATE.md`：记录新 appointment 表 + alembic head 变动 + nginx 静态资源版本号 + smoke 通过证据
 <!-- 2026-05-20 memory/project_web_admin_ui_redesign.md added; MEMORY.md index entry pointing at it -->
@@ -114,5 +114,5 @@
 - [x] 7.4 跑 `make spec-validate` + `make deploy-check` 全绿
 <!-- 2026-05-19 acceptance.md created — covers local verification, code path, IA before/after, spec deltas, deferred items (cloud deploy + 4 endpoint-CRUD groups + dark mode), and 3 implementation risks. Screenshots deferred until cloud-side smoke captures real data -->
 - [x] 7.5 在本 change 文件夹下补 `acceptance.md`（参考 archive 历史格式），列出每个客户面 view 的实际 vs Figma 视觉对照截图链接 + 边缘行为说明
-<!-- 2026-05-19 prep done locally; archive command awaits cloud deploy + smoke evidence (§6.3-§6.7 + §6.8-§6.9 deferred) -->
-- [ ] 7.6 准备 archive：commit + push 各 sub-repo → meta-repo 标 task 完成 → `openspec archive web-admin-ui-redesign --yes`
+<!-- 2026-05-22 各 sub-repo 已 commit+push（部署轮 + 视觉迭代轮）；spec 漂移已修正（commit 865da17）；§6.7 用户确认通过；执行 openspec archive -->
+- [x] 7.6 准备 archive：commit + push 各 sub-repo → meta-repo 标 task 完成 → `openspec archive web-admin-ui-redesign --yes`

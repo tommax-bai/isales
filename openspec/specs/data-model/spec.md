@@ -37,6 +37,7 @@
 | `lead` | name, phone, source, custom_data(JSONB), status, retry_count, follow_up_count, next_call_at, last_hangup_cause | api | retry-followup |
 | `call_record` | lead_id, campaign_id, caller_id, status, started_at, ended_at, duration, transcript(JSONB), recording_url, transfer_status, transfer_reason, wrap_up_started_at, prompt_versions(JSONB) | engine | transcript |
 | `call_summary` | call_record_id, summary_text, extracted_fields(JSONB), goal_achieved, goal_type | worker | goal-achievement |
+| `appointment` | lead_id, created_from_call_id (nullable), appointment_time, status (pending/confirmed/completed/cancelled), store_address, directions, notes | api | appointment |
 | `voice_model` | name, provider, voice_id, sample_url | api | (无独立 capability) |
 | `filler_set` | campaign_id, name, sort_order | api | filler |
 | `filler_phrase` | filler_set_id, phrase, audio_url, generation_status | api | filler |
