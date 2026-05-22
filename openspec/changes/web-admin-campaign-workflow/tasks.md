@@ -67,33 +67,44 @@
 
 ## 5. 前端 — per-campaign 外呼策略配置
 
-- [ ] 5.1 把 `AICallConfig.vue` 的 4-tier 并行 prompt 编辑逻辑迁入
+<!-- 2026-05-22 偏差：未复用 PromptConfigList（localStorage 形态），新建 components/Campaign/PromptTierEditor.vue 封装 role_config + prompt_version CRUD 编排（新建=POST role_config→POST prompt_version→回填 current_prompt_version_id）。CampaignDetail 用 3 个（role/judge/polish）；每行独立保存 -->
+- [x] 5.1 把 `AICallConfig.vue` 的 4-tier 并行 prompt 编辑逻辑迁入
   CampaignDetail，复用 `components/Config/PromptConfigList.vue`；数据源从
   localStorage 改为 §2.1/§2.2 的 admin API（按 `campaign_id` 读写
   `role_config` + `prompt_version`）
-- [ ] 5.2 把可拨时段编辑迁入 CampaignDetail，写入 `campaign.time_windows`
+<!-- 2026-05-22 时段编辑在 §4.2 建 CampaignDetail 时已一并完成 -->
+- [x] 5.2 把可拨时段编辑迁入 CampaignDetail，写入 `campaign.time_windows`
   （通过 `PATCH /api/campaigns/{id}`）
-- [ ] 5.3 CampaignDetail 增加"选用音色"——从全局音色库（`voice_model`）下拉
+<!-- 2026-05-22 CampaignDetail 基本信息卡加「选用音色」select，voiceApi.list() 容忍 Page/裸数组，写 campaign.voice_id -->
+- [x] 5.3 CampaignDetail 增加"选用音色"——从全局音色库（`voice_model`）下拉
   选择，写入 `campaign.voice_id`
-- [ ] 5.4 把垫词配置迁入 CampaignDetail，接 §2.3 的 `filler_set` /
+<!-- 2026-05-22 components/Campaign/FillerEditor.vue：filler_set + filler_phrase 即时落 API -->
+- [x] 5.4 把垫词配置迁入 CampaignDetail，接 §2.3 的 `filler_set` /
   `filler_phrase` admin API
-- [ ] 5.5 `VoiceChannelConfig.vue` 拆分：ASR/TTS provider 部分并入「模型
+<!-- 2026-05-22 偏差：VoiceChannelConfig.vue 直接删除而非"扩 ModelProviderConfig"——ModelProviderConfig 的 volcengine 卡片已涵盖 ASR/TTS 凭据（一套 key 三路通用），音色库由运营面 voice-models 承载 -->
+- [x] 5.5 `VoiceChannelConfig.vue` 拆分：ASR/TTS provider 部分并入「模型
   厂商」view（`ModelProviderConfig.vue` 扩成统一的 AI 服务商凭据管理，含
   LLM / ASR / TTS provider）；音色库增删并入运营面
   `views/VoiceModels/VoiceModelList.vue`
-- [ ] 5.6 删除独立全局 `AICallConfig.vue`；清理 `useLocalConfigStash` 中
+<!-- 2026-05-22 删 AICallConfig.vue + VoiceChannelConfig.vue + PromptConfigList.vue（后者仅 AICallConfig 用，被 PromptTierEditor 取代）。localStorage 旧 key 无害不专门清理。STYLE_GUIDE §7 更新 -->
+- [x] 5.6 删除独立全局 `AICallConfig.vue`；清理 `useLocalConfigStash` 中
   AI 外呼配置相关的 localStorage key
-- [ ] 5.7 新增前端 api 模块：`api/roleConfigs.ts` / `api/promptVersions.ts` /
+<!-- 2026-05-22 api/roleConfigs.ts + api/promptVersions.ts + api/fillers.ts + types/config.ts -->
+- [x] 5.7 新增前端 api 模块：`api/roleConfigs.ts` / `api/promptVersions.ts` /
   `api/fillers.ts` 对接 §2 的端点
 
 ## 6. 前端 — 线索流程对接
 
-- [ ] 6.1 `LeadEditDialog.vue`：把"任务 ID"数字输入框换成 campaign 下拉
+<!-- 2026-05-22 LeadEditDialog: 任务 ID el-input-number → campaign el-select；dialog 打开时 loadCampaigns()（list + 各 progress 拿 is_active）；campaignLabel 显示「名（运行中/已停止）」；selectedInactive 时 dialog-hint 警告；编辑时 campaign 锁定 -->
+- [x] 6.1 `LeadEditDialog.vue`：把"任务 ID"数字输入框换成 campaign 下拉
   选择器，选项显示 campaign 名 + 启停状态；选中未启动 campaign 时给提示
-- [ ] 6.2 `LeadEditDialog`：系统无 campaign 时提示先建场景 + 跳转链接
-- [ ] 6.3 `LeadList.vue`：移除卡片上的"外呼"按钮（删除 `onDial` 及其
+<!-- 2026-05-22 LeadEditDialog: campaigns 为空 → dialog-hint「系统还没有外呼场景」+ el-button 跳转 campaigns -->
+- [x] 6.2 `LeadEditDialog`：系统无 campaign 时提示先建场景 + 跳转链接
+<!-- 2026-05-22 LeadList: 删卡片「外呼」el-button + onDial 函数（含 queued 写入）；卡片操作改「编辑」主按钮 flex:1 + 删除 IconButton -->
+- [x] 6.3 `LeadList.vue`：移除卡片上的"外呼"按钮（删除 `onDial` 及其
   `queued` 写入），卡片操作回归编辑 / 删除
-- [ ] 6.4 `LeadList` 顶部的"AI 可用状态横幅"措辞调整：外呼由 campaign 启停
+<!-- 2026-05-22 LeadList 横幅去掉 9-21h 时段判定，改静态 info banner「外呼由场景驱动」+「前往场景」链接；aiAvailable computed 删除 -->
+- [x] 6.4 `LeadList` 顶部的"AI 可用状态横幅"措辞调整：外呼由 campaign 启停
   驱动，横幅引导用户去场景启动
 
 ## 7. 部署 + smoke
