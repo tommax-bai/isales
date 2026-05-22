@@ -29,6 +29,7 @@ campaign 被收进 `/operations/campaigns` 运营子区。
 - 客户能从客户面创建场景、配置、启停。
 - 添加线索时从下拉选 campaign，不再手填数字 ID。
 - 修掉 LeadList「外呼」按钮的 `queued` dead-state bug。
+- 打通新线索外呼链路：scheduler 取数把 `next_call_at IS NULL` 视为立即可呼。
 
 **Non-Goals:**
 - 不改 campaign 的后端行为 / 数据模型 / 状态机。
@@ -61,13 +62,15 @@ campaign 被收进 `/operations/campaigns` 运营子区。
 | 选用音色（campaign.voice_id） | per-campaign（引用） | campaign 详情页（下拉选） |
 | 并发上限等 campaign 字段 | per-campaign | campaign 详情页 |
 | 音色库（voice_model 增删） | **全局** | 运营面（已有 voice-models view） |
-| ASR/TTS provider 通路 | **全局**（引擎进程级） | 全局配置（或运营面） |
+| ASR/TTS provider 通路 | **全局**（引擎进程级） | 并入「模型厂商」view |
 | 模型厂商 API key | **全局**（平台凭据） | 顶部「模型厂商」圆按钮，保留 |
 
 即：**外呼策略 per-campaign，基础资源（音色库 / provider / 厂商凭据）全局**，
 campaign 详情页对基础资源是"选用"而非"管理"。原全局 `AICallConfig` 拆解进
-campaign 详情；原 `VoiceChannelConfig` 的 ASR/TTS provider 部分降为全局配置、
-音色库部分并入运营面 voice-models。
+campaign 详情；原 `VoiceChannelConfig` 的 ASR/TTS provider 部分并入「模型
+厂商」view（provider 凭据一体——volcengine 一套 app_key/token 同时供 LLM /
+ASR / TTS），音色库部分并入运营面 voice-models。顶部导航仅保留一个圆形配置
+按钮（模型厂商）。
 
 ### D3：campaign 客户向 view —— 列表 + 详情，新建而非复用 CampaignEdit
 
@@ -92,16 +95,25 @@ LeadList 卡片的「外呼」按钮，外呼统一由 campaign 详情页的「�
 单条「立即试呼」如后续需要，作为独立 change 新增后端
 `POST /leads/{id}/dial` —— 不在本 change 范围。
 
-### D5：campaign 启动时初始化 lead.next_call_at
+### D5：scheduler 取数把 `next_call_at IS NULL` 视为立即可呼
 
-`scheduler` 要求 `next_call_at <= now`，但新建 / 导入的 lead
-`next_call_at = NULL`，无任何代码初始化它。为让"客户启动场景 → 线索真被
-外呼"链路闭合，`isales-api` 的 campaign start 流程 SHALL 在启动时把该
-campaign 下 `status = new` 且 `next_call_at IS NULL` 的 lead 批量
-`SET next_call_at = now`。
+`scheduler` 取 lead 的条件含 `next_call_at <= now`，但新建 / 导入的 lead
+`next_call_at = NULL`，全代码库无任何处初始化它——新线索因此永远进不了
+scheduler 的扫描范围。
 
-这是落在 `isales-api` 的补丁式逻辑，不改 scheduler。`retry-followup` spec
-未覆盖"首次入队 next_call_at 初始化"——见 Open Questions。
+修法：`isales-scheduler` 的 `loop.py` 取数 SQL 把 `next_call_at` 条件由
+`next_call_at <= now` 改为 `next_call_at IS NULL OR next_call_at <= now`。
+即"`next_call_at` 为空"语义上等同"立即可呼"，新线索一旦其 campaign 启动
+即可被选取。
+
+**Alternatives:** "campaign 启动时由 api 批量 `UPDATE next_call_at = now`"
+——能达到同样效果，但要给"启动"动作附加一次批量写，且本质是绕一圈去模拟
+SQL 方案天然就有的效果，否决。改取数条件改动面更小（scheduler 一行）、不
+引入批量写。
+
+排序：`loop.py` 现有 `ORDER BY next_call_at ASC`，PostgreSQL 默认
+`NULLS LAST`，新线索（NULL）排在已排期的重试 / 跟进线索之后——符合"新线索
+不比重试急"的预期，不另加 `NULLS` 子句。
 
 ### D6：后端 admin 端点参照既有 router 模式
 
@@ -123,11 +135,10 @@ campaign 下 `status = new` 且 `next_call_at IS NULL` 的 lead 批量
   localStorage 数据** → Mitigation：那批配置本就是"后端未就绪"的临时兜底
   （design.md Open Q §2 已声明），用户尚未实际依赖；本 change 一并补上后端
   端点，localStorage 兜底退场。
-- **[Risk] D5 的 next_call_at 批量初始化与 `retry-followup` scheduler 数据流
-  的写入归属约定相邻** → Mitigation：只在 campaign start 这一个时点、只针对
-  `status=new ∧ next_call_at IS NULL` 的 lead 写入，不与 scheduler 的窗外
-  重排 / worker 的 retry-followup 写入冲突；design 在 Open Questions 标注，
-  实施前于 retry-followup spec 增补一条 Scenario 或确认无需。
+- **[Risk] scheduler 取数改 `IS NULL` 后，历史遗留 `next_call_at=NULL` 的
+  存量线索会在其 campaign 启动后一次性纳入扫描** → Mitigation：这正是期望
+  行为（启动场景即呼该场景所有待呼线索）；并发上限（Redis INCR）与
+  time-window 仍逐 tick 限流，不会瞬时全量外呼。
 - **[Risk] campaign 详情页若把 role_config CRUD 做成逐条同步，交互碎** →
   Mitigation：沿用 `web-admin-ui-redesign` 的 tier 批量保存 + 乐观更新模式。
 - **[Trade-off] 客户面 campaign 详情只暴露子集字段，与运营面 CampaignEdit
@@ -136,8 +147,9 @@ campaign 下 `status = new` 且 `next_call_at IS NULL` 的 lead 批量
 ## Migration Plan
 
 1. **前置**：归档 `web-admin-ui-redesign`（D7）。
-2. **后端**（isales-api）：4 组 admin CRUD router + campaign start 的
-   next_call_at 初始化（D5/D6）；pytest 覆盖。
+2. **后端**：`isales-api` 4 组 admin CRUD router + campaign `progress`
+   聚合端点（D6）；`isales-scheduler` `loop.py` 取数 SQL 加 `next_call_at
+   IS NULL`（D5）；pytest 覆盖。
 3. **前端 IA**（isales-web）：TopNav 4 主入口 + 1 配置按钮；router 增
    `/campaigns`、`/campaigns/:id`。
 4. **前端 view**：campaign 列表 + 详情页（含 per-campaign 配置区）；
@@ -145,16 +157,21 @@ campaign 下 `status = new` 且 `next_call_at IS NULL` 的 lead 批量
    / 音色库并运营面）；`LeadEditDialog` campaign 下拉；移除 LeadList 外呼
    按钮。
 5. **部署**：rebuild `dist/` → rsync ECS → 重启 `isales-api`（无 DB 迁移）。
-6. **回滚**：前端 `git revert` + redeploy 旧 `dist/`；后端新 router 为
-   纯新增，回滚即移除路由挂载。
+6. **回滚**：前端 `git revert` + redeploy 旧 `dist/`；`isales-api` 新
+   router 为纯新增，回滚即移除路由挂载；`isales-scheduler` 的 SQL 改动
+   `git revert` 后重启即可。
 
 ## Open Questions
 
-1. **D5 的 next_call_at 初始化是否需要 `retry-followup` spec delta** —— 该
-   spec 当前未规定"首次入队"的 next_call_at 由谁写。倾向：本 change 在
-   `retry-followup` 增补一条 Scenario 明确"campaign 启动时 api 初始化首呼
-   next_call_at"。apply 前确认。
-2. **ASR/TTS provider 全局配置 view 的最终落点** —— 降为独立全局 view 还是
-   并入运营面？D2 暂定"全局"，具体 view 归属在 specs 阶段定。
-3. **campaign 详情页外呼"进度"展示的数据来源** —— 复用 `analytics` 端点还是
-   新增按 campaign 聚合的查询；specs 阶段定。
+1. **D5 与 `retry-followup` spec** —— **RESOLVED（2026-05-22）**。采用"改
+   scheduler 取数 SQL 把 `next_call_at IS NULL` 视为立即可呼"方案（见 D5）。
+   该改动落在 `retry-followup` 的「scheduler 调度数据流」Requirement——取数
+   条件本就写在那条 Scenario 里，故本 change 含一个 `retry-followup` 的
+   MODIFIED delta。
+2. **ASR/TTS provider 配置 view 落点** —— **RESOLVED（2026-05-22）**。并入
+   「模型厂商」view（见 D2）：provider 凭据一体，volcengine 一套 app_key/
+   token 同时供 LLM / ASR / TTS；顶部仅保留模型厂商一个圆形配置按钮。
+3. **campaign 详情"进度"数据来源** —— **RESOLVED（2026-05-22）**。`isales-api`
+   新增 `GET /api/campaigns/{id}/progress`——按 `lead.status` 做 GROUP BY
+   聚合，返回该 campaign 的线索状态分布；通话效果数（接通率 / 成交率 / 时长）
+   复用已支持 `campaign_id` 过滤的 `analytics` 端点。

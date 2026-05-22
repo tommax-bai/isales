@@ -23,10 +23,14 @@ campaign 上，线索必须归属 campaign，scheduler 只派发"已启动 campa
 - **添加线索选 campaign**：`LeadEditDialog` 的"任务 ID"数字输入框换成
   campaign 下拉选择器（显示 campaign 名 + 启停状态）。
 - **修正 LeadList「外呼」按钮**：当前把线索写成 `queued`——scheduler 不扫描
-  该状态（dead bug）；改为符合 scheduler 调度数据流的正确语义（design 定）。
+  该状态（dead bug）；移除单条外呼按钮，外呼统一由 campaign 启停驱动。
+- **打通新线索外呼链路**：scheduler 取数条件补 `next_call_at IS NULL`——
+  新建 / 导入的线索 `next_call_at` 为空时视为"立即可呼"，修掉"新线索永远
+  进不了调度扫描"的现存缺口（全代码库无任何处初始化首呼 `next_call_at`）。
 - **后端补 admin 端点**：`isales-api` 新增 `role_config` / `prompt_version` /
-  `filler_set` / `filler_phrase` 的 HTTP CRUD（这些表已存在，仅缺 HTTP 面），
-  让 per-campaign 配置可真持久化，替代 localStorage 兜底。
+  `filler_set` / `filler_phrase` 的 HTTP CRUD + 一个按 campaign 聚合的
+  `progress` 查询端点（表已存在，仅缺 HTTP 面），让 per-campaign 配置可真
+  持久化、campaign 详情可展示外呼进度，替代 localStorage 兜底。
 
 ## Capabilities
 
@@ -42,10 +46,12 @@ campaign 上，线索必须归属 campaign，scheduler 只派发"已启动 campa
   工作流；② 客户面 view 清单新增 campaign 管理 view；③"已 spec 能力的 UI
   暴露"Requirement 深化——AI 外呼配置 / ASR-TTS 通路绑定到具体 campaign 并
   持久化（不再全局 localStorage）。
+- `retry-followup`：scheduler 调度数据流的取数条件扩展——`next_call_at IS
+  NULL` 的 lead（新线索首次入队）视为立即可呼，补全"首次入队"语义。
 
-  **依赖**：`web-admin-ui` capability 目前仍在未归档的 `web-admin-ui-redesign`
-  change 内，尚未合并进 `openspec/specs/`。本 change 的 spec delta 以
-  `web-admin-ui-redesign` **先归档**为前提——见 design.md「变更顺序依赖」。
+  **依赖**：`web-admin-ui` capability 由 `web-admin-ui-redesign` 引入，该
+  change 已于 2026-05-22 归档、spec 已合并进 `openspec/specs/web-admin-ui/`，
+  本 change 的 delta 基底就绪。
 
 ## Impact
 
@@ -54,14 +60,16 @@ campaign 上，线索必须归属 campaign，scheduler 只派发"已启动 campa
     TopNav 增加入口 + router 调整 + `LeadEditDialog` campaign 选择器 +
     LeadList 外呼按钮修正。
   - `isales-api`（中）：新增 `role_config` / `prompt_version` /
-    `filler_set` / `filler_phrase` 4 组 admin CRUD router。
-  - `isales-common`：预计无改动（上述 4 张表的 SQLAlchemy 模型 + Pydantic
+    `filler_set` / `filler_phrase` 4 组 admin CRUD router + campaign
+    `progress` 聚合查询端点。
+  - `isales-scheduler`（轻）：`loop.py` 取数 SQL 的 `next_call_at` 条件加
+    `IS NULL`。
+  - `isales-common`：预计无改动（相关表的 SQLAlchemy 模型 + Pydantic
     schema 已存在）。
-  - `deploy/cloud`：重新部署 `isales-web/dist/` + 重启 `isales-api`；无 DB
-    迁移（无新表）。
-- **affected specs**：`web-admin-ui` delta。
+  - `deploy/cloud`：重新部署 `isales-web/dist/` + 重启 `isales-api` /
+    `isales-scheduler`；无 DB 迁移（无新表）。
+- **affected specs**：`web-admin-ui` delta + `retry-followup` delta。
 - **BREAKING**：`web-admin-ui-redesign` 落地的全局配置 localStorage 数据被
   per-campaign 持久化取代；客户面深链可能变动（campaign 入口新增）。
-- **依赖的 active change**：`web-admin-ui-redesign` 必须先归档。
-- **不变**：realtime engine / edge / telephony / scheduler / worker / gRPC /
-  RTC plane；campaign 的后端行为与数据模型。
+- **不变**：realtime engine / edge / telephony / worker / gRPC / RTC
+  plane；campaign 的后端行为与数据模型。

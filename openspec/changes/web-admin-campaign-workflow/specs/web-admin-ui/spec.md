@@ -130,9 +130,11 @@ localStorage。
 #### Scenario: 启动场景
 
 - **WHEN** 用户在 campaign 详情点击"启动场景"
-- **THEN** 该 campaign SHALL 进入 active 状态；服务端 SHALL 把该 campaign
-  下 `status = new` 且 `next_call_at` 为空的线索的 `next_call_at` 初始化为
-  当前时刻，使其能被 scheduler 选取
+- **THEN** 该 campaign SHALL 进入 active 状态；该 campaign 下的待呼线索
+  （含 `next_call_at` 为空的新线索）SHALL 随即进入 scheduler 的调度范围
+  ——`next_call_at IS NULL` 由 scheduler 取数视为"立即可呼"（见
+  `retry-followup` spec「scheduler 调度数据流」），无需在 lead 创建时
+  预先初始化 `next_call_at`
 
 #### Scenario: 停止场景
 
@@ -173,10 +175,10 @@ ASR/TTS provider 配置降为全局配置、音色库管理并入运营面 voice
 
 ### Requirement: 运营面 view 收纳
 
-非客户工作流的运营管理 view（数据看板 / 通话监控 / 回调配置 / 回调记录 /
-转人工任务 / 节假日 / 设备 / SIM 卡 / 音色库 / campaign 高级编辑）SHALL
-通过顶部导航的 overflow 子菜单（或独立的 `/operations` 子区索引页）访问。
-这些 view 的功能 MUST 保持完整，仅入口位置改变。campaign 的客户向管理已移至
+非客户工作流的运营管理 view SHALL 通过顶部导航的 overflow 子菜单（或独立的
+`/operations` 子区索引页）访问。这些 view 包括数据看板 / 通话监控 / 回调
+配置 / 回调记录 / 转人工任务 / 节假日 / 设备 / SIM 卡 / 音色库 / campaign
+高级编辑，其功能 MUST 保持完整，仅入口位置改变。campaign 的客户向管理已移至
 客户面（见 Requirement「campaign 客户向管理 view」），运营面保留的是
 campaign 全字段高级编辑。
 
@@ -208,11 +210,11 @@ campaign 全字段高级编辑。
 - 可通话时段配置（`time-window`）— 在 **campaign 详情 view** 中以多个时段
   卡片形式列出，每段含开始时间、结束时间、周一至周日 7 个 checkbox，写入
   该 `campaign.time_windows`
-- ASR/TTS provider 管理（`provider-abc`）— 作为**全局配置**提供（ASR/TTS
-  provider 是引擎进程级，非 per-campaign）
-- 模型厂商 API key 管理（`provider-abc`）— 在模型厂商 view 中按 provider
-  分卡片展示，每卡片含 API key 密码输入（带显示/隐藏 toggle 与掩码预览）+
-  endpoint 输入 + enable switch + 状态徽标
+- AI 服务商凭据管理（`provider-abc`）— 在「模型厂商」view 中统一管理 LLM /
+  ASR / TTS provider（provider 凭据一体，volcengine 一套 app_key/token 三路
+  通用，故不为 ASR/TTS 单设 view）：按 provider 分卡片，含 API key 密码输入
+  （带显示/隐藏 toggle 与掩码预览）+ endpoint 输入 + 默认 model + enable
+  switch + 状态徽标；ASR/TTS provider 为引擎进程级全局，非 per-campaign
 - ASR 完整对话内容（`transcript`）— 在外呼记录 view 的每条记录上以可折叠
   面板展示，AI 与客户消息用左右气泡区分
 - 目标达成评分（`goal-achievement`）— 在外呼记录卡片中展示评分、客户意向、

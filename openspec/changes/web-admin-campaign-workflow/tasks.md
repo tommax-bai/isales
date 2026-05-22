@@ -1,13 +1,10 @@
 ## 1. 前置依赖
 
-- [ ] 1.1 归档 `web-admin-ui-redesign`（完成其 §6.7 浏览器烟测 + §7.6
-  `openspec archive`），使 `web-admin-ui` capability 合并进
-  `openspec/specs/web-admin-ui/`，本 change 的 delta 才有基底
-- [ ] 1.2 确认 design.md Open Question §1：`retry-followup` spec 是否需补一条
-  "campaign 启动时 api 初始化首呼 `next_call_at`" 的 Scenario；若需要，按
-  openspec 流程把该 delta 并入本 change 或单独处理
+- [x] 1.1 归档 `web-admin-ui-redesign`——已于 2026-05-22 `openspec archive`，
+  `web-admin-ui` capability 已并入 `openspec/specs/web-admin-ui/`，本 change
+  的 delta 基底就绪（design.md 3 个 Open Question 均已 RESOLVED）
 
-## 2. 后端 — isales-api admin 端点 + campaign 启动初始化
+## 2. 后端 — isales-api 端点 + scheduler 取数
 
 - [ ] 2.1 在 `isales-api/isales_api/routers/` 新增 `role_configs.py`：
   `role_config` 的 GET 列表（按 `campaign_id` + `kind` 过滤）/ POST / GET /
@@ -16,13 +13,16 @@
   `scope_type` / `scope_id` 过滤），支持设 `is_active`
 - [ ] 2.3 新增 `filler_sets.py`：`filler_set` + `filler_phrase` 的 CRUD（按
   `campaign_id` 过滤），filler_phrase 嵌套于 filler_set
-- [ ] 2.4 把 3 个新 router 挂到 `isales-api` 主 app（`main.py`）
-- [ ] 2.5 在 campaign start 流程（`campaigns.py` 的 `/campaigns/{id}/start`）
-  增加：启动时把该 campaign 下 `status='new'` 且 `next_call_at IS NULL` 的
-  lead 批量 `SET next_call_at = now`（同一事务）
-- [ ] 2.6 在 `isales-api/tests/` 写 pytest：3 组 admin 端点的 CRUD + 鉴权 +
-  campaign-id 过滤；campaign start 后验证 new 线索的 `next_call_at` 被初始化
-- [ ] 2.7 `make test-all` 中 `isales-api` 全绿
+- [ ] 2.4 在 `campaigns.py` 新增 `GET /campaigns/{id}/progress`：按
+  `lead.status` GROUP BY 聚合返回该 campaign 的线索状态分布
+- [ ] 2.5 把新 router 挂到 `isales-api` 主 app（`main.py`）
+- [ ] 2.6 `isales-scheduler` 的 `loop.py` 取数 SQL：`next_call_at` 条件由
+  `next_call_at <= now` 改为 `next_call_at IS NULL OR next_call_at <= now`
+  （新线索 next_call_at 为空时视为立即可呼，retry-followup spec delta）
+- [ ] 2.7 写 pytest：`isales-api` 3 组 admin 端点的 CRUD + 鉴权 +
+  campaign-id 过滤 + progress 聚合；`isales-scheduler` 验证取数把
+  `next_call_at IS NULL` 的 new 线索纳入候选
+- [ ] 2.8 `make test-all` 中 `isales-api` + `isales-scheduler` 全绿
 
 ## 3. 前端 — 信息架构（TopNav + router）
 
@@ -45,8 +45,9 @@
   `POST /api/campaigns/{id}/start|pause`；成功后刷新启停状态
 - [ ] 4.4 客户面 campaign 详情仅暴露工作流必需字段（名称 / 音色 / prompt /
   垫词 / 时段 / 并发 / 启停）；高级字段保留在运营面 `CampaignEdit.vue`
-- [ ] 4.5 CampaignDetail 外呼进度概览的数据来源（确认 design Open Q §3：
-  复用 `analytics` 端点或新增按 campaign 聚合查询）
+- [ ] 4.5 CampaignDetail 外呼进度概览：线索状态分布接 §2.4 的
+  `GET /campaigns/{id}/progress`；接通率 / 成交率接 `analytics` 端点
+  （带 `campaign_id` 过滤）
 
 ## 5. 前端 — per-campaign 外呼策略配置
 
@@ -60,8 +61,9 @@
   选择，写入 `campaign.voice_id`
 - [ ] 5.4 把垫词配置迁入 CampaignDetail，接 §2.3 的 `filler_set` /
   `filler_phrase` admin API
-- [ ] 5.5 `VoiceChannelConfig.vue` 拆分：ASR/TTS provider 部分降为全局配置
-  view（保留路由或并入运营面）；音色库增删并入运营面
+- [ ] 5.5 `VoiceChannelConfig.vue` 拆分：ASR/TTS provider 部分并入「模型
+  厂商」view（`ModelProviderConfig.vue` 扩成统一的 AI 服务商凭据管理，含
+  LLM / ASR / TTS provider）；音色库增删并入运营面
   `views/VoiceModels/VoiceModelList.vue`
 - [ ] 5.6 删除独立全局 `AICallConfig.vue`；清理 `useLocalConfigStash` 中
   AI 外呼配置相关的 localStorage key
