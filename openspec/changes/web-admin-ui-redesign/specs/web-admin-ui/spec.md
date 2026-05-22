@@ -62,7 +62,7 @@
 
 - 多并行 prompt 配置（`role-prompt`、`filler`、`goal-achievement`、`ai-pipeline` spec 已支持 N 条配置并行）— 在 AI 外呼配置 view 中按 4 个 tier（对话策略 / 垫词 / 质量判别 / 润色）分组，每 tier 提供 N 条配置的增删改 + enable switch + temperature/topP 滑杆 + provider/model 选择器
 - ASR/TTS provider 管理（`provider-abc` spec）— 在 ASR/TTS 通路 view 中提供 ASR 配置列表、TTS 配置列表、音色库列表，各自支持 enable switch 与字段编辑
-- 模型厂商 API key 管理（`provider-abc` spec）— 在模型厂商 view 中按 provider（OpenAI / Anthropic / Azure / Google）分卡片展示，每卡片含 API key 密码输入（带显示/隐藏 toggle 与掩码预览）+ endpoint 输入 + organization id（OpenAI 限定）+ enable switch + 状态徽标
+- 模型厂商 API key 管理（`provider-abc` spec）— 在模型厂商 view 中按 provider 分卡片展示，provider 列表 SHALL 对齐 `isales-engine` factory 实装（volcengine / openai；anthropic / azure / google 未对接故不列），每卡片含 API key 密码输入（带显示/隐藏 toggle 与掩码预览）+ endpoint 输入 + 默认 model + enable switch + 状态徽标
 - 可通话时段配置（`time-window` spec）— 在 AI 外呼配置 view 中以多个时段卡片形式列出，每段含开始时间、结束时间、周一至周日的 7 个 checkbox
 - ASR 完整对话内容（`transcript` spec 已有 `transcript` JSONB）— 在外呼记录 view 的每条记录上以可折叠（Collapsible）面板展示，AI 与客户消息 SHALL 用左右气泡区分
 - 目标达成评分（`goal-achievement` spec 已有 `call_summary.goal_achieved` + 可扩展字段）— 在外呼记录卡片中展示评分（0–100）、客户意向（高/中/低/无）、是否成功预约、已覆盖的关键要点列表
@@ -89,7 +89,7 @@
 #### Scenario: 主色 token
 
 - **WHEN** 应用 token
-- **THEN** `--isales-primary` SHALL 等于 `#030213`，`--isales-radius` SHALL 等于 `0.625rem`，`--isales-font-size-base` SHALL 等于 `16px`
+- **THEN** `--isales-primary` SHALL 等于 `#030213`，`--isales-radius` SHALL 等于 `0.625rem`，`--isales-font-size-base` SHALL 等于 `14px`（中文密致基线）
 
 #### Scenario: 状态色 token
 
