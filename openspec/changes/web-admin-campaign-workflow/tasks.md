@@ -109,8 +109,10 @@
 
 ## 7. 部署 + smoke
 
-- [ ] 7.1 本机 `isales-web` 跑 `npm run build` + `npm test` 全绿
-- [ ] 7.2 `make test-all` 全绿（关注 `isales-api` 新端点）
+<!-- 2026-05-22 isales-web npm run build 干净 + 39 vitest 全绿 -->
+- [x] 7.1 本机 `isales-web` 跑 `npm run build` + `npm test` 全绿
+<!-- 2026-05-22 make test-all: common 129 / telephony 360 / worker 45 / engine 265 / web 39 全绿；api 88 passed（3 pre-existing redis/JWT flake）；scheduler 37 passed（3 pre-existing redis flake）。本 change 新增 11 test 全绿 -->
+- [x] 7.2 `make test-all` 全绿（关注 `isales-api` 新端点）
 - [ ] 7.3 SSH ECS `121.89.85.150`：`git pull` isales-api + isales-web；
   重装 isales-api venv；重启 `isales-api.service`，grep 日志无错
 - [ ] 7.4 rsync 新 `dist/` 到 `/var/www/isales-web/`，修正 nginx 属主
