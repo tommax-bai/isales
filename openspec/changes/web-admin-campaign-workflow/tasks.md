@@ -37,24 +37,31 @@
 <!-- 2026-05-22 TopNav.vue: businessEntries 加 campaigns(场景,Megaphone,最左)；configEntries 减为 1(模型厂商)；isActive 支持 campaign-* 子路由；import 去 Settings/Waves 加 Megaphone -->
 - [x] 3.1 改 `isales-web/src/components/TopNav.vue`：主入口 3 → 4
   `[场景｜线索｜外呼｜预约]`，"场景"在最左；配置圆按钮 3 → 1（仅模型厂商）
-- [ ] 3.2 改 `router/index.ts`：新增 `/campaigns`（客户面场景列表）+
+<!-- 2026-05-22 router/index.ts: 客户面加 campaigns(CampaignWorkspace) + campaign-detail(CampaignDetail)；OPERATIONS_REDIRECTS 删 /campaigns（现为客户面路由）；运营面 operations-campaigns / operations-campaign-edit 路由不变 -->
+- [x] 3.2 改 `router/index.ts`：新增 `/campaigns`（客户面场景列表）+
   `/campaigns/:id`（场景详情）；移除 `/campaigns` → `/operations/campaigns`
   的重定向；运营面 campaign 高级编辑路由调整为 `/operations/campaigns/:id/edit`
-- [ ] 3.3 移除独立的 `/config/ai-call`、`/config/voice-channels` 顶级路由
+<!-- 2026-05-22 router 删 config-ai-call / config-voice-channels 两个 route。AICallConfig.vue / VoiceChannelConfig.vue 文件暂留（§5.5/§5.6 清理） -->
+- [x] 3.3 移除独立的 `/config/ai-call`、`/config/voice-channels` 顶级路由
   （其功能将迁入 campaign 详情 / 降为全局配置）
 
 ## 4. 前端 — campaign 客户向 view
 
-- [ ] 4.1 新增 `views/Campaigns/CampaignList.vue`（客户面）：campaign 卡片
+<!-- 2026-05-22 偏差：views/Campaigns/CampaignList.vue 已被运营面占用，客户面场景列表改用 views/Campaigns/CampaignWorkspace.vue。卡片网格 + 启停徽标(progress.is_active) + 线索数/进度 + 新建场景 dialog；遵循 STYLE_GUIDE -->
+- [x] 4.1 新增 `views/Campaigns/CampaignList.vue`（客户面）：campaign 卡片
   列表，每卡显示名称 / 启停状态徽标 / 归属线索数 / 外呼进度概览；"新建场景"
   入口；遵循 `isales-web/STYLE_GUIDE.md` 卡片模式
-- [ ] 4.2 新增 `views/Campaigns/CampaignDetail.vue`：场景详情页，分区展示
+<!-- 2026-05-22 CampaignDetail.vue: header(启停按钮) + 进度卡 + 基本信息(名称/并发) + 可拨时段编辑 + AI 外呼策略配置区(§5 填充前为 placeholder section) + sticky save bar -->
+- [x] 4.2 新增 `views/Campaigns/CampaignDetail.vue`：场景详情页，分区展示
   基本信息 + per-campaign 配置区（§5）+ 启停控制 + 外呼进度
-- [ ] 4.3 CampaignDetail 的"启动场景 / 停止场景"按钮接
+<!-- 2026-05-22 启动/停止按钮接 campaignsApi.start/pause；成功后 loadProgress() 刷新 is_active -->
+- [x] 4.3 CampaignDetail 的"启动场景 / 停止场景"按钮接
   `POST /api/campaigns/{id}/start|pause`；成功后刷新启停状态
-- [ ] 4.4 客户面 campaign 详情仅暴露工作流必需字段（名称 / 音色 / prompt /
+<!-- 2026-05-22 CampaignDetail 仅暴露 名称/并发/可拨时段（+§5 的 prompt/垫词/音色）；silence/interruption/transfer/retry 等高级字段不出现，留运营面 CampaignEdit -->
+- [x] 4.4 客户面 campaign 详情仅暴露工作流必需字段（名称 / 音色 / prompt /
   垫词 / 时段 / 并发 / 启停）；高级字段保留在运营面 `CampaignEdit.vue`
-- [ ] 4.5 CampaignDetail 外呼进度概览：线索状态分布接 §2.4 的
+<!-- 2026-05-22 进度卡接 campaignsApi.progress(id)：渲染 status_counts 分布。接通率/成交率（analytics）留 §5 一并接入 -->
+- [x] 4.5 CampaignDetail 外呼进度概览：线索状态分布接 §2.4 的
   `GET /campaigns/{id}/progress`；接通率 / 成交率接 `analytics` 端点
   （带 `campaign_id` 过滤）
 
