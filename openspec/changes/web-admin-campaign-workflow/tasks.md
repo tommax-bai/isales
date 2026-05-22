@@ -6,27 +6,36 @@
 
 ## 2. 后端 — isales-api 端点 + scheduler 取数
 
-- [ ] 2.1 在 `isales-api/isales_api/routers/` 新增 `role_configs.py`：
+<!-- 2026-05-22 routers/role_configs.py: list(campaign_id + kind 过滤) / get / post / patch / delete -->
+- [x] 2.1 在 `isales-api/isales_api/routers/` 新增 `role_configs.py`：
   `role_config` 的 GET 列表（按 `campaign_id` + `kind` 过滤）/ POST / GET /
   PATCH / DELETE，JWT 鉴权，分页对齐 `leads.py`
-- [ ] 2.2 新增 `prompt_versions.py`：`prompt_version` 的 CRUD（按
+<!-- 2026-05-22 routers/prompt_versions.py: CRUD + _deactivate_siblings（设 is_active 时同 scope 其余置 false） -->
+- [x] 2.2 新增 `prompt_versions.py`：`prompt_version` 的 CRUD（按
   `scope_type` / `scope_id` 过滤），支持设 `is_active`
-- [ ] 2.3 新增 `filler_sets.py`：`filler_set` + `filler_phrase` 的 CRUD（按
+<!-- 2026-05-22 routers/filler_sets.py: filler_set CRUD + 嵌套 /filler-sets/{id}/phrases。偏差：isales-common 无 filler 的 Pydantic schema（proposal 误判"已存在"），新增 schemas/filler.py + bump common 0.3.0→0.3.1 -->
+- [x] 2.3 新增 `filler_sets.py`：`filler_set` + `filler_phrase` 的 CRUD（按
   `campaign_id` 过滤），filler_phrase 嵌套于 filler_set
-- [ ] 2.4 在 `campaigns.py` 新增 `GET /campaigns/{id}/progress`：按
+<!-- 2026-05-22 campaigns.py + GET /campaigns/{id}/progress；CampaignProgress schema 加在 isales_api/schemas.py -->
+- [x] 2.4 在 `campaigns.py` 新增 `GET /campaigns/{id}/progress`：按
   `lead.status` GROUP BY 聚合返回该 campaign 的线索状态分布
-- [ ] 2.5 把新 router 挂到 `isales-api` 主 app（`main.py`）
-- [ ] 2.6 `isales-scheduler` 的 `loop.py` 取数 SQL：`next_call_at` 条件由
+<!-- 2026-05-22 main.py include_router: role_configs / prompt_versions / filler_sets -->
+- [x] 2.5 把新 router 挂到 `isales-api` 主 app（`main.py`）
+<!-- 2026-05-22 loop.py: where 改 Lead.next_call_at.is_(None) | (Lead.next_call_at <= now) -->
+- [x] 2.6 `isales-scheduler` 的 `loop.py` 取数 SQL：`next_call_at` 条件由
   `next_call_at <= now` 改为 `next_call_at IS NULL OR next_call_at <= now`
   （新线索 next_call_at 为空时视为立即可呼，retry-followup spec delta）
-- [ ] 2.7 写 pytest：`isales-api` 3 组 admin 端点的 CRUD + 鉴权 +
+<!-- 2026-05-22 tests/test_campaign_configs.py (isales-api, 10 test) + tests/test_null_next_call.py (scheduler, 1 test)；conftest TRUNCATE 加 prompt_version。scheduler test 改用 lead.status=CALLING 断言（本地 redis llen flake，见 test_loop pre-existing） -->
+- [x] 2.7 写 pytest：`isales-api` 3 组 admin 端点的 CRUD + 鉴权 +
   campaign-id 过滤 + progress 聚合；`isales-scheduler` 验证取数把
   `next_call_at IS NULL` 的 new 线索纳入候选
-- [ ] 2.8 `make test-all` 中 `isales-api` + `isales-scheduler` 全绿
+<!-- 2026-05-22 isales-api 88 passed（3 pre-existing redis/JWT flake）；isales-scheduler 37 passed（3 pre-existing redis flake）。新增 11 test 全绿 -->
+- [x] 2.8 `make test-all` 中 `isales-api` + `isales-scheduler` 全绿
 
 ## 3. 前端 — 信息架构（TopNav + router）
 
-- [ ] 3.1 改 `isales-web/src/components/TopNav.vue`：主入口 3 → 4
+<!-- 2026-05-22 TopNav.vue: businessEntries 加 campaigns(场景,Megaphone,最左)；configEntries 减为 1(模型厂商)；isActive 支持 campaign-* 子路由；import 去 Settings/Waves 加 Megaphone -->
+- [x] 3.1 改 `isales-web/src/components/TopNav.vue`：主入口 3 → 4
   `[场景｜线索｜外呼｜预约]`，"场景"在最左；配置圆按钮 3 → 1（仅模型厂商）
 - [ ] 3.2 改 `router/index.ts`：新增 `/campaigns`（客户面场景列表）+
   `/campaigns/:id`（场景详情）；移除 `/campaigns` → `/operations/campaigns`
