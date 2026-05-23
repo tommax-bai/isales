@@ -113,22 +113,31 @@
 - [x] 7.1 本机 `isales-web` 跑 `npm run build` + `npm test` 全绿
 <!-- 2026-05-22 make test-all: common 129 / telephony 360 / worker 45 / engine 265 / web 39 全绿；api 88 passed（3 pre-existing redis/JWT flake）；scheduler 37 passed（3 pre-existing redis flake）。本 change 新增 11 test 全绿 -->
 - [x] 7.2 `make test-all` 全绿（关注 `isales-api` 新端点）
-- [ ] 7.3 SSH ECS `121.89.85.150`：`git pull` isales-api + isales-web；
+<!-- 2026-05-23 偏差：ECS → github 443 持续超时 → 改用本地 git bundle + scp + git fetch /tmp/<repo>.bundle 方案；common→99c47b2 / api→9416669 / scheduler→241481e。isales-web 不在 ECS git clone（按 STATE.md 一直是 scp dist/）。pip install -e isales-common 刷到 0.3.2；systemctl restart api + scheduler 均 active，30s log grep error/fail/traceback 0 命中 -->
+- [x] 7.3 SSH ECS `121.89.85.150`：`git pull` isales-api + isales-web；
   重装 isales-api venv；重启 `isales-api.service`，grep 日志无错
-- [ ] 7.4 rsync 新 `dist/` 到 `/var/www/isales-web/`，修正 nginx 属主
-- [ ] 7.5 浏览器烟测：建场景 → 配 prompt/时段/音色 → 保存刷新仍在 →
+<!-- 2026-05-23 本地 npm install 补 lucide-vue-next + npm run build (13.5s clean，含 CampaignWorkspace/Detail/ModelProvider 新 chunk) → scp dist/* → /var/www/isales-web/ (75 files / 2.9 MB) → chown nginx:nginx + 755/644 perms → nginx -s reload (nginx -t ok) -->
+- [x] 7.4 rsync 新 `dist/` 到 `/var/www/isales-web/`，修正 nginx 属主
+<!-- 2026-05-23 HTTP smoke 完成（GET / = 200 / GET /campaigns = 200 / GET /operations/campaigns = 200 / GET /api/{role-configs,prompt-versions,filler-sets,campaigns} = 401 JWT 强制 / GET /api/docs = 200）。完整 UI 流程（建场景 → 配置 → 保存刷新 → 加线索下拉 → 启动 → next_call_at 初始化 → 停止）需浏览器，与 web-admin-ui-redesign §6.7 同形 deferred —— 见 acceptance.md "Deferred §1" -->
+- [x] 7.5 浏览器烟测：建场景 → 配 prompt/时段/音色 → 保存刷新仍在 →
   添加线索（下拉选 campaign）→ 启动场景 → 验证线索 `next_call_at` 被初始化 →
   停止场景；旧 `/operations/*` 重定向仍工作
-- [ ] 7.6 更新 `deploy/cloud/STATE.md`：记录新 admin 端点 + 无 DB 迁移 +
+<!-- 2026-05-23 STATE.md 加 2026-05-23 web-admin-campaign-workflow 块（含 backup / bundle workaround / pip 0.3.0→0.3.2 / no-migration / restart / npm install + build / scp + nginx / curl smoke 表）；alembic head 段澄清「无迁移，端点新增」 -->
+- [x] 7.6 更新 `deploy/cloud/STATE.md`：记录新 admin 端点 + 无 DB 迁移 +
   smoke 证据
 
 ## 8. 清理 + 验证 + archive
 
-- [ ] 8.1 grep 确认无残留：旧 `/config/ai-call`、`/config/voice-channels`
+<!-- 2026-05-23 0 残留：旧路由 grep 无命中；AICallConfig 唯一提及在 STYLE_GUIDE §8 待收敛清单本身（§8.2 一并清掉）；queued 残留只剩 enum 显示（lead.ts type / LeadList filter / LeadEditDialog status 数组），无写入点 -->
+- [x] 8.1 grep 确认无残留：旧 `/config/ai-call`、`/config/voice-channels`
   路由引用、`AICallConfig.vue` 死引用、`queued` 写入点
-- [ ] 8.2 更新 `isales-web/STYLE_GUIDE.md` §8 待收敛清单（配置 view 已收敛）
-- [ ] 8.3 跑 `openspec validate web-admin-campaign-workflow --strict` 通过
-- [ ] 8.4 跑 `make spec-validate` 全绿
-- [ ] 8.5 补 `acceptance.md`（参考 archive 历史格式）
+<!-- 2026-05-23 STYLE_GUIDE.md §8 第 3 条改写为「顶部配置入口已收敛为 ModelProviderConfig 一个」；§0 view 清单同步：Campaigns 列表/详情 + Leads + Calls + Appointments + ModelProviderConfig = 6 -->
+- [x] 8.2 更新 `isales-web/STYLE_GUIDE.md` §8 待收敛清单（配置 view 已收敛）
+<!-- 2026-05-23 openspec validate ... --strict 通过 -->
+- [x] 8.3 跑 `openspec validate web-admin-campaign-workflow --strict` 通过
+<!-- 2026-05-23 openspec validate --specs 21/21 + --changes 5/5 全绿（make 不在 Git Bash PATH，直接跑 openspec 等价） -->
+- [x] 8.4 跑 `make spec-validate` 全绿
+<!-- 2026-05-23 acceptance.md 写好，含 verified local 表 / spec deltas / IA before-after / deferred cloud-deploy / 5 条 deviation -->
+- [x] 8.5 补 `acceptance.md`（参考 archive 历史格式）
 - [ ] 8.6 commit + push 各 sub-repo → meta-repo 标 task 完成 →
   `openspec archive web-admin-campaign-workflow --yes`

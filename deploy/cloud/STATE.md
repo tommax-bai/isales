@@ -1,8 +1,14 @@
 # cloud deployment — current state snapshot
 
-**Last updated**: 2026-05-20 11:30 CST — **web-admin-ui-redesign deployed**;
-new `appointment` table + 6-endpoint router live; redesigned SPA at
-`http://121.89.85.150/`. Prior 4-service + cloud-edge gRPC posture intact.
+**Last updated**: 2026-05-23 18:50 CST — **web-admin-campaign-workflow deployed**;
+campaign 进入客户面 4-entry top-nav，per-campaign 配置端点 (`/api/role-configs`
+/ `/api/prompt-versions` / `/api/filler-sets` + `/api/campaigns/{id}/progress`)
+mount 完成 + JWT 鉴权返回 401 ✓；scheduler 取数补 `next_call_at IS NULL`。
+**无 alembic 迁移** (4 张配置表已存在)。SPA 重 build 至 75 files / 2.9 MB
+含 `CampaignWorkspace` / `CampaignDetail` / `ModelProviderConfig` 新 chunk。
+浏览器 UI 烟测仍欠 (从 curl 层确认 200 / 401 行为)。
+
+Prior: 2026-05-20 web-admin-ui-redesign 落地。
 
 This file is a **point-in-time snapshot** of what's actually deployed to the
 iSales cloud, distinct from `deploy/RUNBOOK-cloud.md` which describes *how*
@@ -161,12 +167,14 @@ Service env files at `/etc/isales/env/{api,engine,scheduler,worker}.env`
 (root:isales 0640), mirrored from this repo's `deploy/cloud/env/*.env`. Each
 systemd unit has a `*.service.d/env.conf` drop-in pointing at its env file.
 
-Database schema: alembic head `a1b2c3d4e5f6` (latest in
-`isales-common/alembic/versions/`, advanced from `580b817550c8` on
-2026-05-20 by `web-admin-ui-redesign §6.4`). 20 tables in `public`
-(19 from the initial schema + new `appointment` with FKs to `lead`
-CASCADE and `call_record` SET NULL; status enum
-pending/confirmed/completed/cancelled).
+Database schema: alembic head `a1b2c3d4e5f6` (unchanged since
+`web-admin-ui-redesign §6.4` on 2026-05-20; the 2026-05-23
+`web-admin-campaign-workflow` deploy ran **no migration** — its 4 backing
+tables `role_config` / `prompt_version` / `filler_set` / `filler_phrase`
+were already present in the initial schema, only the HTTP CRUD endpoints
+were new). 20 tables in `public` (19 from the initial schema + new
+`appointment` with FKs to `lead` CASCADE and `call_record` SET NULL;
+status enum pending/confirmed/completed/cancelled).
 Verify with:
 
 ```bash
@@ -220,6 +228,43 @@ observability scope opens.
 > owed; cite when `web-admin-ui-redesign §6.7` ticks. Until then, the
 > infrastructure and HTTP layers are confirmed but UX validation is
 > from curl only.
+
+> **2026-05-23 (`web-admin-campaign-workflow`)**: campaign 进入客户面 4-entry
+> top-nav (`[场景 ｜ 线索 ｜ 外呼 ｜ 预约]` + 1 模型厂商 config 圆按钮)，
+> per-campaign 外呼策略 (4-tier prompt / 垫词 / 时段 / 选用音色) 真持久化到
+> 后端。Deploy 步骤实际执行：
+>
+> 1. backup `/var/www/isales-web/` → `/var/www/isales-web.bak-20260523-pre-campaign-workflow/`
+> 2. **Workaround**: ECS → github.com:443 持续 TCP 超时（Aliyun CN egress
+>    阻断），git pull 全部失败 → 改用本地 `git bundle create` + `scp` →
+>    ECS `git fetch /tmp/<repo>.bundle main:bundle/main` + `merge --ff-only`。
+>    Applied: common `99c47b2`, api `9416669`, scheduler `241481e`。
+>    [架构建议] install.sh / 部署文档应加 fallback 路径（bundle 或 China
+>    git mirror），以及一段 egress 连通性 diagnostic。
+> 3. `pip install -e isales-common` 刷新版本（0.3.0 → 0.3.2）；consumer
+>    pin 范围 `>=0.3.0,<0.4` 未变，editable 安装无需再装。
+> 4. **No alembic migration** — `role_config` / `prompt_version` /
+>    `filler_set` / `filler_phrase` 已存在于初始 schema，仅 HTTP 端点新增。
+> 5. `systemctl restart isales-api isales-scheduler`; 两者 active；
+>    `journalctl --since "30 seconds ago"` grep error/fail/traceback → 0 命中。
+> 6. local `npm install` 补 `lucide-vue-next`（node_modules 漏装）→
+>    `npm run build` clean (13.5s，含 CampaignWorkspace 4kB / CampaignDetail
+>    19.5kB / ModelProviderConfig 6.2kB)；75 asset files / 2.9 MB；
+>    `scp dist/*` + `chown -R nginx:nginx` + `nginx -s reload`。
+> 7. HTTP smoke（curl from ECS 127.0.0.1）：
+>    - `GET /` 200 (SPA index)
+>    - `GET /campaigns` 200 (SPA fallback; client router → CampaignWorkspace)
+>    - `GET /operations/campaigns` 200 (运营面 view 保留)
+>    - `GET /api/role-configs` 401 (新 router 已 mount + JWT 强制)
+>    - `GET /api/prompt-versions` 401 (同)
+>    - `GET /api/filler-sets` 401 (同)
+>    - `GET /api/campaigns` 401 / `GET /api/docs` 200
+>
+> Known follow-up: full in-browser smoke (建场景 → 配 prompt/时段/音色 →
+> 保存刷新仍在 → 添加线索下拉 → 启动场景 → 验证 `next_call_at` 初始化 →
+> 停止 → 旧 `/operations/*` 重定向仍工作) 仍欠；HTTP layer / 后端日志确认
+> 后端 + 鉴权层 OK，UX 验证需浏览器。复用 `web-admin-ui-redesign` 同期
+> deferred UX smoke。
 
 ### Why PG 13 not PG 16
 
