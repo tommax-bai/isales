@@ -1,9 +1,7 @@
 ## Purpose
 
 定义重试与跟进两个独立机制：重试用于通话因技术原因未完成的再次拨打，跟进用于已完成但目标未达成的二次外呼。本规范覆盖 hangup_cause 分类、间隔策略、上限处理、勿打识别、lead 状态机。
-
 ## Requirements
-
 ### Requirement: 重试与跟进的概念区分
 
 重试与跟进 SHALL 是两个独立机制：独立计数、独立间隔策略、独立上限。
@@ -127,12 +125,17 @@ scheduler 主循环 SHALL 按以下步骤选取并派发 lead；派发成功后 
 - **WHEN** scheduler 主循环每分钟启动
 - **THEN** 步骤如下：
   1. 扫描 active 状态的 campaign（active 集合由 CampaignControl 消费 + 启动重建维护）
-  2. 取 leads where `status ∈ {new, retrying, following_up}` 且 `next_call_at <= now`
+  2. 取 leads where `status ∈ {new, retrying, following_up}` 且 `(next_call_at IS NULL OR next_call_at <= now)`
   3. 检查可通话时间窗口（详见 time-window）
   4. 检查全局并发计数器（Redis INCR）
   5. 调 `telephony-api /devices/select` 选 device 与 caller_id
   6. 组装 dial 消息：lead 信息、is_follow_up、follow_up_count、历史摘要（跟进时）、当前 prompt_versions 快照
   7. push 到 engine:dial 队列
+
+#### Scenario: 新线索首次入队语义
+
+- **WHEN** scheduler 取数遇到 `status='new'` 且 `next_call_at IS NULL` 的 lead（新建 / 导入后尚未排期）
+- **THEN** SHALL 视该 lead 为"立即可呼"并纳入候选；`next_call_at IS NULL` 语义上等同 `next_call_at <= now`，MUST NOT 要求任何服务在 lead 创建时预先初始化 `next_call_at`——首次入队由本取数条件天然覆盖
 
 #### Scenario: scheduler 派发成功后的状态写入
 

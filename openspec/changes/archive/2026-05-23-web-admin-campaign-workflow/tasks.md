@@ -139,5 +139,6 @@
 - [x] 8.4 跑 `make spec-validate` 全绿
 <!-- 2026-05-23 acceptance.md 写好，含 verified local 表 / spec deltas / IA before-after / deferred cloud-deploy / 5 条 deviation -->
 - [x] 8.5 补 `acceptance.md`（参考 archive 历史格式）
-- [ ] 8.6 commit + push 各 sub-repo → meta-repo 标 task 完成 →
+<!-- 2026-05-23 各 sub-repo (api/scheduler/common/web) 改动早已在 2026-05-22 push (本次 git pull 验证 local == origin)；本次 meta-repo commit: docs(STYLE_GUIDE) d23adc1 (isales-web) + openspec §7+§8 完成 d00a67a (isales)；openspec archive 落地 → archive/2026-05-23-web-admin-campaign-workflow/，retry-followup + web-admin-ui specs 同步 (+5 ~3 -1 / ~1) -->
+- [x] 8.6 commit + push 各 sub-repo → meta-repo 标 task 完成 →
   `openspec archive web-admin-campaign-workflow --yes`
