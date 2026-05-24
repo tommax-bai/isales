@@ -29,6 +29,7 @@
 
 <!-- 2026-05-24 isales-telephony/scripts/pybind_rtc_join_smoke.py 写好 (改用 ssh ECS isales-engine-mint-rtc-token CLI 拿 token 而非 cloud-edge RPC，per design D1 修订)；CLI args: --channel --user-id --duration --ttl --ssh-host --ssh-key；通过判: on_join_channel_result code=0 + 5s 内 + 无 error events -->
 - [x] 3.1 新建 `isales-telephony/scripts/pybind_rtc_join_smoke.py`：CLI `--channel smoke-channel-9-4 --duration 5`；内部 ① 走 ssh ECS isales-engine-mint-rtc-token CLI 拿 token；② `EngineHandle.create()`；③ `engine.join_channel(token, channel)`；④ 等 `on_join_channel_result` 回调；⑤ idle `duration` 秒；⑥ `engine.leave_channel()` + `destroy()`；通过条件: code=0 + 无 disconnect event
+<!-- 2026-05-24 BLOCKED on pybind binding gap (discovered during real run): Windows pybind 暴露 join_channel(token, channel, uid, name) 4 args，ARTC SDK native 需 5-arg 含 JoinChannelConfig 才接受 join；rc=16974081 native reject。新 change `windows-artc-pybind11-join-config` propose 扩 binding (SetClientRole / PublishLocalAudioStream / JoinChannelConfig type / 5-arg JoinChannel) + 重 build .pyd 后再跑本 §3.2。本次同时确认: extras MUST 是 JSON 含 app_id (空串触发 native silent abort exit 5)；on_join callback 真签名 (result, channel, user_id, elapsed_ms) 4 args。脚本 commit isales-telephony 189f669 -->
 - [ ] 3.2 运行该脚本，**验 `on_join_channel_result(code=0)` 出现 5s 内**；不通过查 ARTC vendor SDK 版本 + token 签发逻辑
 - [ ] 3.3 把通过证据 (timestamp + channel + duration + result code) 加进 `isales-telephony/deploy/edge/windows/STATE.md § "pybind §9.4 smoke 通过"`
 
