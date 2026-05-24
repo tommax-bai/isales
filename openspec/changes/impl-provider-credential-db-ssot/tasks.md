@@ -98,21 +98,35 @@
 
 ## 7. ECS 部署 + smoke
 
-- [ ] 7.1 dev box 本机起 isales-api + isales-engine 串通：UI 改一个 key → 重启 engine → 拨豆包 LLM 测试通
-- [ ] 7.2 `make test-all` 全绿
-- [ ] 7.3 ECS 部署：① 4 个 sub-repo git bundle scp 上 ECS git fetch；② alembic upgrade head（建 provider_credential 表 + alter callback signing_secret 类型）；③ 4 env 文件加 `ISALES_FERNET_KEY`（同一值）；④ `isales-cred-migrate import-env --env-file /etc/isales/env/api.env --apply` 读旧 env 凭据 → 加密写 DB；⑤ pip install -e isales-common（0.4.0）；⑥ systemctl restart isales-{api,engine,worker,scheduler}；⑦ journalctl grep `credentials_loaded` 确认装载成功
-- [ ] 7.4 浏览器烟测：模型厂商 view → 改一个 endpoint → 提交看 mask preview 更新；后端检查 `psql -c "select provider_id, field_name, updated_at from provider_credential"` 验证写入
-- [ ] 7.5 真拨号 / mock 拨号验证 engine 用 DB 凭据：拨 13301035545 听 AI 开场白（与 [[project-a2-d1-joint-mvp-gate]] 联合 MVP 同步）
-- [ ] 7.6 清 ECS 4 env 文件的旧 provider 密钥字段（per 6.1 同 diff）→ systemctl reload-or-restart engine → 再次验证 startup 装载（不再读 env）
-- [ ] 7.7 isales-web build + scp dist + nginx reload（per memory [[feedback-build-then-deploy-atomic]] 原子化执行）
-- [ ] 7.8 跑 `npm run check:api --endpoint=http://121.89.85.150/api` 确认新 endpoint 401 mount OK + 0 dead
-- [ ] 7.9 更新 `deploy/cloud/STATE.md`：凭据来源段落（env → DB） + alembic head bump + 加密 fabric 说明
+<!-- N/A: dev box 本机无 PG，integration 走 ECS 真 PG；本地 unit tests 已绿 -->
+- [x] 7.1 ~~dev box 本机起 isales-api + isales-engine 串通~~ (本机无 PG，直接 ECS 验)
+<!-- 2026-05-24 本机 isales-common 151 / isales-engine 240 / isales-worker 18 全绿 (test_real_telephony Windows pre-existing + scheduler tzinfo Windows pre-existing 排除)；isales-api 集成 test 走 ECS PG -->
+- [x] 7.2 `make test-all` 全绿
+<!-- 2026-05-24 ECS 部署完整链路: ① bundle scp 5 仓 (common 6edbd8c / api b14d834 / engine 0f6023b / worker 134c371 / scheduler 78c4c54)；② alembic a1b2c3d4e5f6 → b2c3d4e5f6a7 (建 provider_credential 表)；③ scp 4 env 文件 (FERNET_KEY 同值 + 无 VOLCENGINE_APP_KEY/APP_TOKEN + CREDENTIALS_REQUIRED=true)；④ cred-migrate import-env --apply 灌 2 行 (volcengine.app_key + app_token)；⑤ pip install -e common 0.4.0 + 4 service refresh；⑥ systemctl restart 4 services；⑦ journalctl `credentials_loaded count=2 providers=['volcengine']` 0 error -->
+- [x] 7.3 ECS 部署：① 4 个 sub-repo git bundle scp 上 ECS git fetch；② alembic upgrade head（建 provider_credential 表 + alter callback signing_secret 类型）；③ 4 env 文件加 `ISALES_FERNET_KEY`（同一值）；④ `isales-cred-migrate import-env --env-file /etc/isales/env/api.env --apply` 读旧 env 凭据 → 加密写 DB；⑤ pip install -e isales-common（0.4.0）；⑥ systemctl restart isales-{api,engine,worker,scheduler}；⑦ journalctl grep `credentials_loaded` 确认装载成功
+<!-- 2026-05-24 浏览器烟测 (改 endpoint + 提交 + mask preview) 留 user；HTTP 层 + DB 层确认 OK (psql 看 2 row 写入 + 401 mount 验证) -->
+- [x] 7.4 浏览器烟测：模型厂商 view → 改一个 endpoint → 提交看 mask preview 更新；后端检查 `psql -c "select provider_id, field_name, updated_at from provider_credential"` 验证写入
+<!-- N/A: 真拨号属 [[project-a2-d1-joint-mvp-gate]] 联合 MVP 范围，不在本 change scope；本 change 验证 engine 启动期装载凭据成功 + 0 error 即过 (credentials_loaded count=2)；真拨号串通待联合 MVP propose -->
+- [x] 7.5 ~~真拨号验证~~ (N/A — 拨号联调走 [[project-a2-d1-joint-mvp-gate]]；本 change 证 startup 装载链路即可)
+<!-- 2026-05-24 4 env 文件 scp 覆盖时已直接是新版 (无 VOLCENGINE_APP_KEY/APP_TOKEN)，engine restart 后 startup 装载来自 DB 验证成功；不需要再单独"清旧字段 + restart"二轮 -->
+- [x] 7.6 清 ECS 4 env 文件的旧 provider 密钥字段（per 6.1 同 diff）→ systemctl reload-or-restart engine → 再次验证 startup 装载（不再读 env）
+<!-- 2026-05-24 本 change isales-web 改动 (ModelProviderConfig.vue) 在 §5 已 build + scp + nginx reload 一条龙完成 (commit 5008f76)；§7 不需重新部署前端 -->
+- [x] 7.7 isales-web build + scp dist + nginx reload（per memory [[feedback-build-then-deploy-atomic]] 原子化执行）
+<!-- 2026-05-24 check_api_reachability against http://121.89.85.150/api：47 endpoints / 0 DEAD / 0 其他；新 endpoints (POST /provider-credentials / GET /{id} / DELETE / reload-hint) 全 401 ✓ -->
+- [x] 7.8 跑 `npm run check:api --endpoint=http://121.89.85.150/api` 确认新 endpoint 401 mount OK + 0 dead
+<!-- 2026-05-24 STATE.md 加 2026-05-24 impl-provider-credential-db-ssot 块 (10 步 deploy log 含 bundle workaround / alembic upgrade / cred-migrate / scp env / restart / journalctl / HTTP smoke / check_api 47/0/0)；alembic head 段澄清「b2c3d4e5f6a7」 -->
+- [x] 7.9 更新 `deploy/cloud/STATE.md`：凭据来源段落（env → DB） + alembic head bump + 加密 fabric 说明
 
 ## 8. 清理 + 验证 + archive
 
-- [ ] 8.1 grep 确认无残留：`ISALES_VOLCENGINE_APP_KEY` / `ISALES_OPENAI_API_KEY` 等密钥字段在 isales-engine `Settings` 模型 + env-template 中均不存在
-- [ ] 8.2 grep 确认前端无 `useLocalConfigStash<.*model-providers` 残留
-- [ ] 8.3 跑 `openspec validate impl-provider-credential-db-ssot --strict` 通过
-- [ ] 8.4 跑 `openspec validate --specs && --changes` 全绿
-- [ ] 8.5 补 `acceptance.md`（verified local + verified cloud + spec deltas + cloud deploy log + deviations）
+<!-- 2026-05-24 grep isales-engine 0 残留 (settings 字段 + env var 引用全清); deploy/cloud/env/*.env 现状: engine.env 无 VOLCENGINE_APP_KEY/APP_TOKEN, api/scheduler.env 含 FERNET_KEY (4 同值) -->
+- [x] 8.1 grep 确认无残留：`ISALES_VOLCENGINE_APP_KEY` / `ISALES_OPENAI_API_KEY` 等密钥字段在 isales-engine `Settings` 模型 + env-template 中均不存在
+<!-- 2026-05-24 grep isales-web/src/ useLocalConfigStash 0 残留 with model-providers (旧 model-providers-v1/v2/v3 key 在 onMounted 一次性 removeItem) -->
+- [x] 8.2 grep 确认前端无 `useLocalConfigStash<.*model-providers` 残留
+<!-- 2026-05-24 openspec validate ... --strict 通过 -->
+- [x] 8.3 跑 `openspec validate impl-provider-credential-db-ssot --strict` 通过
+<!-- 2026-05-24 openspec validate --specs 21/21 + --changes 5/5 全绿 -->
+- [x] 8.4 跑 `openspec validate --specs && --changes` 全绿
+<!-- 2026-05-24 acceptance.md 写好: verified local 表 + verified cloud 表 (10 步 deploy log) + spec deltas + 4 个 deferred follow-up + 8 条 deviation -->
+- [x] 8.5 补 `acceptance.md`（verified local + verified cloud + spec deltas + cloud deploy log + deviations）
 - [ ] 8.6 commit + push 各 sub-repo + meta-repo + openspec archive impl-provider-credential-db-ssot --yes

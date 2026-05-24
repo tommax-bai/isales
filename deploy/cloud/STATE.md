@@ -1,6 +1,12 @@
 # cloud deployment — current state snapshot
 
-**Last updated**: 2026-05-23 18:50 CST — **web-admin-campaign-workflow deployed**;
+**Last updated**: 2026-05-24 09:32 CST — **impl-provider-credential-db-ssot
+deployed**; provider 凭据从 env 切到 DB SSOT (provider_credential 表 Fernet
+加密)；engine startup 装载 `credentials_loaded count=2 providers=['volcengine']`
+✓；env 4 个文件加 `ISALES_FERNET_KEY` 同值 + engine.env 删 VOLCENGINE 真值；
+alembic head a1b2c3d4e5f6 → b2c3d4e5f6a7。
+
+Prior: 2026-05-23 18:50 — **web-admin-campaign-workflow deployed**;
 campaign 进入客户面 4-entry top-nav，per-campaign 配置端点 (`/api/role-configs`
 / `/api/prompt-versions` / `/api/filler-sets` + `/api/campaigns/{id}/progress`)
 mount 完成 + JWT 鉴权返回 401 ✓；scheduler 取数补 `next_call_at IS NULL`。
@@ -167,14 +173,11 @@ Service env files at `/etc/isales/env/{api,engine,scheduler,worker}.env`
 (root:isales 0640), mirrored from this repo's `deploy/cloud/env/*.env`. Each
 systemd unit has a `*.service.d/env.conf` drop-in pointing at its env file.
 
-Database schema: alembic head `a1b2c3d4e5f6` (unchanged since
-`web-admin-ui-redesign §6.4` on 2026-05-20; the 2026-05-23
-`web-admin-campaign-workflow` deploy ran **no migration** — its 4 backing
-tables `role_config` / `prompt_version` / `filler_set` / `filler_phrase`
-were already present in the initial schema, only the HTTP CRUD endpoints
-were new). 20 tables in `public` (19 from the initial schema + new
-`appointment` with FKs to `lead` CASCADE and `call_record` SET NULL;
-status enum pending/confirmed/completed/cancelled).
+Database schema: alembic head `b2c3d4e5f6a7` (advanced from `a1b2c3d4e5f6`
+on 2026-05-24 by `impl-provider-credential-db-ssot §1.6` — 新建
+`provider_credential` 表，存 Fernet urlsafe-base64 cipher，UNIQUE
+`(provider_id, field_name)` + idx `provider_id`)。21 tables in `public`
+(19 initial + 2026-05-20 `appointment` + 2026-05-24 `provider_credential`)。
 Verify with:
 
 ```bash
@@ -265,6 +268,43 @@ observability scope opens.
 > 停止 → 旧 `/operations/*` 重定向仍工作) 仍欠；HTTP layer / 后端日志确认
 > 后端 + 鉴权层 OK，UX 验证需浏览器。复用 `web-admin-ui-redesign` 同期
 > deferred UX smoke。
+
+> **2026-05-24 (`impl-provider-credential-db-ssot`)**: provider 凭据从
+> env 切到 DB SSOT (`provider_credential` 表 + Fernet 加密 + admin CRUD)。
+> Deploy 步骤实际执行：
+>
+> 1. 本地 `git bundle create` 5 仓 (common/api/engine/worker/scheduler)
+>    → scp → ECS git fetch + merge --ff-only。HEAD: common 6edbd8c /
+>    api b14d834 / engine 0f6023b / worker 134c371 / scheduler 78c4c54。
+> 2. `pip install -e isales-common` (0.3.2 → 0.4.0) + 4 service 重装
+>    pyproject metadata (>=0.4.0,<0.5 pin)；`pip check` clean。
+> 3. backup `/etc/isales/env/engine.env` → `/tmp/engine.env.pre-cred-migrate`
+>    (chmod 644 给 isales 用户读)。
+> 4. **alembic upgrade head** advanced `a1b2c3d4e5f6 → b2c3d4e5f6a7`；
+>    `\d provider_credential` 显示 5 cols (id/provider_id/field_name/
+>    cipher_text/updated_by/timestamps) + UNIQUE(provider_id, field_name)
+>    + idx ix_provider_credential_provider_id。
+> 5. `isales-cred-migrate import-env --env-file /tmp/engine.env.pre-cred-migrate
+>    --apply` 灌入 2 行 (volcengine.app_key + volcengine.app_token)，
+>    masked plan 显 `api-********5338` / `8298********2c49` 与原值前后
+>    4 字对齐 ✓。
+> 6. scp 4 个新 env (含 ISALES_FERNET_KEY=Yt-e_Tg... 同值，engine.env
+>    无 VOLCENGINE_APP_KEY/APP_TOKEN，加 ISALES_CREDENTIALS_REQUIRED=true)
+>    → `install -m 0640 -o root -g isales` 覆盖 `/etc/isales/env/`。
+> 7. `systemctl restart isales-api isales-engine isales-scheduler
+>    isales-worker`；4 服务 active；`journalctl -u isales-engine` 显
+>    `credentials_loaded count=2 providers=['volcengine']` ✓；60s 日志
+>    grep error/fail/traceback 0 命中。
+> 8. HTTP smoke：`/api/provider-credentials = 401` (新 router 鉴权 OK) /
+>    `/api/campaigns = 401` / `/api/docs = 200`。
+> 9. `cd isales-web && node scripts/check_api_reachability.mjs`：
+>    全量 47 endpoints OK，0 DEAD。新 endpoint `POST /provider-credentials`,
+>    `GET /provider-credentials/{id}`, `DELETE`, `reload-hint` 全 401 ✓。
+> 10. Cleanup `/tmp/engine.env.pre-cred-migrate`。
+>
+> Known follow-up: full in-browser smoke (UI「模型厂商」改 key + 保存 +
+> mask preview 验证) 仍欠；HTTP layer / engine startup 装载日志确认
+> 后端链路 OK。
 
 ### Why PG 13 not PG 16
 
