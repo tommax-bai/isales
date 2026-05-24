@@ -129,4 +129,5 @@
 - [x] 8.4 跑 `openspec validate --specs && --changes` 全绿
 <!-- 2026-05-24 acceptance.md 写好: verified local 表 + verified cloud 表 (10 步 deploy log) + spec deltas + 4 个 deferred follow-up + 8 条 deviation -->
 - [x] 8.5 补 `acceptance.md`（verified local + verified cloud + spec deltas + cloud deploy log + deviations）
-- [ ] 8.6 commit + push 各 sub-repo + meta-repo + openspec archive impl-provider-credential-db-ssot --yes
+<!-- 2026-05-24 各 sub-repo commit + push 详见各仓 HEAD (common 6edbd8c / api b14d834 / engine 0f6023b / worker 134c371 / scheduler 78c4c54 / web 5008f76)；meta-repo §1-§6 (bdc1fc1) + §7+§8 (8482f58)；openspec archive 落地 → archive/2026-05-24-impl-provider-credential-db-ssot/，provider-credential capability +7 ADDED + data-model/web-admin-ui/webhook-callback 各 ~1 MODIFIED -->
+- [x] 8.6 commit + push 各 sub-repo + meta-repo + openspec archive impl-provider-credential-db-ssot --yes
