@@ -67,33 +67,43 @@ requirements come in.
 The `.pem` private key must be on your machine. The SSH command shape:
 
 ```
-ssh -i <path-to>/isales.pem root@121.89.85.150
+ssh -i <path-to>/isales-4.pem root@121.89.85.150
 ```
+
+**2026-05-24 rotation note**: ECS bound keypair was rotated again on
+2026-05-24 via Aliyun console "ECS → 实例 → 更多 > 密钥对". Old keys
+(`isales.pem` install-time + `isales-3.pem` 2026-05-19 mac rotation) WILL
+fail with `Permission denied (publickey)`. Only `isales-4.pem` works as
+of 2026-05-24.
 
 | dev rig | path | notes |
 |---|---|---|
-| Windows (primary) | `C:\Users\tianx\codes\isales.pem` | Original key, used during install |
-| macOS (dev) | `~/codes/isales-3.pem` | **2026-05-19**: rotated keypair; this is the only `.pem` currently bound to the ECS instance |
+| Windows (primary) | `C:\Users\tianx\codes\isales-4.pem` | **2026-05-24 rotation** — current bound on ECS |
+| Windows (legacy) | `C:\Users\tianx\codes\isales.pem` | 2026-05-17 install-time, **rotated out** |
+| macOS (dev) | `~/codes/isales-3.pem` | 2026-05-19 mac copy of pre-2026-05-24 keypair, **stale**；mac dev should refetch isales-4.pem |
 
 On a new machine: copy the **current** `.pem` from a secure location
 (password manager attachment, USB drive, another dev machine's
 `~/.ssh/`), `chmod 600` it on macOS/Linux, then test:
 
 ```
-ssh -i ~/codes/isales-3.pem root@121.89.85.150 'hostname'
+ssh -i C:/Users/tianx/codes/isales-4.pem root@121.89.85.150 'hostname'
 # expect: iZ0jlev0nr9m65tj6546zyZ
 ```
 
-Current bound keypair fingerprint (verify you have the right `.pem`):
+Current bound keypair fingerprint (verify with `ssh-keygen -lf
+isales-4.pem`):
 
 ```
-2048 SHA256:Xz3C4DtqUBvdENUZk5Biw+GYKw3gGmjt1UwEzL9yOHQ (RSA)
+# 2026-05-24 rotation 后的 fingerprint 由 ssh-keygen -lf 验证
+# 历史 fingerprints (已失效)：
+#   2026-05-17  SHA256:ESKEddFU95g0ytlCZyTYEg3T4SHYNe7oBVPHpWQI5k0 (isales.pem)
+#   2026-05-19  SHA256:Xz3C4DtqUBvdENUZk5Biw+GYKw3gGmjt1UwEzL9yOHQ (isales-3.pem)
 ```
 
-> **2026-05-19 rotation note.** Prior fingerprint
-> `SHA256:ESKEddFU95g0ytlCZyTYEg3T4SHYNe7oBVPHpWQI5k0` was the install-time
-> keypair; it has since been replaced via Aliyun console. A stale
-> `isales.pem` (e.g. older `~/Downloads/isales.pem`) WILL fail with
+> **2026-05-24 rotation note.** Prior fingerprint
+> `SHA256:Xz3C4DtqUBvdENUZk5Biw+GYKw3gGmjt1UwEzL9yOHQ` (and the earlier
+> install-time `SHA256:ESKEdd...VPHpWQI5k0`) WILL fail with
 > `Permission denied (publickey)` — `ssh-keygen -lf <path>` to verify
 > before troubleshooting host bindings.
 
@@ -111,9 +121,10 @@ has wrong file permissions on a Unix host. Aliyun console → ECS
 instance → "更多 > 密钥对 > 绑定/解绑密钥对".
 
 Claude Code permission rule (`.claude/settings.local.json` at repo root)
-already allows `Bash(ssh -i C:/Users/tianx/codes/isales.pem*)` and
-`Bash(scp -i C:/Users/tianx/codes/isales.pem*)` so an agent can drive
-the ECS without per-command auto-mode prompts.
+allows `Bash(ssh -i C:/Users/tianx/codes/isales-4.pem*)` +
+`Bash(scp -i C:/Users/tianx/codes/isales-4.pem*)` (2026-05-24 rotation)
+plus the legacy `isales.pem` patterns kept around for backward compat
+(those keys are stale; rule survives as 防呆 backstop only).
 
 ## Installed components on the ECS
 
@@ -339,7 +350,7 @@ Reproducible verification, run from Windows dev box → ECS:
 
 ```powershell
 # 1. Mint a one-hour test JWT on ECS (uses ISALES_JWT_SECRET from api.env):
-ssh -i C:/Users/tianx/codes/isales.pem root@121.89.85.150 `
+ssh -i C:/Users/tianx/codes/isales-4.pem root@121.89.85.150 `
     'set -a; source /etc/isales/env/api.env; set +a; \
      /opt/isales/current/venv/bin/isales-edge-token-mint \
         --device-id edge-test --ttl 1h' > $env:TEMP\smoke.jwt
@@ -460,7 +471,7 @@ tokens). When expiring:
 ```bash
 # Replace TOKEN on the next line and run:
 printf 'https://tommax-bai:<NEW>@github.com\n' | \
-    ssh -i C:/Users/tianx/codes/isales.pem root@121.89.85.150 \
+    ssh -i C:/Users/tianx/codes/isales-4.pem root@121.89.85.150 \
     'tee /opt/isales/.git-credentials > /dev/null && \
      chown isales:isales /opt/isales/.git-credentials && \
      chmod 0600 /opt/isales/.git-credentials'
@@ -608,13 +619,13 @@ failure mode (see [[feedback-ground-truth-before-pending]] memory).
 
 ```powershell
 # 1. ECS reachable + 4 services up + ports listen
-ssh -i C:/Users/tianx/codes/isales.pem -o ConnectTimeout=8 root@121.89.85.150 `
+ssh -i C:/Users/tianx/codes/isales-4.pem -o ConnectTimeout=8 root@121.89.85.150 `
     'systemctl is-active isales-api isales-engine isales-scheduler isales-worker postgresql redis; \
      echo "---"; ss -tln | grep -E ":50051|:8000"'
 # expect: 6 "active" lines + "0.0.0.0:50051" + "0.0.0.0:8000" listeners
 
 # 2. alembic at head + 19 tables
-ssh -i C:/Users/tianx/codes/isales.pem root@121.89.85.150 `
+ssh -i C:/Users/tianx/codes/isales-4.pem root@121.89.85.150 `
     'cd /opt/isales/current/isales-common && set -a && source /etc/isales/env/api.env && set +a && \
      sudo -u isales -H -E env ISALES_DATABASE_URL="$ISALES_DATABASE_URL" \
         /opt/isales/current/venv/bin/alembic current; \
@@ -628,7 +639,7 @@ Test-NetConnection -ComputerName 121.89.85.150 -Port 50051 -WarningAction Silent
 # expect: TcpTestSucceeded True
 
 # 4. cloud-edge end-to-end smoke (mint fresh token + run smoke)
-ssh -i C:/Users/tianx/codes/isales.pem root@121.89.85.150 `
+ssh -i C:/Users/tianx/codes/isales-4.pem root@121.89.85.150 `
     'set -a; source /etc/isales/env/api.env; set +a; \
      /opt/isales/current/venv/bin/isales-edge-token-mint --device-id edge-test --ttl 1h' `
     > "$env:TEMP\smoke.jwt"
