@@ -127,10 +127,24 @@ for svc in api engine scheduler worker; do
   sudo install -m 0640 -o root -g isales \
     deploy/cloud/env/$svc.env.example /etc/isales/env/$svc.env
 done
-sudoedit /etc/isales/env/api.env       # 填 RDS / Redis URL / JWT_SECRET
-sudoedit /etc/isales/env/engine.env    # 填 RTC AppId/AppKey / 豆包 API key
-sudoedit /etc/isales/env/scheduler.env
-sudoedit /etc/isales/env/worker.env    # 填 OSS AK/SK
+sudoedit /etc/isales/env/api.env       # 填 RDS / Redis URL / JWT_SECRET / FERNET_KEY
+sudoedit /etc/isales/env/engine.env    # 填 RTC AppId/AppKey / FERNET_KEY (4 个 env 同值)
+sudoedit /etc/isales/env/scheduler.env # 填 FERNET_KEY (同上)
+sudoedit /etc/isales/env/worker.env    # 填 OSS AK/SK / FERNET_KEY (同上)
+
+# ↑ FERNET_KEY 在 4 个 env 必须一致。生成与备份:
+python3 -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'
+#   ↑ 输出值同时写入 4 个 env 文件 + password manager + deploy/cloud/env/SECRETS.md
+#   (gitignored 离线副本)。详见 § 凭据轮换。
+
+# Provider 凭据 (volcengine app_key/app_token, openai api_key, dashscope
+# api_key 等) 现在走 DB SSOT —— env 不再持有；首次部署 alembic 完成后
+# 用 isales-cred-migrate 一次性灌入：
+sudo -u isales bash -c '
+  set -a; source /etc/isales/env/api.env; set +a
+  /opt/isales/current/venv/bin/isales-cred-migrate import-env \
+    --env-file /path/to/legacy-with-provider-keys.env --apply
+'
 
 # 必填的环境变量提示
 export ISALES_DOMAIN=cloud.isales.example.com
@@ -426,6 +440,111 @@ sudo bash deploy/cloud/scripts/rollback.sh <target-ts>
 ```
 
 **仅在确证 forward migration 不兼容旧 release 时使用**；多数 v1.0 schema 改动是 additive，可直接做 release rollback。
+
+---
+
+## 9.5 凭据轮换 (provider-credential + callback signing_secret)
+
+`impl-provider-credential-db-ssot` 把所有 provider API key 切到 DB
+SSOT (Fernet 加密 in `provider_credential` 表)；`callback_config.signing_secret`
+共用同一 Fernet 主密钥。env 文件只持 `ISALES_FERNET_KEY` 主密钥本身。
+
+### 9.5.1 单 provider key 旋转 (常见)
+
+```
+浏览器 → /operations/model-providers → 改对应 provider 的 API key →
+保存 → 自动调 /api/provider-credentials/reload-hint 提示 →
+ssh ECS: systemctl restart isales-engine → journalctl 看 credentials_loaded
+```
+
+不需要碰 env 文件，不需要重启 isales-api / isales-worker / isales-scheduler。
+
+### 9.5.2 Fernet 主密钥旋转 (年度 / 泄漏应急)
+
+主密钥旋转需要停机窗口 (engine 凭据装载在 startup)。步骤:
+
+```bash
+# 1. 生成新 key
+NEW_KEY=$(python3 -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')
+
+# 2. ECS 上跑一次性重加密脚本 (v1.0 手工版本；CLI 待补 rotate-key 子命令):
+ssh root@121.89.85.150 'sudo -u isales -H /opt/isales/current/venv/bin/python <<PYEOF
+import os, asyncio
+from cryptography.fernet import Fernet
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+from isales_common.models import ProviderCredential
+
+OLD = Fernet(os.environ["ISALES_FERNET_KEY"].encode())
+NEW = Fernet(b"'"$NEW_KEY"'")
+
+async def rotate():
+    engine = create_async_engine(os.environ["ISALES_DATABASE_URL"])
+    async with async_sessionmaker(engine)() as s:
+        rows = (await s.execute(select(ProviderCredential))).scalars().all()
+        for r in rows:
+            plain = OLD.decrypt(r.cipher_text.encode())
+            r.cipher_text = NEW.encrypt(plain).decode()
+        # callback_config.signing_secret 同步 rotate (worker 也用该 key):
+        from isales_common.models.callback_config import CallbackConfig
+        cbs = (await s.execute(select(CallbackConfig))).scalars().all()
+        for c in cbs:
+            if c.signing_secret and c.signing_secret.startswith("gAAAA"):
+                plain = OLD.decrypt(c.signing_secret.encode())
+                c.signing_secret = NEW.encrypt(plain).decode()
+        await s.commit()
+PYEOF
+asyncio.run(rotate())
+'
+
+# 3. 同步更新 4 个 env 文件 + repo SECRETS.md
+for svc in api engine worker scheduler; do
+  sudo sed -i "s|^ISALES_FERNET_KEY=.*|ISALES_FERNET_KEY=$NEW_KEY|" \
+    /etc/isales/env/$svc.env
+done
+
+# 4. 重启全部服务 (顺序无关，但 engine 必须最后才能验装载成功)
+systemctl restart isales-api isales-worker isales-scheduler isales-engine
+journalctl -u isales-engine -n 30 | grep credentials_loaded
+
+# 5. 备份新 key 到 password manager + 改 deploy/cloud/env/SECRETS.md
+```
+
+### 9.5.3 主密钥丢失 / 灾难恢复
+
+主密钥不可恢复 = 所有凭据不可解。流程:
+
+1. 生成新 Fernet key，写入 4 个 env 文件。
+2. `DELETE FROM provider_credential;` (无法解的旧行直接清掉)。
+3. 通知用户进 UI「模型厂商」逐个重填 API key。
+4. `callback_config.signing_secret` 也清掉 (`UPDATE callback_config SET
+   signing_secret = NULL`)，每个 callback 再 rotate-secret 重发。
+5. 记录到 `deploy/cloud/STATE.md` 异常日志段。
+
+详见 `deploy/cloud/env/SECRETS.md.example` § 灾难恢复 SOP。
+
+### 9.5.4 一次性 env → DB 迁移 (首次部署专用)
+
+老 env 文件里有 ISALES_VOLCENGINE_APP_KEY / APP_TOKEN / OPENAI_API_KEY
+等字段时:
+
+```bash
+ssh root@121.89.85.150 'sudo -u isales -H \
+  /opt/isales/current/venv/bin/isales-cred-migrate import-env \
+    --env-file /etc/isales/env/api.env --apply'
+# 或直接指向某 legacy env file (deploy 仓里的)。
+# 输出 dry-run plan 时不带 --apply；确认 mask 计划再加 --apply 真写。
+
+# 灌入后清掉 env 旧字段 (避免 future 装载从 env 兜底掩盖 DB):
+sudo sed -i '/^ISALES_VOLCENGINE_APP_KEY=/d; /^ISALES_VOLCENGINE_APP_TOKEN=/d; \
+             /^ISALES_OPENAI_API_KEY=/d; /^ISALES_OPENAI_BASE_URL=/d' \
+   /etc/isales/env/engine.env
+
+systemctl restart isales-engine
+```
+
+回滚: `isales-cred-migrate export-env --env-file /tmp/restored.env --apply`
+反向把 DB 解密回 env 兼容文件 (仅 rollback 路径用，正常运行不需要)。
 
 ---
 

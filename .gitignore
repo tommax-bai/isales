@@ -11,5 +11,7 @@ __pycache__/
 !deploy/cloud/env/engine.env
 !deploy/cloud/env/scheduler.env
 !deploy/cloud/env/worker.env
+# Offline backup of Fernet master key + RTC AppKey + admin pw — never git.
+deploy/cloud/env/SECRETS.md
 .venv
 node_modules/
