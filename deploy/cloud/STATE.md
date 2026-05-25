@@ -80,7 +80,7 @@ of 2026-05-24.
 |---|---|---|
 | Windows (primary) | `C:\Users\tianx\codes\isales-4.pem` | **2026-05-24 rotation** — current bound on ECS |
 | Windows (legacy) | `C:\Users\tianx\codes\isales.pem` | 2026-05-17 install-time, **rotated out** |
-| macOS (dev) | `~/codes/isales-3.pem` | 2026-05-19 mac copy of pre-2026-05-24 keypair, **stale**；mac dev should refetch isales-4.pem |
+| macOS (dev) | `~/codes/isales-4.pem` | **2026-05-25 mac refetch** — current bound (chmod 600); old `~/codes/isales-3.pem` kept on disk for fingerprint history, no longer accepted by ECS |
 
 On a new machine: copy the **current** `.pem` from a secure location
 (password manager attachment, USB drive, another dev machine's
@@ -95,7 +95,7 @@ Current bound keypair fingerprint (verify with `ssh-keygen -lf
 isales-4.pem`):
 
 ```
-# 2026-05-24 rotation 后的 fingerprint 由 ssh-keygen -lf 验证
+# 2026-05-24 rotation: SHA256:5hmxKK6RcQQfukDedJ/s95A0KEUbKj/dzl2X3Uk264s (isales-4.pem, current)
 # 历史 fingerprints (已失效)：
 #   2026-05-17  SHA256:ESKEddFU95g0ytlCZyTYEg3T4SHYNe7oBVPHpWQI5k0 (isales.pem)
 #   2026-05-19  SHA256:Xz3C4DtqUBvdENUZk5Biw+GYKw3gGmjt1UwEzL9yOHQ (isales-3.pem)
