@@ -80,7 +80,7 @@ of 2026-05-24.
 |---|---|---|
 | Windows (primary) | `C:\Users\tianx\codes\isales-4.pem` | **2026-05-24 rotation** — current bound on ECS |
 | Windows (legacy) | `C:\Users\tianx\codes\isales.pem` | 2026-05-17 install-time, **rotated out** |
-| macOS (dev) | `~/codes/isales-4.pem` | **2026-05-25 mac refetch** — current bound (chmod 600); old `~/codes/isales-3.pem` kept on disk for fingerprint history, no longer accepted by ECS |
+| macOS (dev) | `~/codes/isales-4.pem` | **2026-05-25 mac refetch** — current bound (chmod 600); old `~/codes/isales-3.pem` purged from disk |
 
 On a new machine: copy the **current** `.pem` from a secure location
 (password manager attachment, USB drive, another dev machine's
