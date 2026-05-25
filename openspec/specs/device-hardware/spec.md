@@ -422,9 +422,9 @@ modem-controller 在 Windows 上 SHALL 维护一份 USB GSM modem 白名单（�
 
 ### Requirement: macOS 边缘 ARTC SDK 通过 PyObjC binding 接入（dev / QA 形态）
 
-边缘 isales-telephony 进程在 macOS 13+（x86_64 + Apple Silicon）上 SHALL 通过 `isales_telephony/audio_bridge/macos_artc_pyobjc.py`（项目内 PyObjC bridge）接入真 Aliyun ARTC SDK；该实装与既有 "Windows 边缘 ARTC SDK 通过 pybind11 binding 接入"（来自 `windows-artc-pybind11`）pattern 对称，**并列**于既有 Windows backend，不替代 Windows 商用路径。
+边缘 isales-telephony 进程在 macOS 13+（x86_64 + Apple Silicon）上 SHALL 通过 `isales_telephony/audio_bridge/macos_artc_pyobjc.py`（项目内 PyObjC bridge）接入真 Aliyun RTC SDK；该实装与既有 "Windows 边缘 ARTC SDK 通过 pybind11 binding 接入"（来自 `windows-artc-pybind11`）pattern 对称，**并列**于既有 Windows backend，不替代 Windows 商用路径。
 
-本 Requirement 服务于 dev 同学在 mac 工作机上做策略层 + 工程层真 RTC 闭环演练（mac edge 与 Windows 商用 edge 等同地 join Aliyun RTC 房间，连真 cloud engine `121.89.85.150`，复用既有 A2 控制面 + 数据面）。**MUST NOT** 进入 v1.0 商用形态（仍是 Windows + 真 GSM modem + 真 ARTC，由 `arch-cloud-edge-split` + `windows-artc-pybind11` 联合交付）；**MUST NOT** 影响 A2 + windows-artc-pybind11 联合验收契约。
+本 Requirement 服务于 dev 同学在 mac 工作机上做策略层 + 工程层真 RTC 闭环演练（mac edge 与 Windows 商用 edge 等同地 join Aliyun RTC 房间，连真 cloud engine `121.89.85.150`，复用既有 A2 控制面 + 数据面）。**MUST NOT** 进入 v1.0 商用形态（仍是 Windows + 真 GSM modem + 真 Aliyun RTC，由 `arch-cloud-edge-split` + `windows-artc-pybind11` 联合交付）；**MUST NOT** 影响 A2 + windows-artc-pybind11 联合验收契约。
 
 PyObjC binding 与既有 `MacosRtcSession` mock loopback（`isales_telephony/audio_bridge/session.py`）并存。Mock loopback 保留作 CI / unit-test 同进程 fixture，**不**被本 Requirement 替代。
 
@@ -475,7 +475,7 @@ PyObjC binding 与既有 `MacosRtcSession` mock loopback（`isales_telephony/aud
 #### Scenario: dev / QA 形态边界
 
 - **WHEN** v1.0 MVP 验收 / 客户预演 / 任何对外演示
-- **THEN** SHALL **NOT** 使用 macOS PyObjC binding 形态；唯一验收路径仍是 Windows 商用形态（Windows frozen exe + 真 ARTC join + 真 GSM modem + 拨真手机 → 听到 AI 开场白）
+- **THEN** SHALL **NOT** 使用 macOS PyObjC binding 形态；唯一验收路径仍是 Windows 商用形态（Windows frozen exe + 真 Aliyun RTC join + 真 GSM modem + 拨真手机 → 听到 AI 开场白）
 - mac PyObjC binding 测出的延迟 / barge-in / VAD / 抗噪 SHALL 作为 dev 调参参考；策略机制（barge-in / 垫词 / handoff / goal partial）行为外推有效，绝对延迟数字外推到商用前 SHALL 在 Windows 商用形态再验证一次
 
 #### Scenario: vendor SDK 与依赖隔离
@@ -489,13 +489,13 @@ PyObjC binding 与既有 `MacosRtcSession` mock loopback（`isales_telephony/aud
 
 - **WHEN** 本 Requirement 实装上线
 - **THEN** `isales_telephony/audio_bridge/session.py::MacosRtcSession`（同进程 loopback mock，A2 / CI 测试用）SHALL 不被修改
-- `isales_telephony/audio_bridge/windows_rtc_session.py::WindowsRtcSession`（pybind11 真 ARTC，`windows-artc-pybind11` 实装）SHALL 不被修改
+- `isales_telephony/audio_bridge/windows_rtc_session.py::WindowsRtcSession`（pybind11 真 Aliyun RTC，`windows-artc-pybind11` 实装）SHALL 不被修改
 - `RtcSession` ABC（`isales-common/isales_common/audio/rtc.py`）SHALL 不被修改
 - 既有 device-hardware Requirement "Windows 平台 backend" / "macOS 边缘形态保留"（来自 archive change） SHALL 不被修改
 
 ### Requirement: macOS dev-no-modem orchestrator 路径（mac 装不了 GSM modem 驱动的物理约束）
 
-macOS 边缘进程 SHALL 支持 **dev-no-modem 启动模式**：跳过真 GSM modem 拨号链路，由 cloud-side 主动 `Cloud2Edge.dial` 触发后 edge 直接走"已接通" CallSession 走 audio_bridge join + 真 ARTC 房间。本 Requirement 服务于 mac 上无法安装 USB GSM modem 驱动的物理约束，与 PyObjC binding 形成 dev 形态闭环。
+macOS 边缘进程 SHALL 支持 **dev-no-modem 启动模式**：跳过真 GSM modem 拨号链路，由 cloud-side 主动 `Cloud2Edge.dial` 触发后 edge 直接走"已接通" CallSession 走 audio_bridge join + 真 Aliyun RTC 房间。本 Requirement 服务于 mac 上无法安装 USB GSM modem 驱动的物理约束，与 PyObjC binding 形成 dev 形态闭环。
 
 #### Scenario: dev-no-modem CLI flag 触发
 
@@ -512,7 +512,7 @@ macOS 边缘进程 SHALL 支持 **dev-no-modem 启动模式**：跳过真 GSM mo
 #### Scenario: 平台守护
 
 - **WHEN** `--dev-no-modem` flag 传入但 `sys.platform != "darwin"`
-- **THEN** 进程 SHALL fail-fast 退出，打印明确错误 "--dev-no-modem 仅 macOS 支持；Windows 商用走真 GSM modem + windows-artc-pybind11 真 ARTC 路径"
+- **THEN** 进程 SHALL fail-fast 退出，打印明确错误 "--dev-no-modem 仅 macOS 支持；Windows 商用走真 GSM modem + windows-artc-pybind11 真 Aliyun RTC 路径"
 
 ## Data Schema
 
