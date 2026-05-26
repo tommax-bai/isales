@@ -51,12 +51,12 @@
 ## 6. Cloud Linux engine：切换 + 旧 wrapper 删除
 
 - [x] 6.1 所有 import `isales_engine.transport.aliyun_rtc.AliyunRtcSession` / `InMemorySdkChannel` / `SdkLoadError` / `isales_engine.transport._rtc_sdk` 改 import `isales_engine.transport.dingrtc.DingRtcSession` / 等价 mock（`git grep` 找全 —— 已知点：`isales_engine/main.py:49,91,96`, `scripts/ecs_pcm_loopback_listen.py:31,55`, `tests/test_aliyun_rtc_*.py`, `tests/test_artc_driver_thread.py`, `tests/test_rtc_telephony.py:388`） <!-- isales-engine@8a8907c. main.py + ecs_pcm_loopback_listen.py 已切; 旧 test files 待 §6.5 删除. -->
-- [ ] 6.2 删 `isales-engine/isales_engine/transport/aliyun_rtc.py` <!-- harness 拦 delete; 等用户认可 8a8907c 后单独走 delete commit. -->
-- [ ] 6.3 删 `isales-engine/isales_engine/transport/_rtc_sdk.py` <!-- 同上. -->
+- [x] 6.2 删 `isales-engine/isales_engine/transport/aliyun_rtc.py` <!-- isales-engine@2b21f7b. -->
+- [x] 6.3 删 `isales-engine/isales_engine/transport/_rtc_sdk.py` <!-- isales-engine@2b21f7b. -->
 - [x] 6.4 删 `isales-engine/isales_engine/transport/_rtc_driver.py`（commit fb62fdd 1410 行 sidecar pump） <!-- 该文件仅存在于 engine-artc-sdk-thread-model branch，不在 main; dingrtc-migration-cloud 从 main 起，无需 delete (engine-artc-sdk-thread-model branch 随 archive 一起作废). -->
-- [ ] 6.5 删 `isales-engine/tests/transport/test_aliyun_rtc*.py` / `test__rtc_sdk*.py` / `test__rtc_driver*.py` 全部旧 ARTC 测试 <!-- 同 §6.2. tests/test_aliyun_rtc_session.py + tests/test_vendor_artc_sanity.py 是 main 上的实际待删项. -->
+- [x] 6.5 删 `isales-engine/tests/transport/test_aliyun_rtc*.py` / `test__rtc_sdk*.py` / `test__rtc_driver*.py` 全部旧 ARTC 测试 <!-- isales-engine@2b21f7b 删 tests/test_aliyun_rtc_session.py + tests/test_vendor_artc_sanity.py (main 上的实际遗留). 同 commit 顺便清 transport/__init__.py + settings.py + main.py 里 aliyun_rtc 文字残留. -->
 - [x] 6.6 新增 `isales-engine/tests/transport/test_dingrtc_channel.py`：vendor binding mock + Future 路径 + `RtcError` / `RtcPushBackpressure` 失败路径 + leave idempotent <!-- isales-engine@8a8907c. 命名实际是 tests/transport/test_dingrtc_session.py（mirror module 名）; 14 个 case PASS in 0.13s 用 InMemoryDingRtcChannel mock. -->
-- [~] 6.7 `pytest -q tests/transport/` 全套绿 <!-- 新 test_dingrtc_session.py 14/14 PASS. 删除旧 aliyun_rtc 后再跑确认无 collection error. -->
+- [x] 6.7 `pytest -q tests/transport/` 全套绿 <!-- isales-engine@2b21f7b 后跑 pytest -q tests/ → 270 passed in 5.35s (含 14 新 dingrtc tests). 删旧 aliyun_rtc 后无 collection error. -->
 - [ ] 6.8 `make test-all PYTEST_ARGS="-k transport"` 三端 sub-repo 都绿（telephony 此时还没换，但 telephony 既有 mock 测试应不受影响；如挂在 import 上记到 § 7-8 修复点）
 
 ## 7. Windows edge：vendor 调用层换 DingRTC 3.x
