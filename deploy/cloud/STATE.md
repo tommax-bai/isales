@@ -563,6 +563,22 @@ Cloud Linux binding (project-internal pybind11):
 5. At runtime, `LD_LIBRARY_PATH` must include `/opt/isales/vendor/DingRTC_Linux_SDK_3_9_0/lib/x86_64/`
 6. `ISALES_DINGRTC_LINUX_SDK_PATH` env var overrides default vendor location
 
+### ECS-deployed snapshot (2026-05-26)
+
+| Layer | Value |
+|---|---|
+| `/opt/isales/current` → | `/opt/isales/releases/20260517-222944` |
+| `isales-engine` commit on box | `243fbc1` (dingrtc-migration-cloud — `push_audio` SIGFPE fix) |
+| `dingrtc_pywrap.so` location | `/opt/isales/current/venv/lib64/python3.11/site-packages/dingrtc_pywrap.cpython-311-x86_64-linux-gnu.so` |
+| Build inputs | `VIRTUAL_ENV=/opt/isales/current/venv bash deploy/cloud/scripts/build-dingrtc-binding.sh` |
+| §5.4 smoke verified | 2026-05-26 — `OnJoinChannelResult code=0` + 10s clean listen loop + `inbound_frames=1001 / push_count=99 / exit 0` |
+| §5.1 self-sign verified | 2026-05-26 (`rtc_token.py::_pack_options` fix, byte-perfect vs vendor console "Token生成器") |
+
+Box can't reach `github.com` over HTTPS (no PAT installed); deploy flow
+for now = `scp` loose files from dev mac + `chown isales:isales` +
+rebuild binding via the script above. To switch to `git pull` deploys,
+either install a PAT at `~/.git-credentials` or set up SSH deploy key.
+
 ### Migration from ApsaraVideo Live ARTC SDK (legacy, gone)
 
 The previous vendor layout (`/opt/isales/current/vendor/aliyun-artc-linux-python/`,
