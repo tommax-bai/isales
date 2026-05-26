@@ -76,8 +76,8 @@ virtual int EnableAudioFrameObserver(bool enabled, unsigned int position,
                                       const RtcEngineAudioFrameObserverConfig &config) = 0;
 ```
 
-### `class RtcEngineEventListener`
-Key callbacks (signatures verified from `engine_types.h:219+`):
+### `class RtcEngineEventListener` (declared in `engine_interface.h`, not `engine_types.h`)
+Key callbacks (signatures verified from `engine_interface.h:219+`):
 ```cpp
 virtual void OnJoinChannelResult(int result, const char *channel, const char *userId, int elapsed);
 virtual void OnLeaveChannelResult(int result, RtcEngineStats stats);
@@ -87,7 +87,7 @@ virtual void OnConnectionStatusChange(RtcEngineConnectionStatus status, RtcEngin
 // (plus ~40 more — see engine_types.h:210-770)
 ```
 
-### `class RtcEngineAudioFrameObserver`
+### `class RtcEngineAudioFrameObserver` (declared in `engine_interface.h`, not `engine_types.h`)
 ```cpp
 virtual void OnCapturedAudioFrame(RtcEngineAudioFrame *frame);
 virtual void OnProcessCapturedAudioFrame(RtcEngineAudioFrame *frame);
@@ -211,6 +211,108 @@ Download URLs (3.9.0, OSS `dingrtc.oss-cn-zhangjiakou.aliyuncs.com`):
 - `https://dingrtc.oss-cn-zhangjiakou.aliyuncs.com/sdk/linux/3.9.0/DingRTC_Linux_SDK_3_9_0.zip`
 - `https://dingrtc.oss-cn-zhangjiakou.aliyuncs.com/sdk/mac/3.9.0/DingRTC_macOS_SDK_3_9_0.zip`
 - `https://dingrtc.oss-cn-zhangjiakou.aliyuncs.com/sdk/windows/3.9.0/DingRTC_Windows_SDK_3_9_0.zip`
+
+## GSLB request format (reverse-engineered 2026-05-26 from SDK webrtc log)
+
+After enabling SDK file logging via `dingrtc_pywrap.set_log_dir_path()`,
+`gslb_client.cc:51` / `:207` / `:234` print full HTTP request body + response.
+
+**Request**:
+```
+POST https://gslb.dingrtc.com/v1/users/{userId}/access/
+Content-Type: application/json
+Authorization: Bearer {token}
+
+{"requestId":"<16-char-random>",
+ "deviceId":"<hostname>",
+ "deviceSpecs":{"platform":"Linux","osv":"...","sdkv":"3.9.0","manu":"...",
+                "model":"...","arch":"x86_64","cpuVendor":"...","cpuUarch":"...",
+                "cpuBrandSeries":"","cpuBrandGen":0,"cpuCores":N,
+                "modelNum":N,"modelSeries":""},
+ "channelId":"<channel>",
+ "timestamp":"<ms-since-epoch>"}
+```
+
+**Response (200 success)**:
+```json
+{"statusCode":200, "code":null, "cause":null,
+ "channelId":"<internal-room-id>",
+ "access":{"rtcToken":"<base64-jwt-like>",
+           "staticConfig":{...media-config-blob...},
+           "iceConfig":{...turn-server-config...},
+           "logService":{...sls-credentials...}},
+ "securityToken":{"securityToken":"<32-char-hex>", "updateTime":<unix-ts>}}
+```
+
+**Response (401 invalid signature)**:
+```json
+{"statusCode":401, "code":"CLIENT_ERROR_INVALID_AUTHORIZATION",
+ "cause":"invalid authorization",
+ "channelId":null, "access":null, "logService":null, "securityToken":null}
+```
+
+When SDK parses 401 body, it apparently does so via a different code path
+than 200, and re-emits the error as `gslb returned error: -1(invalid json body)`
+to the user-visible `OnOccurError` callback — misleading. The actual 401 is
+in the SDK log under `gslb_client.cc:234`.
+
+## rtc_token.py `_pack_options(None)` vs `({})` bug (fixed 2026-05-26)
+
+**Symptom**: self-signed token via `RtcTokenIssuer.sign(...)` always hit
+GSLB 401 `CLIENT_ERROR_INVALID_AUTHORIZATION` even with correct AppId / AppKey,
+while vendor's console "Token生成器" using the same AppId/AppKey/channel/userId
+returned a token that joined cleanly.
+
+**Diagnosis path** (kept for future debug-of-debug audit):
+1. Confirmed binding + SDK + GSLB endpoint OK via vendor `a4zfr1hn` demo-app-server token (Path A: 200).
+2. Same AppId+AppKey self-signed (Path B): 401.
+3. Vendor console token for real AppId (Path C): 200.
+4. Self-signed with pinned `issue_ts`/`salt` = same as vendor console token: still 401.
+5. Byte-diff our token vs vendor console token: first diff at body offset 4 (= sig bytes),
+   i.e. HMAC signatures differ. Confirmed HMAC algorithm is identical by re-deriving
+   sig manually with the same key derivation → matches vendor sig byte-perfect.
+6. Diff isolated to the **body bytes that get HMAC'd**: our body is 4 bytes shorter
+   because `_pack_options(None)` emits 1-byte `False` (no block), while vendor's
+   `AppTokenOptions(engine_options={})` emits 5-byte `True + uint32(0)` (empty block header).
+
+**Root cause** (`isales_engine/transport/rtc_token.py`):
+```python
+# BEFORE (buggy):
+def _pack_options(engine_options: dict[str, str] | None) -> bytes:
+    buf = io.BytesIO()
+    if not engine_options:        # <-- {} is falsy, treated same as None
+        buf.write(struct.pack(">?", False))
+        return buf.getvalue()
+    ...
+
+# AFTER (fixed):
+def _pack_options(engine_options: dict[str, str] | None) -> bytes:
+    buf = io.BytesIO()
+    if engine_options is None:    # <-- only None skips the block header
+        buf.write(struct.pack(">?", False))
+        return buf.getvalue()
+    buf.write(struct.pack(">?I", True, len(engine_options)))
+    ...
+
+# Also: RtcTokenIssuer.sign() default engine_options=None → engine_options={}
+# so production code (which doesn't pass engine_options) gets vendor wire format.
+```
+
+Vendor sample (`gitee/dingrtc/AliRTCSample/Server/python3/app_token_options.py`)
+default initialises `engine_options={}` (empty dict). Sample's own `pack()`
+correctly distinguishes None vs `{}` — we copied the field layout but our
+`sign()` default + `_pack_options` `not` check together skipped the block.
+
+**Fix verified**: `RtcTokenIssuer.sign(channel='poc-token-check-02',
+user_id='poc-uid-check-02', issue_ts=1779782815, salt=3351078295, ttl=86399)`
+with `AppKey=c4f5feb6...` produces byte-perfect identical token to vendor
+console output; ECS smoke `dingrtc_self_sign_same_inputs.py` joins channel
+(`statusCode:200` from GSLB) and leaves cleanly. See isales-engine commit
+`f1c5ca6` on `dingrtc-migration-cloud`.
+
+**Regression tests** (`tests/test_rtc_token.py`):
+- `test_pack_options_distinguishes_none_from_empty_dict`
+- `test_sign_default_emits_empty_options_block`
 
 ## Deviations from design.md / proposal.md
 
