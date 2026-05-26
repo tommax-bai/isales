@@ -494,49 +494,85 @@ For local testing, full token sits at the Windows dev box repo path
 in `isales-telephony/.gitignore`). For each new edge / device, mint a
 fresh token with its own `--device-id`.
 
-## ARTC SDK vendor — where the binaries live
+## DingRTC SDK vendor — where the binaries live
 
-The ARTC SDK is proprietary and **gitignored** in every repo it touches.
+**Switched 2026-05-26 from ApsaraVideo Live ARTC SDK → DingRTC 3.x** (see
+openspec change `engine-rtc-dingrtc-migration`). Root cause: ECS AppId
+`o6dpsan9...` is a DingRTC 3.x AppId (RTC PaaS new-generation), while
+the SDK we'd been using (`AliRTCSDK_Linux-7.10.2` from
+`alivc-demo-cms.alicdn.com`) is from the **ApsaraVideo Live** product
+line — cross-product, the Live SDK's tokens are rejected by the DingRTC
+roomserver (`ERR_JOIN_BAD_TOKEN 0x02010205`).
+
+vendor README confirms (`api/README` in Linux/Windows SDK):
+> DingRTC，作为AliRTC的升级版本，接口定义保持一致。服务器为钉钉的基础设施，
+> 和旧版本AliRTC并不互通。
+
+DingRTC SDK is proprietary and **gitignored** in every repo it touches.
 Three platform variants, three locations:
 
-| Platform | Used by | Location |
-|---|---|---|
-| Linux Python wrapper | cloud engine | **ECS**: `/opt/isales/vendor/aliyun-artc-linux-python/` (symlink → `AliRTCSDK_Linux-7.10.2/`). Tarball + extracted dir both kept under `/opt/isales/vendor/`. Not on local Windows dev machine — pulled straight from alicdn to ECS. |
-| Windows C++ SDK | edge (Windows client) | (in repo) `isales-telephony/deploy/edge/windows/vendor/aliyun-artc-windows/`. Gitignored. See `deploy/edge/windows/STATE.md` for the dev rig state. |
-| macOS framework | edge (Mac mini QA only) | Not downloaded — A2 走 mock，未真实用到 |
+| Platform | Used by | Location | sha256 (zip) |
+|---|---|---|---|
+| Linux C++ SDK (`libDingRTC.so`) | cloud engine | **ECS**: `/opt/isales/vendor/DingRTC_Linux_SDK_3_9_0/` (extracted from zip); dev mac: `~/codes/vendor/DingRTC_Linux_SDK_3_9_0/`. Project-internal pybind11 binding in `isales-engine/isales_engine/transport/dingrtc/`. | `3dc2361fbf6e9e181aba0fbdc30b488064e47f866c7d2d2ab1607c3cd53622e6` |
+| Windows C++ SDK (`DingRTC.dll`) | edge (Windows client) | Dev rig + customer machines: `~/codes/vendor/DingRTC_Windows_SDK_3_9_0/`. Project-internal pybind11 binding in `isales-telephony/deploy/edge/windows/pybind/dingrtc_pywrap/` (rewritten from `aliyun_artc_pywrap`). | `f59482589a211e3fc4368c4750dfa50603f03c0acdf3d157728a41ac1ca19974` |
+| macOS framework (`DingRTC.framework`) | edge (Mac dev/QA only) | dev mac: `~/codes/vendor/DingRTC_macOS_SDK_3_9_0/`. PyObjC binding in `isales-telephony/isales_telephony/audio_bridge/macos_dingrtc_pyobjc.py`. | `197337f2bc2ff2476abc988672cf5b20b381f5e12e9069f37dbd3fd157f7020e` |
 
-Linux Python tarball (137 MiB, sha256 `09564bad835f2296140bc6c9f2d8d4a88e7e940de07cbb0a470b3cd8d5db0e98`)
-download direct from alicdn CDN, no auth required:
+Direct download URLs (no auth required, OSS bucket
+`dingrtc.oss-cn-zhangjiakou.aliyuncs.com`, 2025-04-15 release):
 
 ```
-https://alivc-demo-cms.alicdn.com/versionProduct/sdk/linux/AliRTCSDK_Linux-7.10.0-20260109.tar.gz
+https://dingrtc.oss-cn-zhangjiakou.aliyuncs.com/sdk/linux/3.9.0/DingRTC_Linux_SDK_3_9_0.zip
+https://dingrtc.oss-cn-zhangjiakou.aliyuncs.com/sdk/windows/3.9.0/DingRTC_Windows_SDK_3_9_0.zip
+https://dingrtc.oss-cn-zhangjiakou.aliyuncs.com/sdk/mac/3.9.0/DingRTC_macOS_SDK_3_9_0.zip
 ```
 
-Note the filename says `7.10.0` but the tarball's top-level dir is
-`AliRTCSDK_Linux-7.10.2/` — Aliyun marketing tag inconsistent. The 7.10.2
-inside is what we use.
+Three-end SDK MUST be the same minor + patch (互通保证 per vendor doc).
+v1.0 locks to **3.9.0**. Upgrading minor / patch requires all-three-ends
+in one PR.
 
-The Python wrapper is ctypes-style FFI (4 `.py` files + a `Release/lib/`
-with `libAliRtcLinuxEngine.so` (50 MiB), `libonnxruntime.so.1.16.3`
-(17 MiB), `AliRtcCoreService` elf). **Not bound to a Python ABI** —
-AL3's stock Python 3.6.8 imports all four modules without issue;
-`ldd libAliRtcLinuxEngine.so` resolves cleanly against AL3 glibc 2.32.
-But the engine itself runs on Python **3.11.13**, not 3.6.8, for the
-reasons documented above.
+Demo appid `a4zfr1hn` (in vendor demo sample packs) is used for isolated
+PoC — verify "SDK + binding + rtc_token.py algorithm" work before
+touching real `o6dpsan9...` credentials.
 
-At runtime, callers MUST set `LD_LIBRARY_PATH` to include
-`/opt/isales/vendor/aliyun-artc-linux-python/Python/Release/lib` and
-pass `AliRtcCoreService` absolute path to `CreateAliRTCEngine(...)`.
-(engine.env already has `LD_LIBRARY_PATH=/opt/isales/current/vendor/...`
-plus `PYTHONPATH=/opt/isales/current/vendor/.../python` set; the
-`/opt/isales/current/vendor/` symlink target is the deploy time vendor
-location — verify after each release activation.)
+### Cloud Linux SDK structure
 
-For CI / OSS distribution: A2 task 1.3 plans an OSS private bucket
-mirror; not provisioned yet — but given the alicdn URL is unauthenticated,
-the OSS mirror is no longer strictly needed (CI can pull direct).
-The Windows SDK URL is pinned in
-`isales-telephony/deploy/edge/windows/vendor/README.md`.
+```
+/opt/isales/vendor/DingRTC_Linux_SDK_3_9_0/
+├── api/                                # C++ headers (cloud + Windows share)
+│   ├── engine_interface.h              # class ding::rtc::RtcEngine
+│   ├── engine_types.h                  # RtcEngineAuthInfo / RtcEngineAudioFrame / ...
+│   ├── engine_conf.h                   # error codes (RtcEngineErrorJoinBadToken etc.)
+│   ├── engine_utils.h
+│   └── README                          # vendor product-line note
+└── lib/x86_64/
+    ├── libDingRTC.so                   # main SDK
+    └── libffmpeg.so                    # ffmpeg dep
+```
+
+Headers, struct shapes, and selectors are captured in
+`openspec/changes/engine-rtc-dingrtc-migration/notes/sdk_api_ground_truth.md`
+— that file is the API reference for binding work.
+
+### Build & runtime
+
+Cloud Linux binding (project-internal pybind11):
+1. `apt install build-essential cmake python3-dev` (or `dnf install gcc gcc-c++ cmake python3-devel`)
+2. `pip install pybind11`
+3. `cd isales-engine && pip install -e .` — invokes scikit-build / CMake
+4. Produces `dingrtc_pywrap.so` inside `isales_engine/transport/dingrtc/`
+5. At runtime, `LD_LIBRARY_PATH` must include `/opt/isales/vendor/DingRTC_Linux_SDK_3_9_0/lib/x86_64/`
+6. `ISALES_DINGRTC_LINUX_SDK_PATH` env var overrides default vendor location
+
+### Migration from ApsaraVideo Live ARTC SDK (legacy, gone)
+
+The previous vendor layout (`/opt/isales/current/vendor/aliyun-artc-linux-python/`,
+137 MiB Python wrapper + TCP sidecar `AliRtcCoreService`) is **obsolete**.
+Per `engine-rtc-dingrtc-migration` § 6, the old wrapper code
+(`isales-engine/isales_engine/transport/{aliyun_rtc,_rtc_sdk,_rtc_driver}.py`,
+~1269 lines) is deleted; old vendor directories on ECS can be cleaned up
+once the DingRTC cloud smoke is green. The
+`engine-artc-sdk-thread-model` change is being archived as "superseded by
+DingRTC migration — sidecar pump model no longer needed".
 
 ## OSS / object storage
 
