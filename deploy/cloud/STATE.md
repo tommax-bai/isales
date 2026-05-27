@@ -162,7 +162,7 @@ features (`asyncio.TaskGroup` / `except*` / `asyncio.timeout`) in 7 core
 modules; pip would hard-refuse to install on 3.6. Do **NOT** try to run any
 iSales service from the system Python.
 
-### Application services (deployed 2026-05-17 22:30-23:25 CST)
+### Application services (deployed 2026-05-17 22:30-23:25 CST, in-place upgraded 2026-05-27 PM)
 
 Pulled from `https://github.com/tommax-bai/isales-{common,api,engine,
 scheduler,worker}.git` at `main` HEAD into
@@ -170,6 +170,30 @@ scheduler,worker}.git` at `main` HEAD into
 `/opt/isales/current → /opt/isales/releases/20260517-222944/` symlink.
 Single shared venv at `/opt/isales/current/venv/` runs Python 3.11.13;
 all 5 isales packages installed editable (`pip install -e`).
+
+**Branches checked out in the release dir (2026-05-27 PM)**:
+
+| Repo | Branch | HEAD |
+|---|---|---|
+| `isales-engine` | `dingrtc-migration-cloud` (not main) | `ff776a8` "asr/rtc: remove per-second diagnostic INFO logs" |
+| `isales-common` | `main` | `2418981` "cred_migrate: add ISALES_VOLCENGINE_ASR_RESOURCE_ID env mapping" |
+| `isales-api` / `scheduler` / `worker` | `main` (untouched) | (pre-2026-05-24 sync) |
+
+The engine on `dingrtc-migration-cloud` branch carries 16 PM commits incl. **TTS V3
+SSE protocol rewrite** (SeedTTS 2.0), **ASR V3 SAUC WebSocket binary protocol
+rewrite**, **push_audio 10ms chunking + 8ms pacing** (DingRTC buffer
+overflow fix), **48 kHz → 16 kHz audioop resample** for mixed-playback inbound,
+**`sender_uid=""` filter accept** for mixed-playback frames. Complete chain +
+ground truth: `memory/project_session_2026_05_27_b_handoff.md` and the 5 SDK
+gotcha increment in `memory/reference_artc_sdk.md`. Editable installs picked up
+all changes after `systemctl restart isales-engine` (4 restarts during the
+session, last at 17:17 CST with cleanup commit `ff776a8`).
+
+When `dingrtc-migration-cloud` archive completes, this release dir should be
+rebuilt to land on `main` HEAD per the standard `install.sh` flow, **not**
+just `git checkout main` (editable install bookkeeping + venv layout depend on
+the release dir creation script). Until then this is an in-flight branch
+deployment, acknowledged risk.
 
 | Service | systemd unit | Listen | Notes |
 |---|---|---|---|
@@ -344,6 +368,56 @@ ran from a Claude Code SSH session 2026-05-17. The script needs an
 | `python3.12 python3.12-venv` | `python3.11 python3.11-devel` from `alinux3-updates` (Python 3.12 not in repo; build-from-source possible but not warranted) |
 | `nginx` | `nginx` (in `epel`) — not used in v1.0 |
 
+## End-to-end AI dialog smoke — mac --dev-no-modem (verified 2026-05-27 17:12 CST)
+
+Full bidirectional wire (cloud DingRTC + mac mic ASR + LLM + TTS + interruption)
+runs end-to-end. call_record id=23 evidence (PG `transcript` JSONB):
+
+```
+ts=2514   greeting          "您好，我是智联招聘的招聘顾问小雨呀～..."  (LLM dashscope JSON mode, 真个性化)
+ts=10560  silence_activation 0
+ts=14293  silence_activation 1
+ts=15319  user_speech       "你好。"                                   (V3 SAUC ASR 识别)
+ts=15911  default_reply     "测试测试" (turn 2 LLM JSON 待修, fallback)
+ts=17360  ai_reply turn_id=1 "测试测试"                                (state machine 正确 advance)
+ts=21557  interruption       "时间不方便听"                            (V3 SAUC ASR + interruption detector)
+ts=21557  hangup silence_max_reached
+```
+
+Reproduce from a fresh mac dev mac:
+
+```bash
+cd ~/codes/isales-telephony
+.venv/bin/python scripts/mac_dev_no_modem_smoke.py --timeout 60
+```
+
+The smoke does (commit `2919400` in isales-telephony):
+1. ssh ECS check systemctl 4 services active + PG lead 2 + provider_credential
+2. ssh ECS `isales-edge-token-mint --device-id edge-01 --ttl 1h` → JWT
+3. spawn `isales-telephony-edge --dev-no-modem` subprocess; tail log for
+   `edge_daemon_started_dev_no_modem` + `cloud_edge_stream_opened`
+4. scp + run `_remote_inject_dial.py` on ECS to LPUSH `engine:dial` directly
+   (bypasses scheduler + device-chain seed — `DialRequest` validated end-to-end)
+5. ssh ECS poll `call_record WHERE lead_id=2` until terminal status (end)
+6. interactive `y/n` listen check (user confirms speaker played AI's voice)
+
+provider_credential SSOT 5 fields used by the engine:
+
+| provider_id | field_name | usage |
+|---|---|---|
+| volcengine | api_key | `X-Api-Key` (新版控制台 UUID, 跨 ASR/TTS 通用) |
+| volcengine | app_key | `X-Api-App-Id` / `X-Api-App-Key` (legacy fallback, ASR 用 App-Key 命名) |
+| volcengine | app_token | `X-Api-Access-Key` (legacy fallback Access Token) |
+| volcengine | tts_resource_id | `seed-tts-2.0` (V3 SSE TTS) |
+| volcengine | asr_resource_id | `volc.bigasr.sauc.duration` (V3 SAUC ASR 1.0 小时版) |
+| dashscope | api_key | `Authorization: Bearer <api_key>` for Qwen LLM (OpenAI compatible) |
+
+Cross-link:
+- `memory/project_session_2026_05_27_b_handoff.md` — 完整 22-commit chain + 5 SDK gotcha
+- `memory/reference_artc_sdk.md` § "5 个 SDK 集成 gotcha" — DingRTC behavioural quirks
+- `isales-engine/isales_engine/providers/{tts_volcengine,asr_volcengine}.py` — V3 protocol impl
+- `isales-telephony/scripts/mac_dev_no_modem_smoke.py` — reproducer
+
 ## Cloud-edge gRPC end-to-end smoke (verified 2026-05-17 23:25 CST)
 
 Reproducible verification, run from Windows dev box → ECS:
@@ -440,8 +514,13 @@ path when secrets need to leave git. Key values currently in env files:
 
 | Key | Value (audit hint, full value in env file) | Source |
 |---|---|---|
-| `ISALES_RTC_APP_ID` | `o6dpsan9` | Aliyun RTC console |
+| `ISALES_RTC_APP_ID` | `o6dpsan9` | Aliyun RTC console (DingRTC 3.x PaaS) |
 | `ISALES_RTC_APP_KEY` | `c4f5feb...` (32 hex) | Aliyun RTC console; cloud-only |
+| `ISALES_DINGRTC_LINUX_SDK_PATH` | `/opt/isales/vendor/DingRTC_Linux_SDK_3_9_0` | OS-level vendor, **2026-05-27 PM** (replaced legacy `aliyun-artc-linux-python` path) |
+| `LD_LIBRARY_PATH` | `/opt/isales/vendor/DingRTC_Linux_SDK_3_9_0/lib/x86_64` | dlopen `libDingRTC.so` for `dingrtc_pywrap` extension |
+| `ISALES_ENGINE_LLM_PROVIDER` | `dashscope` | **2026-05-27 PM** (was `volcengine`); volcengine ark API key ≠ OpenSpeech `app_token`, dashscope api_key reused for Qwen 通义 |
+| `ISALES_ENGINE_ASR_PROVIDER` | `volcengine` | V3 SAUC bigmodel (post-2026-05-27-PM rewrite) |
+| `ISALES_ENGINE_TTS_PROVIDER` | `volcengine` | V3 SSE SeedTTS 2.0 (post-2026-05-27-PM rewrite) |
 | `ISALES_JWT_SECRET` | `7426829e...` (64 hex) | random; identical across api/engine env files |
 | `ISALES_DATABASE_URL` | `postgresql+asyncpg://isales:***REMOVED***@127.0.0.1:5432/isales` | local PG, password matches `pg_hba` config |
 | `ISALES_ENGINE_CLOUD_EDGE_GRPC_BIND` | `0.0.0.0:50051` | v1.0 IP-direct (was `127.0.0.1:50051` until 2026-05-17, see commit `8a0a6ab`) |
