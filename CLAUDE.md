@@ -96,8 +96,11 @@ When working on architecture, deployment-topology, service-communication, or dev
 
 The deploy scripts assume `/opt/isales/{releases,current,backups,logs}` + `/etc/isales/env/` layout and an `isales` system user (Linux) or `_isales` (macOS).
 
-ARTC SDK binaries are proprietary and gitignored everywhere; vendor paths
-and download URL are pinned in `deploy/cloud/STATE.md` § "ARTC SDK vendor".
+DingRTC SDK binaries are proprietary and gitignored everywhere; vendor paths,
+download URLs, and sha256 are pinned in `deploy/cloud/STATE.md` § "DingRTC SDK
+vendor" (Linux / Windows / macOS). The legacy ApsaraVideo Live ARTC SDK is gone
+post-`engine-rtc-dingrtc-migration` — that section also records the cross-product
+mismatch that drove the swap.
 
 ## Conventions worth knowing before editing
 
@@ -106,3 +109,11 @@ and download URL are pinned in `deploy/cloud/STATE.md` § "ARTC SDK vendor".
 - **Global concurrency**: cross-engine concurrency caps MUST use Redis `INCR/DECR`. Local in-process counters are explicitly forbidden by spec.
 - **JWT**: `isales-api` is the sole issuer; `telephony-api` only verifies. Shared HMAC secret travels via env files. `isales-web` connects to `telephony-api` directly, not through `isales-api`.
 - **Spec language**: requirements use RFC 2119 keywords (MUST / SHALL / SHOULD / MAY). When proposing changes, mirror that vocabulary.
+
+## Design principles
+
+These two principles override the "make it work somehow" default and apply across the whole repo + sibling sub-repos. They are deliberately short here; the deep dive (with iSales-specific examples + how-to-apply) lives in the agent memory and is linked back.
+
+- **Multi-layer fallback is a code smell.** When a design needs two or more layers of fallback / retry / deprecated-alias / "just in case" branches, the primary path is probably wrong — fix the root cause and drop a layer instead of stacking thicker. Every fallback MUST come with a comment naming the specific failure scenario it handles **and** the condition under which it will be removed; a fallback without a removal trigger is permanent technical debt. Exceptions: genuinely unreliable boundaries (network retry, idempotent op replay) where fallback is protocol-mandated. Detail + iSales examples in `[[feedback-avoid-multilayer-fallback]]`.
+
+- **Large changes: strike while the iron is hot.** Big refactors / migrations / cross-sub-repo renames SHOULD be driven to completion in the same working session that loaded the context, rather than split into stops-and-restarts. Each new session pays a full context-reload cost (spec + STATE.md + git log + three-end actual state), and half-done state (tasks.md half-ticked, commits half-strung, docs partly new) is much harder for the next session to read than a clean handoff. Same-session multi-commit is desired, not a problem. Exceptions: real design issue surfaced mid-flight; user-imposed stop; external blocker (vendor, remote, Windows physical box). When non-voluntary stops do happen, write a `project_session_<date>_handoff.md` memory before closing. Detail + iSales examples in `[[feedback-large-change-momentum]]`.
