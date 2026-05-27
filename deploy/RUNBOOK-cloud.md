@@ -30,26 +30,30 @@
 | VPC + 安全组 | 同地域 | 入站 443/TCP、50051/TCP、22/TCP（仅运维 IP）；出站全开 |
 | RDS PostgreSQL | 16 / 2C4G / 100 GB | 内网连接；备份保留 7 天；`shared_preload_libraries=pg_stat_statements` |
 | Redis | Tair 标准 1G 或 Redis 标准 1G | 内网连接；AOF 持久化 |
-| OSS | 私有 bucket `isales-prod` | 录音 / 开场白预渲染 / ARTC SDK vendor 包 |
+| OSS | 私有 bucket `isales-prod` | 录音 / 开场白预渲染 / DingRTC SDK vendor zip |
 | RTC 应用 | 阿里云 RTC console | 拿 `AppId` / `AppKey`，工单确认计费套餐（见 PoC §9 三题工单稿） |
 | 域名 + ICP | **v1.0 不需要**；v1.x 切换到 §2.2 时再申请 | v1.0 用 IP 直连 `121.89.85.150`，详见 `deploy/cloud/STATE.md § "v1.0 deployment posture"` |
 
-**ARTC SDK 上传 OSS**（一次性）：
+**DingRTC SDK 上传 OSS**（一次性，2026-05-27 起取代旧 ARTC tarball 流程）：
 
 ```bash
-# 本地解压验证 SDK
-unzip -l ~/codes/vendor/AliRTCSDK_Linux-7.10.2.zip | head -20
+# 从 vendor 直链下载并校验 sha256 (canonical 在 deploy/cloud/STATE.md § "DingRTC SDK vendor"):
+#   3dc2361fbf6e9e181aba0fbdc30b488064e47f866c7d2d2ab1607c3cd53622e6
+curl -fLO https://dingrtc.oss-cn-zhangjiakou.aliyuncs.com/sdk/linux/3.9.0/DingRTC_Linux_SDK_3_9_0.zip
+sha256sum DingRTC_Linux_SDK_3_9_0.zip
+# expect: 3dc2361fbf6e9e181aba0fbdc30b488064e47f866c7d2d2ab1607c3cd53622e6  DingRTC_Linux_SDK_3_9_0.zip
 
-# 打成约定的 tarball 结构 lib/ python/
-mkdir -p /tmp/artc/aliyun-artc-linux-python-7.10.2/{lib,python}
-cp ~/codes/vendor/AliRTCSDK_Linux-7.10.2/lib/*.so          /tmp/artc/aliyun-artc-linux-python-7.10.2/lib/
-cp -R ~/codes/vendor/AliRTCSDK_Linux-7.10.2/python/*       /tmp/artc/aliyun-artc-linux-python-7.10.2/python/
-tar -C /tmp/artc -czf /tmp/artc-linux-7.10.2.tgz aliyun-artc-linux-python-7.10.2
-
-# 推到 OSS 私有 bucket
-ossutil cp /tmp/artc-linux-7.10.2.tgz \
-  oss://isales-prod/vendor/artc/linux/aliyun-artc-linux-python-7.10.2.tgz
+# Vendor 已按目标 layout 打好 (api/, lib/x86_64/, samples/, docs/, ...);
+# 不需要二次打包。直接推到 OSS 私有 bucket:
+ossutil cp DingRTC_Linux_SDK_3_9_0.zip \
+  oss://isales-prod/vendor/dingrtc/linux/DingRTC_Linux_SDK_3_9_0.zip
 ```
+
+> **跨产品线提醒**: DingRTC 3.x (RTC PaaS 新一代) 与旧 ApsaraVideo
+> Live `AliRTCSDK_Linux-7.10.2` 是两条不同产品线，token/channel 互不
+> 通。旧 SDK 走 `alivc-demo-cms.alicdn.com`, 新 SDK 走
+> `dingrtc.oss-cn-zhangjiakou.aliyuncs.com`。详见
+> `deploy/cloud/STATE.md § "Migration from ApsaraVideo Live ARTC SDK"`。
 
 ---
 
@@ -149,7 +153,7 @@ sudo -u isales bash -c '
 # 必填的环境变量提示
 export ISALES_DOMAIN=cloud.isales.example.com
 
-# 安装 release（拉 6 仓 + 装 venv + 编译 web + ARTC SDK + 同步 unit + nginx）
+# 安装 release（拉 6 仓 + 装 venv + 编译 web + DingRTC SDK + pybind binding + 同步 unit + nginx）
 sudo -E bash deploy/cloud/scripts/install.sh v1.0.0
 
 # 跑首次 alembic（与单主机一致）
@@ -287,7 +291,7 @@ sudo bash deploy/cloud/scripts/rollback.sh 20260514-220000
 要点：
 
 - 回滚**仅切 current 软链** + 重启 4 个 cloud 服务 + reload nginx
-- ARTC SDK vendor 目录跟随 release；如新 release 缺 vendor，脚本会自动重跑 install-artc-sdk.sh
+- DingRTC SDK 在 `/opt/isales/vendor/DingRTC_Linux_SDK_*/` (OS-level, 不跟 release 走)；`install.sh --activate` 检测到 vendor 缺失会自动重跑 `install-dingrtc-sdk.sh`。但 pybind binding `dingrtc_pywrap*.so` 是 release-pinned (装在 release 自带 venv)，回滚到旧 release 用旧 release 自己 venv 里的 binding。
 - **不动 PG schema**；若旧 release 与新 schema 不兼容，见 [§9 Schema rollback](#9-schema-rollback-例外流程)
 - 边缘机不参与回滚
 
@@ -314,7 +318,7 @@ psql "postgresql://isales:<pw>@<temp-endpoint>:5432/isales" -c "select count(*) 
 ### OSS 灾备
 
 - bucket 开启「跨地域复制」到备地域
-- ARTC SDK vendor tarball 用 versioning + retention policy
+- DingRTC SDK vendor zip 用 versioning + retention policy
 
 ---
 
@@ -399,13 +403,42 @@ sudo -u isales /opt/isales/current/venv/bin/isales-edge-token-mint \
 
 ### RTC 房间手工探查
 
+DingRTC PaaS 没有自带 Python 包装；走项目内 pybind11 binding 直接跑
+ECS 的 PCM listener 脚本 (已 wired DingRTC 3.x):
+
+```bash
+# 在 ECS 上单边入会 10s + counter inbound PCM frames + 报 silence
+sudo -u isales -H -E env $(grep -v '^#' /etc/isales/env/engine.env | grep -v '^$' | xargs) \
+    LD_LIBRARY_PATH=/opt/isales/vendor/DingRTC_Linux_SDK_3_9_0/lib/x86_64 \
+    /opt/isales/current/venv/bin/python \
+    /opt/isales/current/isales-engine/scripts/ecs_pcm_loopback_listen.py \
+    --channel probe-$(date +%s) --duration 10
+# expect: {"ok": true, ..., "inbound_frames": >0}
+# inbound_frames=0 → 入会失败或 wire 不通; >0 + 单 peer = SDK self-playback mixer (即便没对端也算正常)
+```
+
+如要手工写更小的 probe (e.g. 测试新 channelId 命名 / 不同 uid 隔离):
+
 ```python
-# /tmp/artc-probe.py — 在 ECS 上用 vendor SDK 跑一次单边入会，看是否能收到对端 PCM
-import os, sys, time
-sys.path.insert(0, '/opt/isales/current/vendor/aliyun-artc-linux-python/python')
-os.environ['LD_LIBRARY_PATH'] = '/opt/isales/current/vendor/aliyun-artc-linux-python/lib'
-import AliRTCSDK
-# ... 单边入会 + 监听 OnSubscribeAudioFrame，5 秒后退出
+# /tmp/dingrtc-probe.py — 用 isales-engine transport 层做单边入会
+import asyncio, os
+from isales_engine.transport.dingrtc import DingRtcSession
+from isales_engine.transport.rtc_token import RtcTokenIssuer
+
+async def main():
+    channel = "probe-" + os.environ.get("USER", "unknown")
+    issuer = RtcTokenIssuer(
+        app_id=os.environ["ISALES_RTC_APP_ID"],
+        app_key=os.environ["ISALES_RTC_APP_KEY"],
+    )
+    creds = issuer.sign(channel=channel, user_id="probe-01", ttl_seconds=300)
+    session = DingRtcSession.production(app_id=os.environ["ISALES_RTC_APP_ID"])
+    await session.join(channel, creds.token, "probe-01")
+    print(f"joined channel={channel} is_joined={session.is_joined}")
+    await asyncio.sleep(5)
+    await session.leave()
+
+asyncio.run(main())
 ```
 
 ---
@@ -418,7 +451,7 @@ import AliRTCSDK
 
 - `IsalesEdgeOffline` — 边缘 120s 无心跳
 - `IsalesEdgeReconnectStorm` — 5 分钟内 > 5 次断线
-- `IsalesArtcPushAudioBufferFull` — TTS 推流被反压
+- `IsalesRtcPushAudioBufferFull` — TTS 推流被反压 (旧名 `IsalesArtcPushAudioBufferFull` 一个 release deprecated alias)
 - `IsalesEnginePipelineLatencyBudget` — P95 > 800 ms
 
 ---
@@ -554,7 +587,7 @@ systemctl restart isales-engine
 |------|---------|
 | edge 全部离线 | `sudo systemctl status nginx` + `ss -tln \| grep 50051` |
 | edge 一台离线 | 看 worker watchdog 日志 `journalctl -u isales-worker -n 100` |
-| 通话拨通后无 AI 声 | engine 日志找 `ARTC join failed` / `LD_LIBRARY_PATH` 错误 |
+| 通话拨通后无 AI 声 | engine 日志找 `DingRTC join failed` / `RtcEngineErrorJoinChannelFailed` / `LD_LIBRARY_PATH` 错误；查 `dingrtc_pywrap` import 异常 |
 | latency 超 800 ms 持续告警 | 改 engine.env `ISALES_ENGINE_PIPELINE_*` 把多角色 PK 默认 N=1 + restart engine（design.md Decision 4 降级策略）|
 | RDS 连接被打满 | scheduler / engine 各自的连接池上限 → 走 `RUNBOOK.md §pg-pool` |
 | nginx 502 in grpc | engine 崩了 → `systemctl restart isales-engine` + 看 core dump |

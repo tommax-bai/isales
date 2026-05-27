@@ -68,8 +68,16 @@ require_root
 TARGET=/opt/isales/releases/$RELEASE_TS
 [[ -d "$TARGET" ]] || die "release does not exist: $TARGET"
 [[ -x "$TARGET/venv/bin/python" ]] || die "venv missing in $TARGET (incomplete release)"
-[[ -d "$TARGET/vendor/aliyun-artc-linux-python" ]] \
-    || log_warn "TARGET lacks vendor/aliyun-artc-linux-python — engine may FAIL to start; re-run install-artc-sdk.sh after rollback"
+# DingRTC SDK is OS-level (/opt/isales/vendor/DingRTC_Linux_SDK_*/) not per-release,
+# so a release rollback does not need to re-check vendor inside $TARGET. The pybind
+# binding `dingrtc_pywrap*.so` is built into $TARGET/venv/ by install.sh step 5/8b
+# and is therefore release-pinned — if it's missing, the engine will fail to import.
+if ! find "$TARGET/venv" -name 'dingrtc_pywrap*.so' -print -quit | grep -q .; then
+    log_warn "TARGET venv lacks dingrtc_pywrap*.so — engine will FAIL to import; re-run install.sh on this release"
+fi
+if ! find /opt/isales/vendor -maxdepth 1 -type d -name 'DingRTC_Linux_SDK_*' -print -quit | grep -q .; then
+    log_warn "no DingRTC SDK at /opt/isales/vendor/DingRTC_Linux_SDK_* — engine will FAIL to load; run install-dingrtc-sdk.sh"
+fi
 
 if [[ -L "$CURRENT" ]] && [[ "$(readlink "$CURRENT")" == "$TARGET" ]]; then
     die "$CURRENT already points at $TARGET; nothing to rollback"

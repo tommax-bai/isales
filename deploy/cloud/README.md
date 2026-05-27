@@ -35,9 +35,12 @@ iSales v1.0 的**云端**形态：5 个无硬件耦合的服务（api / engine /
 │        isales-{api,engine,scheduler,worker}/               │
 │        isales-web/dist/                                    │
 │        venv/                  4 服务共享                   │
-│        vendor/                                             │
-│          aliyun-artc-linux-python/   ARTC SDK 解压目录    │
+│          + dingrtc_pywrap*.so 项目内 pybind11 binding      │
 │      current -> releases/<ts>     原子软链                 │
+│      vendor/                                               │
+│        DingRTC_Linux_SDK_3_9_0/   OS-level vendor SDK     │
+│          api/                       C++ headers            │
+│          lib/x86_64/libDingRTC.so   主 SDK 共享库          │
 │      backups/                                              │
 │      logs/                                                 │
 │                                                            │
@@ -54,7 +57,7 @@ iSales v1.0 的**云端**形态：5 个无硬件耦合的服务（api / engine /
 | 类别 | 要求 |
 |------|------|
 | OS | Ubuntu 22.04 LTS（amd64） |
-| Python | `python3.12` + `python3.12-venv`（ARTC Linux Python wrapper 兼容 3.6+） |
+| Python | `python3.11` + `python3.11-venv`（DingRTC binding 用 pybind11，ABI 锁 Python 3.11；与 ECS Aliyun Cloud Linux 3 默认仓库一致） |
 | Node | Node.js >= 20（构建 isales-web） |
 | 系统包 | `nginx` `git` `pkg-config` `curl` `ca-certificates` `unzip` |
 | 用户 | 系统用户 `isales:isales`（无 shell） |
@@ -71,8 +74,8 @@ iSales v1.0 的**云端**形态：5 个无硬件耦合的服务（api / engine /
 # 1. 准备主机（一次性，apt 包 + 用户 + 目录）
 sudo bash deploy/cloud/scripts/provision.sh                # TODO: 沿用 deploy/linux/scripts/provision.sh，差异由 _lib.sh 控制
 
-# 2. 安装 ARTC SDK（从 OSS 拉 vendor 压缩包到 /opt/isales/current/vendor/）
-sudo -u isales bash deploy/cloud/scripts/install-artc-sdk.sh
+# 2. 安装 DingRTC Linux SDK（OS-level, OSS → /opt/isales/vendor/DingRTC_Linux_SDK_*/）
+sudo -u isales bash deploy/cloud/scripts/install-dingrtc-sdk.sh
 
 # 3. 编辑集中化 env，填入真实 secret + 阿里 RTC AppId/AppKey
 sudoedit /etc/isales/env/engine.env
@@ -93,15 +96,15 @@ sudo bash deploy/cloud/scripts/install.sh --activate <release-ts>
 | 路径 | 用途 |
 |------|------|
 | `systemd/isales-api.service` | api 服务 unit（HTTPS via nginx） |
-| `systemd/isales-engine.service` | engine 服务 unit（含 cloud-edge gRPC server + ARTC SDK 注入） |
+| `systemd/isales-engine.service` | engine 服务 unit（含 cloud-edge gRPC server + DingRTC SDK 注入） |
 | `systemd/isales-scheduler.service` | scheduler 服务 unit |
 | `systemd/isales-worker.service` | worker 服务 unit |
 | `nginx/isales.conf` | nginx 反代（443 → web/api，50051 → engine gRPC） |
 | `env/api.env.example` | api EnvironmentFile 模板 |
-| `env/engine.env.example` | engine 模板（含 RTC AppId/AppKey、ARTC SDK path、gRPC bind） |
+| `env/engine.env.example` | engine 模板（含 RTC AppId/AppKey、DingRTC SDK path、gRPC bind） |
 | `env/scheduler.env.example` | scheduler 模板 |
 | `env/worker.env.example` | worker 模板（含 cloud-edge stream watchdog） |
-| `scripts/install-artc-sdk.sh` | 从 OSS 拉 ARTC SDK 压缩包，解压到 vendor 目录 |
+| `scripts/install-dingrtc-sdk.sh` | 从 OSS 拉 DingRTC Linux SDK zip，解压到 `/opt/isales/vendor/DingRTC_Linux_SDK_*/` (OS-level, idempotent) |
 | `scripts/install.sh` | 拉代码 + 装依赖 + 编译 web + 同步 unit + 切 current |
 | `scripts/rollback.sh` | 切回历史 release（不动 schema） |
 | `monitoring/` | Prometheus / Grafana / alert rules（含 cloud-edge 专属指标） |

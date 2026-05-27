@@ -22,7 +22,9 @@
 #   2. Clone or update each cloud repo into the release dir
 #   3. Create shared venv; pip install -e isales-common + 4 cloud services
 #   4. Build isales-web
-#   5. Install ARTC SDK Linux Python under release vendor/ (delegates to install-artc-sdk.sh)
+#   5. Install DingRTC Linux SDK under OS-level /opt/isales/vendor/ (delegates to
+#      install-dingrtc-sdk.sh) and build the project-internal pybind11 binding into the
+#      release venv (delegates to isales-engine/deploy/cloud/scripts/build-dingrtc-binding.sh).
 #   6. Sync systemd units from deploy/cloud/systemd/ to /etc/systemd/system/
 #   7. Sync nginx config (deploy/cloud/nginx/isales.conf with __ISALES_DOMAIN__ rewrite)
 #   8. Write EnvironmentFile drop-ins
@@ -74,10 +76,13 @@ activate_release() {
     log_info "activate: $prev -> $target"
     run ln -sfn "$target" "$CURRENT"
 
-    # Sync vendor SDK if release lacks one and previous has one.
-    if [[ ! -d "$target/vendor/aliyun-artc-linux-python" ]] && [[ -d "$prev/vendor/aliyun-artc-linux-python" ]]; then
-        log_warn "new release missing vendor/aliyun-artc-linux-python — re-running install-artc-sdk.sh"
-        run sudo -u isales bash "$SCRIPT_DIR/install-artc-sdk.sh"
+    # DingRTC SDK is OS-level (/opt/isales/vendor/DingRTC_Linux_SDK_*/) not
+    # per-release, so an `--activate` switch never needs to re-fetch it.
+    # If the SDK dir is missing entirely (fresh box), fall back to
+    # re-running install-dingrtc-sdk.sh; otherwise it's already in place.
+    if ! ls -d /opt/isales/vendor/DingRTC_Linux_SDK_* >/dev/null 2>&1; then
+        log_warn "no DingRTC SDK at /opt/isales/vendor/DingRTC_Linux_SDK_* — running install-dingrtc-sdk.sh"
+        run sudo -u isales bash "$SCRIPT_DIR/install-dingrtc-sdk.sh"
     fi
 
     for svc in "${RESTART_ORDER[@]}"; do
@@ -170,22 +175,29 @@ step_web() {
         || die "expected $RELEASE_DIR/isales-web/dist after build"
 }
 
-# ---------- step 5: ARTC SDK ----------
+# ---------- step 5: DingRTC SDK + binding ----------
 
-step_artc_sdk() {
-    log_info "step 5/8: install ARTC SDK Linux Python under $RELEASE_DIR/vendor/"
-    # Temporarily aim install-artc-sdk.sh at this release by writing the symlink
-    # if it doesn't exist (so the SDK script can resolve /opt/isales/current).
-    # If current already exists pointing elsewhere, install into release dir directly.
-    local need_temp_symlink=0
-    if [[ ! -L "$CURRENT" ]]; then
-        need_temp_symlink=1
-        run ln -sfn "$RELEASE_DIR" "$CURRENT"
-    fi
-    run sudo -u isales bash "$SCRIPT_DIR/install-artc-sdk.sh"
-    if [[ $need_temp_symlink -eq 1 ]]; then
-        run rm "$CURRENT"
-    fi
+step_dingrtc_sdk() {
+    log_info "step 5/8a: install DingRTC Linux SDK at /opt/isales/vendor/DingRTC_Linux_SDK_*/"
+    # DingRTC SDK install is OS-level (does not require /opt/isales/current
+    # to exist). install-dingrtc-sdk.sh is idempotent — re-running on a
+    # box that already has the same VERSION is a no-op.
+    run sudo -u isales bash "$SCRIPT_DIR/install-dingrtc-sdk.sh"
+
+    log_info "step 5/8b: build dingrtc_pywrap pybind11 binding into $RELEASE_DIR venv"
+    # Build the project-internal pybind11 binding against the just-
+    # installed vendor SDK, targeting the release's shared venv. The
+    # script reads VIRTUAL_ENV to pick the right Python; export it so
+    # the build resolves the release's interpreter.
+    local engine_repo=$RELEASE_DIR/isales-engine
+    local build_script=$engine_repo/deploy/cloud/scripts/build-dingrtc-binding.sh
+    [[ -x "$build_script" ]] || die "binding build script missing: $build_script"
+    local sdk_dir
+    sdk_dir=$(find /opt/isales/vendor -maxdepth 1 -type d -name 'DingRTC_Linux_SDK_*' | sort | head -n1)
+    [[ -n "$sdk_dir" ]] || die "DingRTC SDK not found under /opt/isales/vendor/ — step 5/8a should have installed it"
+    run sudo -u isales -E env VIRTUAL_ENV="$RELEASE_DIR/venv" \
+        ISALES_DINGRTC_LINUX_SDK_PATH="$sdk_dir" \
+        bash "$build_script"
 }
 
 # ---------- step 6: systemd units ----------
@@ -273,7 +285,7 @@ main() {
     step_clone
     step_venv
     step_web
-    step_artc_sdk
+    step_dingrtc_sdk
     step_systemd
     step_nginx
     step_env_dropins
