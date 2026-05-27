@@ -146,9 +146,42 @@
 
 ## 13. 验收 gate + archive
 
-- [ ] 13.1 `openspec validate engine-rtc-dingrtc-migration --strict` PASS
-- [ ] 13.2 三端 e2e 全绿 checklist：cloud `ecs_pcm_loopback_listen.py` 10s 回环 / Windows edge + cloud 真房间互通 / mac dev + cloud 真房间互通 / 拨真手机 13301035545 听到 AI 开场白
-- [ ] 13.3 三端 vendor 版本一致 lint PASS（§ 10.1）
-- [ ] 13.4 三端 STATE.md / RUNBOOK 同步验证（`grep -i AliRTC\|aliyun-artc\|AliVCSDK` 不应找到任何遗留 ApsaraVideo Live 引用，除 archived change 历史记录）
+- [x] 13.1 `openspec validate engine-rtc-dingrtc-migration --strict` PASS <!-- 2026-05-27 PASS ("Change 'engine-rtc-dingrtc-migration' is valid"). MUST 在 § 13.5 archive 真跑前重新 invoke 一次确认 spec 增删 / delta 移动后 strict 仍绿. -->
+- [ ] 13.2 三端 e2e 全绿 checklist：cloud `ecs_pcm_loopback_listen.py` 10s 回环 / Windows edge + cloud 真房间互通 / mac dev + cloud 真房间互通 / 拨真手机 13301035545 听到 AI 开场白 <!-- 2026-05-27 prep snapshot: (a) cloud ECS PCM loopback ✅ done at § 5.4 (channel rtc-smoke-1779785584, inbound_frames=1001); (b) Windows edge + cloud 互通 ❌ blocked on § 7.7-7.11 (Windows binding rebuild 待 Windows session); (c) mac dev + cloud 互通 ✅ done at § 8.8 dual-peer (channel dual-peer-1779788945, mac inbound 1987 + ECS inbound 2495); (d) 拨真手机 13301035545 ❌ blocked on § 7.11 + joint-mvp-gate-13301035545 § 6 (AI provider stack 整体 ready). 2/4 gate 已绿, 剩 2 个 gate 都依赖 § 7 完成. Archive 真闭 gate 时 MUST 重跑 (a) + (c) 复绿 (smoke 是 timestamped channel, 不能复用旧 evidence) + 新跑 (b) + (d). -->
+- [ ] 13.3 三端 vendor 版本一致 lint PASS（§ 10.1） <!-- 2026-05-27 blocked on § 10.1: `scripts/check_dingrtc_versions.sh` lint 脚本尚未写; archive 前必须先做 § 10.1 + § 10.2 (接入 make spec-validate). 当前三端 DingRTC 版本 ground truth pinned in deploy/cloud/STATE.md § "DingRTC SDK vendor" = 3.9.0 across Linux / Windows / macOS, sha256 全录, 可作 § 10.1 实现的 expected-value table. -->
+- [ ] 13.4 三端 STATE.md / RUNBOOK 同步验证（`grep -i AliRTC\|aliyun-artc\|AliVCSDK` 不应找到任何遗留 ApsaraVideo Live 引用，除 archived change 历史记录） <!-- 2026-05-27 prep snapshot. 当前 grep `-rilE "AliRTC|aliyun-artc|AliVCSDK|aliyun_artc"` (排除 archive/) 三端结果分类:
+
+  (A) Migration audit / cross-reference text — 保留 (本身就在说"我们以前用 X, 现在换 DingRTC, 跨产品线不互通"):
+      - meta deploy/cloud/STATE.md § "Migration from ApsaraVideo Live ARTC SDK (legacy, gone)"
+      - meta deploy/cloud/env/engine.env (跨产品线提醒注释)
+      - meta deploy/RUNBOOK-cloud.md (跨产品线提醒)
+      - meta deploy/cloud/scripts/install-dingrtc-sdk.sh (migration note in script header)
+      - telephony deploy/edge/macos/RUNBOOK.md (2 处: archived precursor change ref + deprecated env var alias mention)
+      - telephony deploy/edge/windows/STATE.md (pre-§ 7 reality check banner + post-§ 7 target sections)
+      - telephony isales_telephony/audio_bridge/macos_dingrtc_pyobjc.py (docstring history line)
+      - telephony tests/audio_bridge/conftest.py (docstring history line)
+      - engine deploy/cloud/pybind/dingrtc_pywrap/README.md (migration history)
+      - engine isales_engine/transport/rtc_token.py + tests/test_rtc_token.py (token 算法说明, DingRTC 3.x 与旧 ARTC token v3.0 binary 同算法)
+
+  (B) Pre-§ 7 Windows artefacts pending § 7.9 cleanup (live on disk, will be physically removed):
+      - telephony deploy/edge/windows/vendor/README.md
+      - telephony deploy/edge/windows/pybind/aliyun_artc_pywrap/ (entire dir, including README.md)
+      - telephony isales_telephony/audio_bridge/windows_rtc_session.py (current impl, swaps in § 7.6)
+      - telephony scripts/pybind_rtc_join_smoke.py + scripts/pybind_pcm_loopback_smoke.py + scripts/joint_mvp_dial.py
+      - telephony scripts/d1_poc/poc_pyinstaller_artc/ (entire dir)
+      - telephony scripts/d1_poc/README.md + WINDOWS_SETUP.md (D1 PoC docs)
+      - telephony tests/windows/test_windows_rtc_session.py
+      - telephony README.md (top-level mentions ARTC SDK)
+      - telephony isales_telephony/audio_bridge/session.py (mock; docstring mentions ARTC)
+
+  (C) OpenSpec specs/changes — 待 § 13.5 archive merge 时由 dingrtc-migration delta 整体替换:
+      - openspec/specs/deployment-topology/spec.md
+      - openspec/specs/device-hardware/spec.md
+      - openspec/changes/joint-mvp-gate-13301035545/* (banner 已加 § 11.6)
+      - openspec/changes/windows-artc-pybind11/* (banner 已加 § 11.2)
+      - openspec/changes/windows-artc-pybind11-join-config/* (banner 已加 § 11.3)
+      - openspec/v1-roadmap-aliyun-rtc-poc-result.md (historical PoC doc, 保留作 audit)
+
+  Archive 真闭 gate 时序: § 7.9 落地清理 (B) → § 13.5 archive merge 清理 (C) → § 13.4 重跑 grep 应只剩 (A) audit text + archived change history. (A) 全部带 migration / SUPERSEDED / deprecated 上下文, 不是 "遗留 ApsaraVideo Live 引用". -->
 - [ ] 13.5 archive：`/opsx:archive engine-rtc-dingrtc-migration` → 合 delta 到 `openspec/specs/{device-hardware,deployment-topology,service-communication}/spec.md`
 - [ ] 13.6 archive 后 `git push origin main`（meta-repo）+ 涉及 sub-repo（`isales-engine` / `isales-telephony` / `isales-common` 如改）+ 12.* memory 更新提交
