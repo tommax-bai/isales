@@ -15,3 +15,12 @@ __pycache__/
 deploy/cloud/env/SECRETS.md
 .venv
 node_modules/
+
+# Vendor RTC SDK binaries / headers — proprietary, never commit. The
+# canonical location is `~/codes/vendor/DingRTC_*_SDK_*/` (sibling of
+# this repo, outside any tree); these globs are forward-compat for any
+# in-tree placement (e.g. a developer unpacking a vendor zip inside
+# the meta-repo by mistake) and the `engine-rtc-dingrtc-migration § 9.7`
+# 三端一致检查。
+vendor/DingRTC_*_SDK_*/
+**/vendor/DingRTC_*_SDK_*/
