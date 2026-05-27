@@ -1,3 +1,30 @@
+<!--
+**Vendor 调用层延伸到 `engine-rtc-dingrtc-migration` § 7 (2026-05-27 起 active)**
+
+本 change 39/51, 剩余 12 task 分布在: §8 CI 集成 (4) / §9 D1 §9.3-9.5
+PyInstaller frozen + 真 RTC join + 真 PCM smoke (3) / §10 framework
+优化 (5). 全部命名 / 路径基于 `aliyun_artc_pywrap` + ApsaraVideo Live
+ARTC SDK Windows.
+
+dingrtc-migration § 7 把 vendor 调用层整体改名重写:
+- §10.1 (`OnAliEngineLog`) / §10.2 (`OnNetworkQualityChanged` 等) 是
+  vendor base-class API, DingRTC 3.x 下需重新对照 `RtcEngineEventListener`
+  header 决定是否同等需要 + 是否同 selector 名.
+- §10.4 异常子类 (`AliyunArtcJoinError` / `AliyunArtcPushError` ...)
+  名字需重命名为 DingRtc* 形态; binding 层 §7.x 已经做了 (dingrtc-migration
+  § 7.2 `bindings.cpp` API 切换).
+- §8 CI job + §9 frozen-exe smoke 的命令路径 / 模块名 (`aliyun_artc_pywrap`)
+  需切到 `dingrtc_pywrap`.
+- §9.4 / §9.5 真 RTC join + 真 PCM smoke 在 dingrtc-migration § 7.7-7.8
+  + § 7.11 等价覆盖.
+
+**Archive 路径**: dingrtc-migration § 7 (Windows vendor 层 retarget) 落地后,
+评估剩余 12 task — § 8 CI 切名重 invoke / § 9.3-9.5 等价合到
+dingrtc-migration § 7.10-7.11 / § 10 framework 优化(5) 可保留作 D2 后继
+task. 全完成 archive, 否则把保留 task fold 进 dingrtc-migration 后继
+change. 详见 dingrtc-migration § 11.2 audit trail.
+-->
+
 ## 1. 修正 D1 spec 字面假设（与本 change 同 PR）
 
 - [x] 1.1 编辑 `openspec/changes/windows-client-core/specs/deployment-topology/spec.md` L30：把 vendor 目录注释 `ARTC SDK Windows native binary（.dll + Python wrapper）` 改为 `ARTC SDK Windows native binary（.dll）+ 项目内 pybind11 binding`

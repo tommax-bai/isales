@@ -1,3 +1,18 @@
+<!--
+**RTC vendor 层延伸到 `engine-rtc-dingrtc-migration` (2026-05-27 起 active)**
+
+本 change 的 pre-flight (§1.1 import 检查) 和 §6 拨号 e2e 假设 vendor
+binding 名是 `aliyun_artc_pywrap`. dingrtc-migration § 7 完成后该名换为
+`dingrtc_pywrap`, AppId/AppKey 仍用同一对 (`o6dpsan9` 是 DingRTC 3.x).
+- §1.1 应改读 `dingrtc_pywrap` (§ 7.5 落地后).
+- §6 真拨号 13301035545 是 dingrtc-migration § 5.4 (cloud) + § 7.11
+  (Windows) + § 8.10 (macOS) 三端绿之后才能跑.
+- 本 change **不自行 archive**; 等 dingrtc-migration archive 后, 11/43
+  剩余 task (32 task) 中实际仍未做的部分继续推进.
+
+详见 dingrtc-migration § 11.6 audit trail.
+-->
+
 ## 1. Pre-flight spot-check (动手前必做)
 
 - [ ] 1.1 Windows dev box: `py -3.12 -c "import aliyun_artc_pywrap; print(dir(aliyun_artc_pywrap))"` 列出 6 个公开符号

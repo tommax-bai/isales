@@ -1,3 +1,25 @@
+<!--
+**RTC SDK 修正延伸到 `engine-rtc-dingrtc-migration` (2026-05-27 起 active)**
+
+本 change 在 Sprint 0/2/3/4 任务里的 ARTC SDK 引用基于
+`AliRTCSDK_Linux-7.10.2` / `aliyun_artc_pywrap` / `AliRTCSdk.framework`,
+全部超越 (产品线 ApsaraVideo Live ARTC 与真 AppId DingRTC PaaS 跨产品
+不互通, 详见 2026-05-26 ground-truth 诊断). 后继 vendor 层修正集中在
+`engine-rtc-dingrtc-migration`:
+
+- DingRTC 3.9.0 Linux/Windows/macOS 三端 vendor SDK 全部直链下载, sha256
+  + URL 在 deploy/cloud/STATE.md § "DingRTC SDK vendor" pinned.
+- isales-engine 的 transport 层 (本 change § 3.1 / 3.2 / 3.3 / 3.4 落地的
+  `AliyunRtcSession` / `_AliyunArtcChannel` / `install-artc-sdk.sh` /
+  `AliyunRTCCapture-Playback`) 已被 dingrtc-migration § 6 整体删除或迁移
+  到 `transport/dingrtc/` + `deploy/cloud/scripts/install-dingrtc-sdk.sh`
+  + `RtcTelephonyClient` 内对称承担.
+- 本 change 剩 12 task (含真 Aliyun RTC e2e 验收) 的 vendor 依赖
+  随 dingrtc-migration § 5 (cloud) / § 8 (macOS) / § 7 (Windows, 待) 落地.
+  本 change **不自行 archive**, 等 dingrtc-migration archive 后随阶段
+  推进 archive (见 dingrtc-migration § 11.4 audit trail).
+-->
+
 ## 1. Sprint 0 准备（与 A2 impl 并行，不阻塞）
 
 - [ ] 1.1 阿里云 QA 环境开通：ECS 4C16G Ubuntu 22.04 + RDS PG16 + Redis 1G + OSS bucket + 域名 + Let's Encrypt

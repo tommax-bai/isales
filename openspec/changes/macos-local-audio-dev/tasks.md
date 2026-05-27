@@ -2,6 +2,19 @@
 > [`macos-artc-pyobjc-binding`](../macos-artc-pyobjc-binding/tasks.md) 已 active +
 > 实施落地。下列 task 列表**不要执行**；保留作思路记录。详见
 > [`proposal.md`](./proposal.md) 顶部 SUPERSEDED 块。
+>
+> **2026-05-27 supersession chain extends to `engine-rtc-dingrtc-migration` § 8.**
+> macos-artc-pyobjc-binding (archived as
+> `2026-05-19-macos-artc-pyobjc-binding`) 完成的 PyObjC binding vendor 层
+> 已被 dingrtc-migration § 8 retarget 到 `DingRTC.framework` 3.9.0 (新文件
+> `isales_telephony/audio_bridge/macos_dingrtc_pyobjc.py`, 旧
+> `macos_artc_pyobjc.py` 已删). 本 change 当时假设的 dev-only mac
+> mic/speaker 路径与 vendor 形状无 entanglement (`MacosLocalAudioRtcSession`
+> 是同进程 PortAudio 路径, 不动 PyObjC binding), 因此 dingrtc-migration § 7/§ 8
+> vendor 层变化对本 change 的"思路记录"价值无影响. 标 **unblocked**
+> (但不重启, 因为上层 SUPERSEDED 决策仍然成立 — 实际路径走真 DingRTC
+> RTC join, 不走本 change 的 dev-only loopback). 详见 dingrtc-migration
+> § 11.5 audit trail.
 
 ## 1. 依赖与脚手架
 

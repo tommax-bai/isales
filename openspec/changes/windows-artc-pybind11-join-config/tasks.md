@@ -1,3 +1,26 @@
+<!--
+**BLOCKED on `engine-rtc-dingrtc-migration` (2026-05-27 起 active)**
+
+本 change 0/23 task 全部建立在 `aliyun_artc_pywrap` (ApsaraVideo Live
+ARTC SDK Windows) binding 之上, 但 dingrtc-migration § 7 正在把 Windows
+binding 整体改名为 `dingrtc_pywrap` 并 retarget vendor 层到 DingRTC 3.x
+(`AliEngineChannelProfile` / `AliRtcAuthInfo` / `AliEngineClientRole`
+等 enum + struct shape 全换). 因此:
+
+- **不要直接开工**: enum binding (§1) / AuthInfo 透 (§2) / Channel-
+  Profile JSON 配置 (§3-§7) 的目标 type 形状现在是 `DingRtcAuthInfo` /
+  `RtcEngineRole` (DingRTC 3.x header) 而非 `AliRtcAuthInfo` /
+  `AliEngineClientRole`. spec / task 现状描述错对象.
+- **重启条件**: dingrtc-migration § 7.6 (WindowsRtcSession 切到新
+  binding) 落地后, 评估本 change 的 23 task 哪些仍有意义 (e.g.
+  Channel-Profile / Client-Role enum 暴露这类配置入口在 DingRTC 下
+  是否同等需要), 哪些已被 dingrtc-migration § 7 整体覆盖. 然后:
+  - 重写本 change proposal/spec/tasks 把 type 名换 DingRTC 3.x 形状; 或
+  - 把"配置入口"剩余 task 折叠进 dingrtc-migration 后继 change.
+
+详见 dingrtc-migration § 11.3 audit trail.
+-->
+
 ## 1. 扩 bindings.cpp
 
 - [ ] 1.1 加 enum binding (~20 行 in pybind module init): `AliEngineChannelProfile` (`ChannelProfileCommunication=0` + `ChannelProfileInteractiveLive=1`) + `AliEngineClientRole` (`AliEngineClientRoleInteractive=0` + `AliEngineClientRoleLive=1`)；用 `py::enum_<AliEngineChannelProfile>` / `py::enum_<AliEngineClientRole>` 暴露
