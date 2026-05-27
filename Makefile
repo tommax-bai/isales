@@ -6,9 +6,15 @@ test-all:
 	bash scripts/test_all.sh $(PYTEST_ARGS)
 
 # Validate every spec + every active change against the OpenSpec workflow.
+# Also runs the DingRTC vendor-version three-end consistency lint
+# (engine-rtc-dingrtc-migration § 10.1) so a desync of any of the
+# version / sha256 mentions blocks `make spec-validate` (and any CI
+# pipeline that uses it). The lint is shell-only + has no extra
+# dependencies, so it is safe to run on every dev / CI invocation.
 spec-validate:
 	openspec validate --specs
 	openspec validate --changes
+	bash scripts/check_dingrtc_versions.sh
 
 # Static checks for the deploy/ tree:
 #   - shellcheck on all bash scripts
