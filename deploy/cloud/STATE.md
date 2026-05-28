@@ -171,13 +171,22 @@ scheduler,worker}.git` at `main` HEAD into
 Single shared venv at `/opt/isales/current/venv/` runs Python 3.11.13;
 all 5 isales packages installed editable (`pip install -e`).
 
-**Branches checked out in the release dir (2026-05-27 PM)**:
+**Branches checked out in the release dir (2026-05-28)**:
 
 | Repo | Branch | HEAD |
 |---|---|---|
-| `isales-engine` | `dingrtc-migration-cloud` (not main) | `ff776a8` "asr/rtc: remove per-second diagnostic INFO logs" |
+| `isales-engine` | `dingrtc-migration-cloud` (not main) | `550902d` "barge-in: pragmatic rollback for DingRTC self-loopback + VAD corroboration" |
 | `isales-common` | `main` | `2418981` "cred_migrate: add ISALES_VOLCENGINE_ASR_RESOURCE_ID env mapping" |
 | `isales-api` / `scheduler` / `worker` | `main` (untouched) | (pre-2026-05-24 sync) |
+
+> **Note (2026-05-28)**: 6 additional engine commits landed in this session
+> via scp + `sudo install` (ECS → GitHub fetch was failing intermittently
+> during the session, so all deploys went `git push origin → scp from mac →
+> install -o isales -g isales` ; the git working tree shows the older HEAD
+> `ff776a8` from `2026-05-27` because the local PUSH succeeded but the box's
+> outbound pull didn't). When `dingrtc-migration-cloud` archive completes,
+> rebuild the release dir per `install.sh` to re-sync git state with the
+> deployed files.
 
 The engine on `dingrtc-migration-cloud` branch carries 16 PM commits incl. **TTS V3
 SSE protocol rewrite** (SeedTTS 2.0), **ASR V3 SAUC WebSocket binary protocol
@@ -414,9 +423,21 @@ provider_credential SSOT 5 fields used by the engine:
 
 Cross-link:
 - `memory/project_session_2026_05_27_b_handoff.md` — 完整 22-commit chain + 5 SDK gotcha
+- `memory/project_session_2026_05_28_handoff.md` — 6 commits + 2 PG UPDATE; JSON schema ROOT CAUSE + barge-in wall-clock + VAD bypass + SDK self-loopback 实证; **未解: judge prompt 概念错位 (留 `prompt-template-vars` openspec change) + greeting 不可打断 (留 `engine-greeting-aec`)**
 - `memory/reference_artc_sdk.md` § "5 个 SDK 集成 gotcha" — DingRTC behavioural quirks
 - `isales-engine/isales_engine/providers/{tts_volcengine,asr_volcengine}.py` — V3 protocol impl
+- `isales-engine/isales_engine/run_loop.py` — `_partial_monitor` wall-clock elapsed + `_vad_monitor` ASR-bypass barge-in + VAD-corroboration (2026-05-28)
+- `isales-engine/isales_engine/pipeline/prompt_builder.py` — ROLE/JUDGE/POLISH_OUTPUT_SCHEMA_SUFFIX 强制 JSON schema (2026-05-28)
 - `isales-telephony/scripts/mac_dev_no_modem_smoke.py` — reproducer
+
+### PG-side runtime config (mutated 2026-05-28, NO commit — data-only)
+
+| Table | Row | Field | Value | Reason |
+|---|---|---|---|---|
+| `prompt_version` | id=3 (campaign 1 active judge) | `content` | 去除遗留 `${roleUser}/${roleAssistant}` 字面 (用户版重写) | LLM 把字面变量字符当 token 解读, 干扰判断逻辑 |
+| `campaign` | id=1 ("测试任务") | `interruption_min_duration_ms` | 200 (was 400) | 收窄 barge-in 阈值, 配合本 session VAD bypass + wall-clock 修法 |
+
+> 这两个 UPDATE 仅在 ECS PG 上, 无对应 alembic migration 或 git commit. 若 PG 重置 / 切到新 ECS, 需要重做. 详见 `memory/project_session_2026_05_28_handoff.md`.
 
 ## Cloud-edge gRPC end-to-end smoke (verified 2026-05-17 23:25 CST)
 
