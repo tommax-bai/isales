@@ -37,9 +37,12 @@
 ## 4. Archive 准备
 
 - [x] 4.1 跑 `openspec validate engine-judge-dialog-context --strict` 全绿
-- [x] 4.2 isales-engine 仓本地无新 commit（`84c5db8` 已 push 到 origin/dingrtc-migration-cloud），本 change 不在 isales-engine 仓再 commit — **修订**: tests/test_pipeline.py 加了 5 个 TestBuildJudgeMessages case，需要在 isales-engine 仓 commit 测试 + push origin
-- [ ] 4.3 meta-repo `~/codes/isales` commit 本 change 全 4 个 artifact（proposal / design / specs/role-prompt/spec.md / tasks.md）+ tasks.md 进度回写
-- [ ] 4.4 meta-repo push origin
+<!-- 4.2 修订: 实际上 tests/test_pipeline.py 加了 5 个 case, commit
+     332d8b2 + push origin/dingrtc-migration-cloud 完成 -->
+- [x] 4.2 isales-engine 仓 commit `332d8b2` "test(judge-dialog-context): cover build_judge_messages chat-history injection" + push origin/dingrtc-migration-cloud
+<!-- meta-repo 6a4247c "openspec(engine-judge-dialog-context): propose + apply tests done" -->
+- [x] 4.3 meta-repo commit `6a4247c` 全 4 artifact + tasks.md 进度回写
+- [x] 4.4 meta-repo push origin main (8bc36b4..6a4247c)
 - [ ] 4.5 跑 `/opsx:archive engine-judge-dialog-context`，合并 spec delta 到 `openspec/specs/role-prompt/spec.md`，移动 change 目录到 `openspec/changes/archive/YYYY-MM-DD-engine-judge-dialog-context/`
 - [ ] 4.6 archive 后 commit + push meta-repo
 
