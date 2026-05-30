@@ -13,6 +13,17 @@ binding 名是 `aliyun_artc_pywrap`. dingrtc-migration § 7 完成后该名换�
 详见 dingrtc-migration § 11.6 audit trail.
 -->
 
+## 0. Dependency baseline (前置依赖)
+
+<!-- 2026-05-30: grpcio/protobuf 核心依赖缺口修复 —
+     isales-telephony pyproject.toml 未声明 grpcio/protobuf,
+     导致 Windows 环境启动 edge 时 ModuleNotFoundError -->
+- [x] 0.1 isales-telephony/pyproject.toml: 在 `[project.dependencies]` 补充
+      `grpcio>=1.60` + `protobuf>=5.0`
+- [x] 0.2 验证 `py -3.12 -c "import grpc; print(grpc.__version__)"` 输出版本 ≥ 1.60
+- [x] 0.3 验证 `py -3.12 -c "from google.protobuf import timestamp_pb2"` 无 ModuleNotFoundError
+- [x] 0.4 依赖基线 OK，可进入 § 1
+
 ## 1. Pre-flight spot-check (动手前必做)
 
 - [ ] 1.1 Windows dev box: `py -3.12 -c "import aliyun_artc_pywrap; print(dir(aliyun_artc_pywrap))"` 列出 6 个公开符号

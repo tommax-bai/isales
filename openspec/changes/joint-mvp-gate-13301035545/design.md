@@ -62,6 +62,13 @@ constraint:
 - **不**改 AI provider 实装 (volcengine 已实装并装载凭据；本 change
   仅验证整链路用 volcengine 真接)
 
+### 依赖基线 (2026-05-30 补)
+
+`isales-telephony/transport/grpc_client.py` 直接 `import grpc`，
+`isales-telephony/edge/orchestrator.py` 使用 `from google.protobuf.timestamp_pb2 import Timestamp`。
+但 `pyproject.toml` 未将 `grpcio>=1.60` 与 `protobuf>=5.0` 列入 `[project.dependencies]`。
+已补齐声明，确保 `pip install -e ".[windows]"` 即可拉入全部运行时依赖。
+
 ## Decisions
 
 ### D1: RTC client token 签发 — 生产走 DialCommand，smoke 走 ECS CLI
