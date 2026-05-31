@@ -8,8 +8,15 @@
 - [modem-controller 实施任务](file://openspec/changes/archive/2026-05-09-impl-modem-controller/tasks.md)
 - [macOS 平台硬件规范](file://openspec/changes/archive/2026-05-12-impl-deploy-macos/specs/device-hardware/spec.md)
 - [真实 AT 客户端规范](file://openspec/changes/archive/2026-05-17-impl-real-at/specs/device-hardware/spec.md)
+- [call-state-machine 规范](file://openspec/specs/call-state-machine/spec.md)
 - [isales 项目总览](file://README.md)
 </cite>
+
+## 更新摘要
+**所做更改**
+- 更新了通话状态机部分，增加了 no_answer 分支中挂断时机修复的说明
+- 补充了 hangup_cause 规范化的相关内容
+- 更新了调制解调器控制系统的挂断处理机制说明
 
 ## 目录
 1. [简介](#简介)
@@ -27,6 +34,8 @@
 isales-telephony 硬件控制服务是一个专为 USB GSM Modem 设计的自研硬件设备管理系统。该系统实现了完整的通话设备硬件层控制，包括设备管理、SIM 卡管理、调制解调器控制和音频处理功能。
 
 系统采用双进程架构：`telephony-api` HTTP 服务负责设备/SIM 管理与设备选择，`modem-controller` 守护进程负责底层硬件控制。该设计遵循 OpenSpec 规范，不使用任何开源 PBX 组件（如 FreeSWITCH / Asterisk / chan_dongle）。
+
+**更新** 本次更新重点关注通话状态机中 no_answer 分支的挂断时机修复，确保正确的调用终止顺序。
 
 ## 项目结构
 
@@ -138,6 +147,8 @@ SIM 卡管理系统提供完整的 SIM 卡资料化管理功能，支持多维�
 - `BUSY`：忙音
 - `+CLIP`：主叫号码
 - `+CIEV`：语音呼叫激活通知
+
+**更新** 通话状态机中 no_answer 分支的挂断时机修复：在 no_answer 场景下，系统现在会在状态转换前正确调用 `telephony.hangup()` 方法，确保硬件层面的挂断操作先于状态转换执行，从而保证调用终止的正确顺序。
 
 **章节来源**
 - [device-hardware 规范:35-38](file://openspec/specs/device-hardware/spec.md#L35-L38)
@@ -375,6 +386,34 @@ WASAPI -.-> Speaker
 **章节来源**
 - [device-hardware 规范:21-43](file://openspec/specs/device-hardware/spec.md#L21-L43)
 
+### 通话状态机与挂断时机修复
+
+**更新** 通话状态机在 no_answer 分支中实现了重要的挂断时机修复：
+
+```mermaid
+flowchart TD
+Start([拨号开始]) --> WaitForAnswer["等待对端接听"]
+WaitForAnswer --> Connected{"是否已接通?"}
+Connected --> |是| InCall["通话进行中"]
+Connected --> |否| TimeoutCheck["检查超时"]
+TimeoutCheck --> NoAnswer{"是否超时无应答?"}
+NoAnswer --> |是| FixHangup["修复：先调用 telephony.hangup()"]
+FixHangup --> StateTransition["状态转换为 END，原因=no_answer"]
+StateTransition --> SetCause["设置 hangup_cause = no_answer"]
+SetCause --> LogEvent["记录 hangup 事件，initiated_by=ai"]
+LogEvent --> EndCall["结束通话"]
+NoAnswer --> |否| Connected
+InCall --> RemoteHangup{"远端挂断?"}
+RemoteHangup --> |是| HandleRemoteHangup["处理远端挂断事件"]
+HandleRemoteHangup --> EndCall
+```
+
+**更新** 该修复确保了正确的调用终止顺序：在 no_answer 场景下，系统现在会先调用 `telephony.hangup()` 方法向硬件发送挂断指令，然后再进行状态转换。这种顺序保证了硬件层面的操作能够正确完成，避免了状态转换后硬件操作无法执行的问题。
+
+**章节来源**
+- [call-state-machine 规范:160-172](file://openspec/specs/call-state-machine/spec.md#L160-L172)
+- [device-hardware 规范:316-325](file://openspec/specs/device-hardware/spec.md#L316-L325)
+
 ## 依赖关系分析
 
 系统依赖关系呈现清晰的层次结构，确保各组件间的松耦合和高内聚。
@@ -483,6 +522,11 @@ MODEM_SERVICE --> REDIS_QUEUE[录音上传队列]
 - 检查系统负载情况
 - 验证音频设备驱动性能
 
+**更新** **no_answer 分支挂断时机问题**：
+- 如果出现通话超时但硬件未正确挂断的情况，检查是否已应用挂断时机修复
+- 确认状态转换前已正确调用 `telephony.hangup()` 方法
+- 验证 `hangup_cause` 字段正确设置为 `no_answer`
+
 **章节来源**
 - [device-hardware 规范:335-342](file://openspec/specs/device-hardware/spec.md#L335-L342)
 - [device-hardware 规范:394-397](file://openspec/specs/device-hardware/spec.md#L394-L397)
@@ -500,5 +544,7 @@ isales-telephony 硬件控制服务是一个设计精良、实现完善的自研
 4. **跨平台支持**：通过平台抽象层支持 Linux、macOS 和 Windows 平台
 
 5. **生产就绪**：采用 systemd/launchd 服务管理，具备完善的部署和监控能力
+
+**更新** 本次更新特别加强了通话状态机的可靠性，通过修复 no_answer 分支中的挂断时机问题，确保了硬件控制的正确顺序和一致性。这一改进对于保证通话质量和系统稳定性具有重要意义。
 
 该系统遵循 OpenSpec 规范，不依赖任何开源 PBX 组件，为 isales 项目的通话功能提供了稳定可靠的硬件基础。通过模块化设计和清晰的架构分层，系统具备良好的可维护性和扩展性，为未来的功能增强奠定了坚实基础。

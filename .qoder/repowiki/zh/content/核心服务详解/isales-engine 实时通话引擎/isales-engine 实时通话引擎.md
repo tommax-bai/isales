@@ -12,6 +12,11 @@
 - [filler/spec.md](file://openspec/specs/filler/spec.md)
 - [goal-achievement/spec.md](file://openspec/specs/goal-achievement/spec.md)
 - [impl-engine/proposal.md](file://openspec/changes/archive/2026-05-07-impl-engine/proposal.md)
+- [engine-send-timeout-multi-edge/design.md](file://openspec/changes/engine-send-timeout-multi-edge/design.md)
+- [cloud-edge-grpc-keepalive/design.md](file://openspec/changes/cloud-edge-grpc-keepalive/design.md)
+- [cloud-edge-grpc-keepalive/tasks.md](file://openspec/changes/cloud-edge-grpc-keepalive/tasks.md)
+- [cloud-edge-grpc-keepalive/proposal.md](file://openspec/changes/cloud-edge-grpc-keepalive/proposal.md)
+- [deploy/cloud/nginx/isales.conf](file://deploy/cloud/nginx/isales.conf)
 </cite>
 
 ## 目录
@@ -27,7 +32,9 @@
 10. [附录](#附录)
 
 ## 简介
-isales-engine 是 iSales 系统的实时通话引擎，负责驱动单通电话的完整生命周期：从拨号、开场白、对话、AI 三层管线处理，到打断检测、沉默激活、目标达成收尾、转人工与通话结束。其核心是以状态机为“总线”，将 AI 三层管线（角色 LLM、裁判 LLM、润色 LLM）、打断检测、沉默激活、垫词管理、目标达成检测等实时行为模块有机串联，形成高实时性、低耦合、可测试的系统。
+isales-engine 是 iSales 系统的实时通话引擎，负责驱动单通电话的完整生命周期：从拨号、开场白、对话、AI 三层管线处理，到打断检测、沉默激活、目标达成收尾、转人工与通话结束。其核心是以状态机为"总线"，将 AI 三层管线（角色 LLM、裁判 LLM、润色 LLM）、打断检测、沉默激活、垫词管理、目标达成检测等实时行为模块有机串联，形成高实时性、低耦合、可测试的系统。
+
+**更新** 本版本新增 gRPC 云端边缘控制面增强功能，包括 5 秒发送超时保护机制、动态路由到特定 Edge 实例、自动清理连接丢失的映射关系等关键改进，显著提升了系统的稳定性与可扩展性。
 
 ## 项目结构
 - 仓库定位：isales-engine 是独立的 Python 服务，作为实时通话引擎，消费调度器队列，驱动状态机与 AI 管线，落库事件与统计，并通过 Pub/Sub 与 API/Worker 通信。
@@ -42,18 +49,26 @@ A["isales-api<br/>Pub/Sub: engine:events:*"]
 W["isales-worker<br/>队列: engine:worker:call-ended"]
 end
 subgraph "实时引擎"
-E["isales-engine<br/>状态机 + AI 管线"]
+E["isales-engine<br/>状态机 + AI 管线 + gRPC 控制面"]
 T["modem-controller<br/>IPC: dial/hangup/audio"]
+end
+subgraph "云端边缘控制面"
+G["gRPC Server<br/>keepalive + 超时保护"]
+H["Edge 实例<br/>设备映射 + 心跳"]
 end
 S --> E
 E --> A
 E --> W
 E <- --> T
+E --> G
+G --> H
 ```
 
 **图表来源**
 - [IMPLEMENTATION_PLAN.md: 190-261:190-261](file://IMPLEMENTATION_PLAN.md#L190-L261)
 - [README.md: 6-14:6-14](file://README.md#L6-L14)
+- [engine-send-timeout-multi-edge/design.md: 37-59:37-59](file://openspec/changes/engine-send-timeout-multi-edge/design.md#L37-L59)
+- [cloud-edge-grpc-keepalive/design.md: 3-6:3-6](file://openspec/changes/cloud-edge-grpc-keepalive/design.md#L3-L6)
 
 **章节来源**
 - [README.md: 6-14:6-14](file://README.md#L6-L14)
@@ -69,13 +84,18 @@ E <- --> T
   - 目标达成：角色 LLM 结构化标记驱动实时判定，达成后进入 WRAPPING_UP 简化管线，双计数器收尾。
   - 转人工：四种触发条件（关键词/意图/轮次/LLM）OR 命中，进入 TRANSFERRING 播衔接话术后主动挂断。
 - 事件与消息：EngineEvent 推送（call_started/state_changed/asr/ai_reply/hangup/pipeline_completed），EngineControl 消费（ManualHangup/ForceTransfer），CallEnded 派发至 worker。
+- **云端边缘控制面**：gRPC 服务器提供长连接双向流，支持 keepalive 心跳、5秒发送超时保护、动态设备路由与自动映射清理，确保多 Edge 实例的稳定控制。
+
+**更新** 新增云端边缘控制面组件，提供高可靠性的 gRPC 通信基础设施，支持多 Edge 并行处理与动态路由。
 
 **章节来源**
 - [IMPLEMENTATION_PLAN.md: 190-261:190-261](file://IMPLEMENTATION_PLAN.md#L190-L261)
 - [impl-engine/proposal.md: 18-131:18-131](file://openspec/changes/archive/2026-05-07-impl-engine/proposal.md#L18-L131)
+- [engine-send-timeout-multi-edge/design.md: 24-70:24-70](file://openspec/changes/engine-send-timeout-multi-edge/design.md#L24-L70)
+- [cloud-edge-grpc-keepalive/design.md: 24-44:24-44](file://openspec/changes/cloud-edge-grpc-keepalive/design.md#L24-L44)
 
 ## 架构总览
-引擎采用“状态机驱动 + 事件发布”的架构，所有实时行为通过状态转换触发，AI 管线与实时模块在状态机的统一调度下协同工作。数据流贯穿：调度器 → 引擎 → API/Worker/Modem。
+引擎采用"状态机驱动 + 事件发布 + gRPC 控制面"的架构，所有实时行为通过状态转换触发，AI 管线与实时模块在状态机的统一调度下协同工作。新增的 gRPC 控制面提供稳定的云端边缘通信，支持多 Edge 实例并行处理与动态路由。
 
 ```mermaid
 sequenceDiagram
@@ -84,10 +104,11 @@ participant Engine as "引擎"
 participant Telephony as "调制解调器"
 participant API as "API 服务"
 participant Worker as "Worker"
+participant GRPC as "gRPC 控制面"
 Scheduler->>Engine : "LPUSH engine : dial"<br/>DialRequest
 Engine->>Engine : "创建 CallSession + 注册"
-Engine->>Telephony : "IPC dial(phone)"
-Telephony-->>Engine : "connected"
+Engine->>GRPC : "IPC dial(phone)<br/>动态路由到 Edge"
+GRPC-->>Engine : "connected"
 Engine->>Engine : "INIT → GREETING"
 Engine->>Telephony : "TTS 播放开场白"
 Engine->>Engine : "GREETING → LISTENING"
@@ -104,6 +125,7 @@ Engine->>Engine : "END"
 **图表来源**
 - [IMPLEMENTATION_PLAN.md: 190-261:190-261](file://IMPLEMENTATION_PLAN.md#L190-L261)
 - [impl-engine/proposal.md: 92-131:92-131](file://openspec/changes/archive/2026-05-07-impl-engine/proposal.md#L92-L131)
+- [engine-send-timeout-multi-edge/design.md: 42-59:42-59](file://openspec/changes/engine-send-timeout-multi-edge/design.md#L42-L59)
 
 ## 详细组件分析
 
@@ -170,7 +192,7 @@ WriteTrace --> End(["完成一轮 PROCESSING"])
 ### 打断检测机制
 - 双条件判定：白名单短语命中或时长 < 阈值 → 不视为打断；否则立刻停止 TTS，状态 SPEAKING → INTERRUPTED → PROCESSING。
 - 不可撤销：一旦判定打断，不回退 TTS。
-- 连续打断保护：超过上限触发 short_reply（prompt 追加“请用一句话回应”）或 listen_only（纯听引导）策略；完整 SPEAKING 后计数器清零。
+- 连续打断保护：超过上限触发 short_reply（prompt 追加"请用一句话回应"）或 listen_only（纯听引导）策略；完整 SPEAKING 后计数器清零。
 
 ```mermaid
 flowchart TD
@@ -221,7 +243,7 @@ Limit --> |否| Hangup["播放告别话术 → END(reason=silence_max_reached)"]
 - 触发场景：仅常规对话 PROCESSING；GREETING 后首轮、WRAPPING_UP、TRANSFERRING、ACTIVATING、收尾告别不播。
 - 启动时机：与 AI 管线同时启动；管线先返回 → 等垫词播完再接 reply。
 - 集合策略：多 filler_set 按 sort_order 轮询；同一通电话集内随机不重复，用尽后清空记录。
-- 失败兜底：预生成未完成/下载失败 → 跳过垫词，允许“无声延迟”。
+- 失败兜底：预生成未完成/下载失败 → 跳过垫词，允许"无声延迟"。
 
 ```mermaid
 flowchart TD
@@ -274,10 +296,103 @@ Rounds --> |是| Close["播放随机收尾话术 → END"]
 **章节来源**
 - [impl-engine/proposal.md: 62-71:62-71](file://openspec/changes/archive/2026-05-07-impl-engine/proposal.md#L62-L71)
 
+### gRPC 云端边缘控制面增强
+
+#### 5秒发送超时保护机制
+**新增** 为解决 Edge 半连接导致的会话僵死问题，新增了 gRPC 出站队列超时保护机制：
+
+- **问题背景**：`_ServerStream._outbound` 队列 `maxsize=64`，`put()` 无超时。Edge 半连接时 `put()` 永久阻塞，导致 session 僵死占满并发槽。
+- **解决方案**：`_ServerStream.send()` 用 `asyncio.wait_for(self._outbound.put(message), timeout=self._send_timeout_s)` 包裹
+- **超时配置**：默认 5.0 秒，可通过 `ISALES_ENGINE_GRPC_SEND_TIMEOUT_S` 环境变量配置
+- **异常处理**：超时后抛 `EdgeNotConnected(edge_device_id)`，上层 `RtcTelephonyClient.dial()` 会正确清理 session
+
+#### 动态路由到特定 Edge 实例
+**新增** 支持多 Edge 并行处理，根据设备 ID 动态路由到拥有该设备的 Edge 实例：
+
+- **映射机制**：`_device_to_edge: dict[int, str]` 存储 `device_id → edge_device_id` 映射
+- **心跳注册**：Edge 发送 Heartbeat 时更新设备映射关系
+- **路由逻辑**：`resolve_edge_for_device(device_id: int) → str` 未找到时抛 `EdgeNotConnected`
+- **兼容性**：`ISALES_ENGINE_EDGE_DEVICE_ID` 环境变量非空 → 旧的单 Edge 模式；为空 → 动态路由模式
+
+#### 自动清理连接丢失的映射关系
+**新增** 当 Edge 断连时自动清理相关映射关系：
+
+- **断连清理**：`_deregister_stream` 时清理该 edge 拥有的所有 device 映射
+- **路由保护**：未找到设备映射时抛 `EdgeNotConnected`，避免错误路由
+- **会话恢复**：清理后重新建立连接的 Edge 可重新注册设备映射
+
+```mermaid
+flowchart TD
+Start(["接收 DialRequest"]) --> Mode{"ISALES_ENGINE_EDGE_DEVICE_ID 非空?"}
+Mode --> |是| Legacy["使用旧模式<br/>固定路由到单 Edge"]
+Mode --> |否| Dynamic["动态路由模式"]
+Dynamic --> Heartbeat["接收 Edge Heartbeat<br/>devices[] 列表"]
+Heartbeat --> Register["注册设备映射<br/>device_id → edge_device_id"]
+Register --> Route["resolve_edge_for_device()<br/>查找目标 Edge"]
+Route --> Send["发送 DialCommand<br/>到指定 Edge"]
+Send --> Timeout{"5秒发送超时?"}
+Timeout --> |是| Error["抛出 EdgeNotConnected<br/>清理会话"]
+Timeout --> |否| Success["发送成功"]
+Success --> Cleanup["Edge 断连时清理映射"]
+Cleanup --> Reconnect["Edge 重新连接"]
+Reconnect --> Register
+Legacy --> Send
+```
+
+**图表来源**
+- [engine-send-timeout-multi-edge/design.md: 26-59:26-59](file://openspec/changes/engine-send-timeout-multi-edge/design.md#L26-L59)
+
+**章节来源**
+- [engine-send-timeout-multi-edge/design.md: 11-70:11-70](file://openspec/changes/engine-send-timeout-multi-edge/design.md#L11-L70)
+
+### gRPC keepalive 心跳机制
+
+#### 30秒周期 keepalive 保护
+**更新** 为解决阿里云网络层可能存在的 stateful firewall 杀连接问题：
+
+- **参数配置**：`grpc.keepalive_time_ms = 30000` + `grpc.keepalive_timeout_ms = 10000` + `keepalive_permit_without_calls = 1`
+- **PING 频率**：每 30 秒发一次 HTTP/2 PING，10 秒内必须收到 PING ACK
+- **断连检测**：超时后视为 transport 失败，触发客户端重连机制
+- **日志监控**：新增 INFO 级别日志记录 `cloud_edge_stream_connected` 和 `cloud_edge_stream_opened`
+
+#### 10秒最小时间间隔与 0次最大打击
+**新增** 优化 keepalive 行为以适应云边控制面特点：
+
+- **最小间隔**：`grpc.http2.min_time_between_pings_ms = 10000` 避免被 gRPC 默认反DDoS逻辑误判
+- **最大打击**：`grpc.http2.max_ping_strikes = 0` 永远不主动踢客户端，确保受信 Edge 的稳定性
+- **安全考虑**：cloud-edge 凭 JWT 认证 + 单实例少量受信 Edge，攻击面接近零
+
+```mermaid
+sequenceDiagram
+participant Client as "Edge 客户端"
+participant Nginx as "Nginx 反向代理"
+participant Server as "gRPC 服务器"
+Client->>Server : "初始连接建立"
+Server->>Client : "发送初始元数据"
+Note over Server : "INFO 日志：<br/>cloud_edge_stream_opened"
+Client->>Server : "HTTP/2 PING (30s)"
+Server->>Client : "PING ACK (10s内)"
+Client->>Server : "继续业务数据传输"
+Note over Client,Nginx : "阿里云中间层可能拦截<br/>keepalive PING"
+Client->>Server : "PING (30s) - 第2次"
+Server->>Client : "PING ACK"
+Note over Server : "max_ping_strikes=0<br/>不主动踢客户端"
+```
+
+**图表来源**
+- [cloud-edge-grpc-keepalive/design.md: 47-95:47-95](file://openspec/changes/cloud-edge-grpc-keepalive/design.md#L47-L95)
+
+**章节来源**
+- [cloud-edge-grpc-keepalive/design.md: 24-159:24-159](file://openspec/changes/cloud-edge-grpc-keepalive/design.md#L24-L159)
+- [cloud-edge-grpc-keepalive/tasks.md: 8-13:8-13](file://openspec/changes/cloud-edge-grpc-keepalive/tasks.md#L8-L13)
+
 ## 依赖关系分析
 - 与 isales-common 的依赖：数据模型、Provider ABC、消息契约、枚举与工具函数。
 - 与调度器/Worker/API 的通信：Redis 队列（engine:dial/engine:worker:call-ended）、Pub/Sub（engine:events:*、engine:control:*）。
 - 与 modem-controller 的通信：阶段 6 通过 IPC（Unix Socket）拨号/挂断/音频流。
+- **云端边缘控制面**：通过 gRPC 服务器与 Edge 实例建立长连接双向流，支持 keepalive 心跳与动态路由。
+
+**更新** 新增云端边缘控制面通信依赖，提供稳定的 gRPC 通信基础设施。
 
 ```mermaid
 graph LR
@@ -286,10 +401,14 @@ Scheduler["isales-scheduler<br/>engine:dial"] --> Engine
 Engine --> API["isales-api<br/>engine:events:*"]
 Engine --> Worker["isales-worker<br/>engine:worker:call-ended"]
 Engine <- --> Modem["modem-controller<br/>IPC"]
+Engine --> GRPC["gRPC 控制面<br/>keepalive + 超时保护"]
+GRPC --> Edge["Edge 实例<br/>设备映射 + 心跳"]
 ```
 
 **图表来源**
 - [IMPLEMENTATION_PLAN.md: 190-261:190-261](file://IMPLEMENTATION_PLAN.md#L190-L261)
+- [engine-send-timeout-multi-edge/design.md: 37-59:37-59](file://openspec/changes/engine-send-timeout-multi-edge/design.md#L37-L59)
+- [cloud-edge-grpc-keepalive/design.md: 3-6:3-6](file://openspec/changes/cloud-edge-grpc-keepalive/design.md#L3-L6)
 
 **章节来源**
 - [IMPLEMENTATION_PLAN.md: 190-261:190-261](file://IMPLEMENTATION_PLAN.md#L190-L261)
@@ -299,8 +418,9 @@ Engine <- --> Modem["modem-controller<br/>IPC"]
 - 超时与兜底：润色失败/全部裁判否决/全部角色失败均有明确兜底与降级路径，pipeline_trace 写入具备幂等与失败容忍。
 - 并发控制：全局 Redis 并发计数器，异常清理时 DECR 防泄漏；阶段 4 并发压力测试（10 路）通过。
 - 音频时延：PCM 双向管道与 ALSA buffer 调优，阶段 6 时进行基准压测，超阈值单独排查。
+- **gRPC 性能优化**：5秒发送超时保护防止会话僵死，30秒 keepalive 心跳确保长连接稳定性，动态路由支持多 Edge 并行处理。
 
-[本节为通用性能讨论，不直接分析具体文件]
+**更新** 新增 gRPC 性能优化考量，包括超时保护、keepalive 心跳和动态路由机制。
 
 ## 故障排查指南
 - 状态机非法转移：检查 LEGAL_TRANSITIONS 与事件来源，关注 transcript 中 state_error 事件，定位模块与事件名称。
@@ -308,14 +428,21 @@ Engine <- --> Modem["modem-controller<br/>IPC"]
 - 发布失败不影响通话：EngineEvent 发布 fire-and-forget，失败仅记录 WARN 日志。
 - 真实硬件问题：modem 插拔/重连/串口冲突等，需结合 udev 监听与串口锁处理。
 - 回调失败重试：callback 失败按 retry_policy 重排，关注回调日志与重试队列。
+- **gRPC 连接问题**：检查 keepalive 日志 `cloud_edge_stream_opened` 和 `cloud_edge_stream_connected`，确认 30秒 PING 正常。
+- **动态路由问题**：验证 Edge Heartbeat 中 devices 字段是否正确发送，检查设备映射是否在断连时正确清理。
+- **超时异常**：监控 `EdgeNotConnected` 异常，检查 ISALES_ENGINE_GRPC_SEND_TIMEOUT_S 配置是否合理。
+
+**更新** 新增 gRPC 相关故障排查指南，包括连接问题、动态路由问题和超时异常处理。
 
 **章节来源**
 - [impl-engine/proposal.md: 60-131:60-131](file://openspec/changes/archive/2026-05-07-impl-engine/proposal.md#L60-L131)
+- [engine-send-timeout-multi-edge/design.md: 67-70:67-70](file://openspec/changes/engine-send-timeout-multi-edge/design.md#L67-L70)
+- [cloud-edge-grpc-keepalive/design.md: 127-141:127-141](file://openspec/changes/cloud-edge-grpc-keepalive/design.md#L127-L141)
 
 ## 结论
 isales-engine 以状态机为核心，将 AI 三层管线与实时行为模块解耦并统一调度，实现了高实时性、低耦合、可观测的通话处理系统。通过严格的事件契约、失败兜底与并发控制，引擎在阶段 4 即可完成端到端 mock 通话验收，并为阶段 5/6 的真实 Provider 与硬件接入奠定坚实基础。
 
-[本节为总结性内容，不直接分析具体文件]
+**更新** 本版本通过新增 gRPC 云端边缘控制面增强功能，显著提升了系统的稳定性与可扩展性。5秒发送超时保护机制有效防止会话僵死，动态路由支持多 Edge 并行处理，keepalive 心跳确保长连接稳定性，为大规模部署提供了可靠的技术支撑。
 
 ## 附录
 - 术语
@@ -323,10 +450,15 @@ isales-engine 以状态机为核心，将 AI 三层管线与实时行为模块�
   - DIALOG_HISTORY：角色 LLM 上下文，不含 silence_activation/silence_hangup_phrase。
   - FULL_TRANSCRIPT：完整事件流，含全部事件（含激活/转人工/目标达成等）。
   - PIPELINE_TRACE：每轮 PROCESSING 的候选/裁判/润色记录，落库持久化。
+  - **gRPC 控制面**：云端边缘通信基础设施，提供 keepalive 心跳、超时保护与动态路由功能。
+  - **Edge 实例**：云端边缘设备，通过 gRPC 与引擎建立长连接，负责实际的通话处理。
 - 配置要点（示例）
   - 打断：interruption_whitelist、interruption_min_duration_ms、max_continuous_interruptions、continuous_interruption_strategy
   - 沉默激活：silence_threshold_ms、max_silence_activations、silence_phrases、silence_hangup_phrase
   - 目标达成：wrap_up_max_rounds、wrap_up_max_seconds、wrap_up_closing_phrases
   - 垫词：filler_set 与 filler_phrase 的预生成与轮询策略
+  - **gRPC 控制面**：ISALES_ENGINE_GRPC_SEND_TIMEOUT_S（默认 5.0 秒）、ISALES_ENGINE_EDGE_DEVICE_ID（动态路由模式需为空）
+  - **keepalive 配置**：grpc.keepalive_time_ms=30000、grpc.keepalive_timeout_ms=10000、keepalive_permit_without_calls=1
+  - **Nginx 配置**：grpc_read_timeout 3600s、grpc_send_timeout 3600s，支持 30秒 keepalive 心跳
 
-[本节为概念性内容，不直接分析具体文件]
+**更新** 新增 gRPC 控制面与 keepalive 相关配置要点，为部署和运维提供参考。

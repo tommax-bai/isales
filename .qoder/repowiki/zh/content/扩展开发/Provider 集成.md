@@ -14,7 +14,18 @@
 - [云环境密钥离线备份模板](file://deploy/cloud/env/SECRETS.md.example)
 - [云环境部署手册](file://deploy/cloud/README.md)
 - [回调签名与重试流程](file://openspec/changes/archive/2026-05-06-impl-worker/tasks.md)
+- [fix_factory.py](file://fix_factory.py)
+- [fix_tts.py](file://fix_tts.py)
+- [gen_token.py](file://gen_token.py)
+- [test_tts_smoke.py](file://test_tts_smoke.py)
 </cite>
+
+## 更新摘要
+**所做更改**
+- 更新了 Volcengine TTS Provider 配置参数，从 app_key/app_token 迁移到 api_key/app_id/access_key
+- 新增 tts_resource_id 参数配置支持
+- 更新了 JWT token 生成和测试脚本
+- 完善了 Volcengine TTS Provider 的工厂装配和参数映射
 
 ## 目录
 1. [简介](#简介)
@@ -86,7 +97,7 @@ ENGINE --> DB
 - [实现设计：引擎真实 Provider](file://openspec/changes/archive/2026-05-08-impl-engine-providers/design.md)
 
 ## 架构总览
-Provider 集成遵循“抽象契约 + 集中式凭证 + 工厂装配 + 流式接口 + 统一错误”的整体设计。
+Provider 集成遵循"抽象契约 + 集中式凭证 + 工厂装配 + 流式接口 + 统一错误"的整体设计。
 
 ```mermaid
 sequenceDiagram
@@ -144,7 +155,7 @@ EmitFinal --> End(["结束"])
 - 启动期装载：isales-engine 在启动期一次性从 DB 装载并解密缓存，失败时可按配置硬失败或 dev/CI 回退至 mock
 - Admin CRUD：isales-api 暴露 JWT 鉴权的 CRUD 端点，返回掩码值，写入触发审计（updated_by/updated_at）
 - 迁移工具：isales-cred-migrate 支持 import-env/export-env，dry-run 与 apply 分离
-- 轮换 Recipe：RUNBOOK-cloud.md 的“凭据轮换”小节覆盖主密钥轮换、单 provider 密钥旋转与回滚路径
+- 轮换 Recipe：RUNBOOK-cloud.md 的"凭据轮换"小节覆盖主密钥轮换、单 provider 密钥旋转与回滚路径
 
 ```mermaid
 sequenceDiagram
@@ -183,8 +194,58 @@ Engine-->>Engine : 缓存并记录 credentials_loaded
 - Campaign 级模型切换：role_config.model 作为路由 key，Provider 内部按 model 选择 endpoint/payload
 - mock provider：用于测试，忽略 model 字段保持兼容
 
+**更新** Volcengine TTS Provider 配置参数已更新，从传统的 app_key/app_token 迁移到新的 api_key/app_id/access_key 结构，并新增 tts_resource_id 参数支持
+
 **章节来源**
 - [实现提案：引擎真实 Provider](file://openspec/changes/archive/2026-05-08-impl-engine-providers/proposal.md)
+- [fix_factory.py](file://fix_factory.py)
+
+### Volcengine TTS Provider 配置更新
+
+**更新** Volcengine TTS Provider 的配置参数已从旧版本的 app_key/app_token 迁移到新版本的 api_key/app_id/access_key 结构，并新增了 tts_resource_id 参数支持。
+
+#### 参数映射变更
+- 旧参数：app_key → 新参数：api_key
+- 旧参数：app_token → 新参数：access_key  
+- 新增参数：tts_resource_id（默认值：seed-tts-2.0）
+
+#### 工厂装配更新
+Volcengine TTS Provider 的工厂装配已更新，支持新的参数结构：
+
+```python
+if name == "volcengine":
+    api_key = s.get("volcengine", "api_key") or None
+    app_id = s.get("volcengine", "app_key") or None
+    access_key = s.get("volcengine", "app_token") or None
+    resource_id = s.get("volcengine", "tts_resource_id") or "seed-tts-2.0"
+    from isales_engine.providers.tts_volcengine import VolcengineTTSProvider
+
+    return VolcengineTTSProvider(
+        api_key=api_key,
+        app_id=app_id,
+        access_key=access_key,
+        resource_id=resource_id,
+    )
+```
+
+#### Payload 结构更新
+Volcengine TTS Provider 的请求负载已更新，增加了 app.appid 字段：
+
+```json
+{
+    "app": {
+        "appid": "your_app_id"
+    },
+    "audio": {
+        "text": "合成文本",
+        "voice_type": "nv speech model"
+    }
+}
+```
+
+**章节来源**
+- [fix_factory.py](file://fix_factory.py)
+- [fix_tts.py](file://fix_tts.py)
 
 ### 错误处理与统一异常模型
 - ProviderError 体系：ProviderTimeout/ProviderRateLimited/ProviderInvalidRequest/ProviderServerError
@@ -224,12 +285,47 @@ INV --> Business
 - [实现提案：引擎真实 Provider](file://openspec/changes/archive/2026-05-08-impl-engine-providers/proposal.md)
 
 ### 回调签名与重试策略
-- 签名机制：callback_config.signing_secret 加密存储；worker 解密后对“时间戳.消息体”计算 HMAC-SHA256，附加 X-Isales-* 请求头
+- 签名机制：callback_config.signing_secret 加密存储；worker 解密后对"时间戳.消息体"计算 HMAC-SHA256，附加 X-Isales-* 请求头
 - 重试调度：指数退避重试，HTTP 2xx 成功，4xx 失败不再重试，5xx/超时进入 pending_retry 并递增 retry_count，超过上限 exhausted
 
 **章节来源**
 - [回调签名与重试流程](file://openspec/changes/archive/2026-05-06-impl-worker/tasks.md)
 - [provider-credential 规范](file://openspec/specs/provider-credential/spec.md)
+
+### JWT Token 生成与测试
+
+**更新** 新增了 JWT token 生成和测试脚本，用于验证凭证管理和 API 访问功能。
+
+#### JWT Token 生成
+使用 HS256 算法生成测试 JWT token：
+
+```python
+from jose import jwt
+t = jwt.encode({"sub": "admin", "exp": 9999999999}, "***REMOVED***a4", algorithm="HS256")
+print(t)
+```
+
+#### TTS 烟雾测试
+提供了 Volcengine TTS Provider 的烟雾测试脚本，验证 V3 SSE 端点与数据库凭证的工作情况：
+
+```python
+"""Quick TTS smoke test — verifies V3 SSE endpoint works with DB creds."""
+import asyncio
+import sys
+sys.path.insert(0, '/opt/isales/releases/20260517-222944/isales-engine')
+
+async def main():
+    from isales_engine.providers.tts_volcengine import VolcengineTTSProvider
+    # 测试导入和构造函数工作
+    p = VolcengineTTSProvider(api_key="test", resource_id="seed-tts-2.0")
+    print("OK: VolcengineTTSProvider instantiation works")
+
+asyncio.run(main())
+```
+
+**章节来源**
+- [gen_token.py](file://gen_token.py)
+- [test_tts_smoke.py](file://test_tts_smoke.py)
 
 ## 依赖关系分析
 - isales-engine 依赖 isales-common 的 Provider ABC 与凭证工具
@@ -276,14 +372,19 @@ API --> DB
 - 回调失败
   - 现象：HTTP 4xx 不再重试；5xx/超时进入 pending_retry
   - 排查：确认 signing_secret 加密正确；核对时间戳与签名头；检查下游服务健康状况
+- Volcengine TTS 集成问题
+  - 现象：参数映射错误、资源 ID 未生效、JWT 认证失败
+  - 排查：确认使用新的 api_key/app_id/access_key 参数结构；验证 tts_resource_id 配置；检查 JWT token 生成和验证流程
 
 **章节来源**
 - [provider-credential 规范](file://openspec/specs/provider-credential/spec.md)
 - [实现设计：引擎真实 Provider](file://openspec/changes/archive/2026-05-08-impl-engine-providers/design.md)
 - [回调签名与重试流程](file://openspec/changes/archive/2026-05-06-impl-worker/tasks.md)
+- [fix_factory.py](file://fix_factory.py)
+- [fix_tts.py](file://fix_tts.py)
 
 ## 结论
-通过 Provider ABC 的抽象契约、DB SSOT 的凭证管理、工厂装配与流式接口实现，iSales 实现了与多家 AI 服务提供商的解耦集成。统一的错误模型与重试策略进一步提升了系统的鲁棒性与可维护性。建议在新增 Provider 时严格遵循上述规范与流程，确保平滑过渡与稳定运行。
+通过 Provider ABC 的抽象契约、DB SSOT 的凭证管理、工厂装配与流式接口实现，iSales 实现了与多家 AI 服务提供商的解耦集成。统一的错误模型与重试策略进一步提升了系统的鲁棒性与可维护性。最新的 Volcengine TTS Provider 配置更新展示了参数结构的演进过程，建议在新增 Provider 时严格遵循上述规范与流程，确保平滑过渡与稳定运行。
 
 ## 附录
 
@@ -296,9 +397,45 @@ API --> DB
   - 按统一异常模型包装 SDK 原生异常
 - 工厂装配
   - 在工厂中注册新 Provider，设置默认值与路由键
+  - 更新参数映射以适配新的配置结构
 - 部署与验证
   - 启动 isales-engine，确认 credentials_loaded
   - 运行集成测试，验证流式接口与实时打断
+  - 使用 JWT token 生成脚本验证认证流程
+
+### Volcengine TTS 配置迁移指南
+
+**更新** 以下是 Volcengine TTS Provider 配置迁移的详细步骤：
+
+#### 1. 参数结构迁移
+将旧配置：
+```
+volcengine:
+  app_key: your_api_key
+  app_token: your_access_key
+  tts_endpoint: your_endpoint
+```
+
+迁移为新配置：
+```
+volcengine:
+  api_key: your_api_key
+  app_key: your_app_id  # 注意：这里映射到 app_id
+  app_token: your_access_key
+  tts_resource_id: seed-tts-2.0
+```
+
+#### 2. 验证集成
+使用烟雾测试脚本验证集成：
+```bash
+python test_tts_smoke.py
+```
+
+#### 3. JWT 认证测试
+生成测试 JWT token：
+```bash
+python gen_token.py
+```
 
 **章节来源**
 - [云环境凭据与密钥说明](file://deploy/cloud/env/README.md)
@@ -306,3 +443,7 @@ API --> DB
 - [provider-abc 规范](file://openspec/specs/provider-abc/spec.md)
 - [provider-credential 规范](file://openspec/specs/provider-credential/spec.md)
 - [实现提案：引擎真实 Provider](file://openspec/changes/archive/2026-05-08-impl-engine-providers/proposal.md)
+- [fix_factory.py](file://fix_factory.py)
+- [fix_tts.py](file://fix_tts.py)
+- [gen_token.py](file://gen_token.py)
+- [test_tts_smoke.py](file://test_tts_smoke.py)
