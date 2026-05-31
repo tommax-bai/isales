@@ -1,0 +1,35 @@
+## 1. 验证核心假设:软复位能否清卡死态(impl 关卡,先做)
+
+- [ ] 1.1 写可控诱发脚本:真拨通话中故意让音频 OUT 进卡死态(如对音频口阻塞写 `write_timeout=None` 触发挂死,或写错格式),复现 `write()` 持续 `SerialTimeoutException`
+- [ ] 1.2 卡死后从 AT 口发 `AT+CRESET`,等 modem 重新枚举,重连音频口,真拨复测上行是否复活(对端听 tone);记录是否替代物理重插
+- [ ] 1.3 若 `AT+CRESET` 无效,实测 `AT+CFUN=1,1` 与(admin 下)Disable/Enable-PnpDevice;把结论写回 `isales-telephony/deploy/edge/windows/STATE.md` § "SIM7600 USB audio uplink — 实测可用"
+- [ ] 1.4 据 1.1–1.3 结论确定:走"软复位自愈"还是"仅告警需人工干预"(不堆叠无效 fallback)
+
+## 2. AtClient 软复位链路
+
+- [ ] 2.1 `at_client.py` 新增 `reset_modem()`：默认 `AT+CRESET`，失败再 `AT+CFUN=1,1`，每层有明确放弃条件；与 `cpcmreg_enable/disable` 同层
+- [ ] 2.2 复位后等待 modem 重新就绪（AT 回 `OK` + `PB DONE`/`+CPIN: READY`）的探测，超时上报 `HardwareAlert`
+- [ ] 2.3 单测：mock AT 通道覆盖 CRESET 成功 / CRESET 失败转 CFUN / 两者皆失败上报
+
+## 3. SerialPcm 写超时语义改造
+
+- [ ] 3.1 `windows_serial_pcm.py::WindowsSerialPcmPlayback.write_chunk()`：维护"连续写超时计数"，连续 N 帧（可配置常量，保守默认 ~25–50 帧）全超时 → 升级为 `audio_out_stuck` 信号；单次偶发超时仍容忍
+- [ ] 3.2 移除"静默吞 `SerialTimeoutException` 只 log warning"的旧行为；保留有限 `write_timeout`，禁用阻塞 `write_timeout=None`
+- [ ] 3.3 单测（注入 fake Serial）：连续超时达阈值触发信号；偶发单次超时不触发；正常写不触发
+
+## 4. orchestrator 编排：卡死 → 复位 → 重建
+
+- [ ] 4.1 orchestrator/`_CallContext` 订阅 `audio_out_stuck`：触发 `reset_modem()` → 经 USB watcher（认 description 不认 COM 号）重新识别 → 重建 capture/playback backend
+- [ ] 4.2 复位中断当前通话的清理路径（`CPCMREG=0` best-effort、grpc 上报、状态机回收）
+- [ ] 4.3 daemon 冷启动 / 新呼叫前确保上一会话 `CPCMREG=0`；冷启动可选一次软复位（按 1.4 结论决定是否启用）
+
+## 5. 禁忌操作护栏
+
+- [ ] 5.1 生产音频写路径断言/保证：仅写 8kHz/16bit/mono；非 8K 格式与 `write_timeout=None` 在代码层禁用
+- [ ] 5.2 `AT+CFTRANRX` 大文件不出现在生产路径；诊断脚本注释明确"会搞挂 modem，需备物理重插"
+
+## 6. 测试与文档同步
+
+- [ ] 6.1 集成/真硬件冒烟：干净启动 → 正常上行可用（对端听 tone，复用 `retest_audio_write.py` 思路）→ 诱发卡死 → 软复位自愈（或如实告警）端到端走通
+- [ ] 6.2 `openspec validate --strict` 通过；归档时把已验证事实/阈值标定结果回写 device-hardware spec
+- [ ] 6.3 确认 `windows_serial_pcm.py` docstring 与 STATE.md、本 change spec 三者一致（写语义、禁忌操作、软复位结论）
