@@ -26,3 +26,31 @@
 
 - **WHEN** 生产音频写路径运行
 - **THEN** SHALL NOT 向 audio COM 口写非 8kHz/16bit/mono 格式 PCM;SHALL NOT 使用阻塞 `write_timeout=None`(MUST 保持有限 write_timeout);`AT+CFTRANRX` 大文件上传 MUST NOT 出现在生产音频路径(实测会把整机 modem AT 口搞挂,仅诊断脚本使用且需备物理重插预案)
+
+### Requirement: 上行 PCM 写 Audio 口 + capture/playback 共享句柄
+
+边缘 Windows backend 的 uplink PCM SHALL 写入 **Audio 口**(SIMCom MI_04,如 COM11),NOT Diagnostics 口(COM10)。Audio 口为全双工(读=downlink、写=uplink);capture 与 playback SHALL **共享同一个 pyserial 句柄**(Windows COM 口独占,同口不能开两次)。2026-05-31 实测:写 Diagnostics/COM10 对端静默,写 Audio 口对端听到 tone。
+
+#### Scenario: 写 Audio 口而非 Diagnostics 口
+
+- **WHEN** 构造 Windows capture / playback backend
+- **THEN** 两者 SHALL 用同一个 Audio 口路径;playback MUST NOT 写 Diagnostics 口(COM10)——该口接受串口写入但字节不进通话(实测对端静默)
+
+#### Scenario: 单句柄全双工共享
+
+- **WHEN** capture 与 playback 在同一 Audio 口上同时读写
+- **THEN** capture SHALL 打开句柄,playback SHALL adopt 同一句柄(`adopt_serial_from`);adopt 方 MUST NOT 关闭借用的句柄(owner 关闭权威);pyserial Win32 read/write 用独立 overlapped,SHALL 支持单句柄并发读+写
+
+### Requirement: 串口 COM 口按 USB 描述符自动发现(无 env 兜底)
+
+边缘 Windows backend SHALL 在启动时按 **USB 描述符**(description token + vid/pid/serial,AT 探针确认)自动发现 modem 的 AT 口与 Audio 口,MUST NOT 依赖 env 写死 COM 号。COM 号每次 USB 重插重新枚举,写死值必然过期 —— 因此 SHALL NOT 保留 env COM 兜底(无意义中间态);发现失败 SHALL fail-loud 报错,而非回退到过期值。
+
+#### Scenario: 描述符发现 AT + Audio 口
+
+- **WHEN** daemon 启动
+- **THEN** SHALL 扫描串口,按 description 含 `"AT PORT"` + AT 探针(`AT`→`OK`)确认定位 AT 口,再按相同 vid/pid/serial + description 含 `"Audio"` 定位 Audio 口;两口路径均不依赖 COM 号
+
+#### Scenario: 发现失败 fail-loud
+
+- **WHEN** 找不到 AT 口、AT 候选不应答、或无 Audio 兄弟口
+- **THEN** SHALL raise(如 `ModemDiscoveryError` → 进程退出),MUST NOT 回退到任何 env 写死 COM 号

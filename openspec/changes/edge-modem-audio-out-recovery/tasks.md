@@ -33,3 +33,26 @@
 - [ ] 6.1 集成/真硬件冒烟：干净启动 → 正常上行可用（对端听 tone，复用 `retest_audio_write.py` 思路）→ 诱发卡死 → 软复位自愈（或如实告警）端到端走通
 - [ ] 6.2 `openspec validate --strict` 通过；归档时把已验证事实/阈值标定结果回写 device-hardware spec
 - [ ] 6.3 确认 `windows_serial_pcm.py` docstring 与 STATE.md、本 change spec 三者一致（写语义、禁忌操作、软复位结论）
+
+## 7. 上行写口 + 共享句柄（2026-05-31 已实现并真拨验证）
+
+- [x] 7.1 `windows_serial_pcm.py::_SerialPortHolder` 加 `_owns` + `adopt_serial_from()`，close 借用句柄为 no-op
+- [x] 7.2 `main_windows.py`：playback 改用 Audio 口 + `adopt_serial_from(capture)`，删除写 COM10 的 `ISALES_MODEM_PCM_WRITE_SERIAL_PATH`
+- [x] 7.3 `edge/main.py::_build_audio_backends` windows 分支同样改共享句柄 + Audio 口
+- [x] 7.4 `main_windows.py` CPCMFRM=1→0（8K 对齐数据路径）
+- [x] 7.5 真拨 13301035545 用生产类（`validate_shared_handle_dial.py`）验证：`cap._serial is pb._serial`、并发读写、**对端听到 tone**
+
+## 8. COM 口按 USB 描述符自动发现（无 env 兜底）（2026-05-31 已实现）
+
+- [x] 8.1 `windows_serial.py` 加 `discover_modem_serial_paths()` + `_probe_at_ok()` + `ModemDiscoveryError` + `AT_DESCRIPTION_TOKEN`
+- [x] 8.2 `main_windows.py` + `edge/main.py` 改自动发现，删 `ISALES_MODEM_SERIAL_PATH` / `ISALES_MODEM_AUDIO_SERIAL_PATH` 使用；发现失败 fail-loud
+- [x] 8.3 `env.example.txt` 删 COM 号变量，改"自动发现"说明
+- [x] 8.4 `tests/windows/test_modem_discovery.py` 6 例 + 真机实测返回 COM16/COM17
+
+## 9. WIP 行为单测对齐（2026-05-31 已修绿）
+
+- [x] 9.1 `test_serial_pcm_audio` read_chunk 空读重试 50 次断言
+- [x] 9.2 `test_audio_io` playback pump 320B 整帧合并断言
+- [x] 9.3 `bridge.py` 重采样改 rate-aware（用 `frame.sample_rate`，非写死 48kHz `[::6]`）
+- [x] 9.4 `test_audio_bridge` 两例随 9.3 修绿
+- [ ] 9.5 **遗留（非本会话引入）**：`test_grpc_client::test_reconnect_after_unavailable_during_stream_read` 稳定失败，源自 `grpc_client.py` WIP 改动，待 grpc 路径单独排查；`test_modem_ipc` 4 ERROR 为 Windows+Py3.14 AF_UNIX/asyncio 平台限制（非回归）
