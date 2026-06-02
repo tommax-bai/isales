@@ -71,7 +71,8 @@
 - [x] 8.5 isales-api 仓（如改了）commit + push <!-- c8d8a3b main 含 CampaignNestedUpdate.greeting -->
 - [x] 8.6 部署侧 alembic 仓 commit + push <!-- alembic migration 直接放 isales-common alembic/versions/，跟着 4ee81f0 一起 push 完成 -->
 
-- [ ] 8.7 meta-repo `~/codes/isales` commit 本 change 全 4 artifact + tasks.md 进度回写
-- [ ] 8.8 meta-repo push origin main
+- [x] 8.7 meta-repo `~/codes/isales` commit 本 change 全 4 artifact + tasks.md 进度回写 <!-- 1f67481 main 含 tasks.md § 1-6 + § 8.1-8.6 进度回写 -->
+- [x] 8.8 meta-repo push origin main <!-- fe4272d..1f67481 main -> main -->
+
 - [ ] 8.9 跑 `/opsx:archive campaign-fixed-greeting`，合并 spec delta（data-model + web-admin-ui）到对应 `openspec/specs/<capability>/spec.md`，移动 change 目录到 `openspec/changes/archive/YYYY-MM-DD-campaign-fixed-greeting/`
 - [ ] 8.10 archive 后 commit + push meta-repo
