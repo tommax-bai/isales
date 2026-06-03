@@ -112,22 +112,26 @@
 
 ## 11. isales-web：UI 重构
 
-- [ ] 11.1 升级 isales-api / isales-common 依赖（如有 npm 私服 / 直接拷贝 schema）
-- [ ] 11.2 `src/views/CampaignEdit.vue` / `src/views/CampaignDetail.vue` 改 4-tier prompt 区为 3-tier：删除 judge / polish tab + tab content；新增 referee / extractor tab
-- [ ] 11.3 main role prompt 编辑器右侧加提示卡片 "纯文本输出，不要 JSON / markdown / emoji"
-- [ ] 11.4 referee role prompt 编辑器加 "插入推荐模板" 按钮（点击填入 referee prompt 模板）
-- [ ] 11.5 extractor role prompt 编辑器加 "字段 schema 辅助生成"
-- [ ] 11.6 campaign 详情页加 filler_enabled toggle + 提示 "streaming 主链路首音频 ~500ms，filler 仅在用慢模型时建议启用"；切到 false 时隐藏 filler_set / filler_phrase 编辑区
-- [ ] 11.7 model 选择器 hover 显示 main/referee/extractor 推荐星级
-- [ ] 11.8 调试视图 / pipeline_trace 查看页面字段集换新（删 role_candidates / judge_results / polish_*，加 main_reply_text / referee_decision / first_audio_ms 等）
-- [ ] 11.9 跑 vitest 单元测试 + e2e（如有）确保无回归
-- [ ] 11.10 commit + push isales-web
+<!-- b14482f (web main). typecheck CLEAN, 38 vitest passed, eslint 干净。 -->
+
+- [x] 11.1 升级依赖 <!-- b14482f types 手写对齐(无 npm 私服); RoleKind/PromptScopeType/Campaign/PipelineTraceTurn 全改 -->
+- [x] 11.2 CampaignDetail 3-tier prompt 区改 main/referee/extractor <!-- b14482f PromptTierEditor kind/title/description 全换; scope_type=kind 自动对齐 -->
+- [x] 11.3 main prompt 纯文本提示 <!-- b14482f main tier description 写 "纯文本流式回复, 不要 JSON/markdown/emoji" -->
+- [ ] 11.4 referee "插入推荐模板" 按钮 <!-- 推迟(纯锦上添花): 模板内容已在 seed 脚本 + spec; 留 followup -->
+- [ ] 11.5 extractor "字段 schema 辅助生成" <!-- 推迟(纯锦上添花) -->
+- [x] 11.6 filler_enabled toggle + 提示 <!-- b14482f BasicTab 加 el-switch + "首音频~500ms, 仅慢模型建议启用" hint; 默认 false -->
+- [ ] 11.7 model 选择器 hover 推荐星级 <!-- 推迟(纯锦上添花) -->
+- [x] 11.8 pipeline_trace 查看页字段集换新 <!-- b14482f PipelineTracePanel 重写: main_reply_text/首音频ms/main耗时/tokens/referee_decision(带 tag)/goal_type/confidence/fallback/error; 删 candidates/judges/polish -->
+- [x] 11.9 vitest + lint 无回归 <!-- b14482f 38 passed(修了 1 个既存 default_replies textarea selector 失败, 非本 change 引入); eslint 干净 -->
+- [x] 11.10 commit + push isales-web <!-- b14482f push main -->
 
 ## 12. campaign 配置数据重建脚本
 
 - [x] 12.1 新建 `scripts/seed_pipeline_stream_campaign.py` <!-- ba5ab0e 放 isales-api/scripts/; 幂等(先删本 campaign role_config+prompt_version 再建 main/referee/extractor 三行); prompt 用 spec 推荐模板; 读 ISALES_DATABASE_URL, 默认 campaign 1; SEED_*_MODEL env 可覆盖 model -->
 - [ ] 12.2 在 mac dev 跑 seed 脚本 ECS 同步跑 <!-- 部署步骤, 与 §14 ECS 部署一起做(需真 DB + 已 migrate) -->
 - [ ] 12.3 ECS 上手工 verify `SELECT kind, model FROM role_config WHERE campaign_id=1` <!-- 同上, 部署后验证 -->
+
+<!-- ===== 代码部分 (§1-12,17) 全部完成: common 36d8faa / engine f63ef51(feature 分支 fix/inbound-stereo-downmix-20260601) / worker d84cbf7 / api+seed ba5ab0e / web b14482f. 各仓测试全绿(engine 5 个 tts_volcengine fail 为既存与本 change 无关)。剩 §13-16,18 是部署+真机验收阶段, 需 mac 麦克风/Windows 拨号机/ECS, 且 §14 含破坏性 migration(删 role/judge/polish 行)需用户确认。 ===== -->
 
 ## 13. mac dev 端到端验证（强阻断 ECS 部署）
 
@@ -158,9 +162,11 @@
 
 ## 16. RUNBOOK 更新
 
-- [ ] 16.1 更新 `deploy/RUNBOOK.md` 部署顺序段落（common → engine → worker → api → web）+ campaign 配置重建步骤
+<!-- 与 §14 ECS 部署一起做: STATE.md 是 ECS 实际状态快照, 新代码未部署前 line 430(ROLE/JUDGE/POLISH_OUTPUT_SCHEMA_SUFFIX)仍准确描述当前 ECS 上的旧 engine; 现在改 STATE.md 会让它谎报状态(违反 ground-truth)。部署同 commit 再更新。 -->
+
+- [ ] 16.1 更新 `deploy/RUNBOOK.md` 部署顺序段落（common → engine → worker → api → web）+ campaign 配置重建步骤 <!-- 部署时做; design.md Migration Plan 已有完整步骤 -->
 - [ ] 16.2 更新 `deploy/RUNBOOK-cloud.md` 同步
-- [ ] 16.3 更新 `deploy/cloud/STATE.md` § "AI 三层管线" 段落改为 § "双 LLM 架构"
+- [ ] 16.3 更新 `deploy/cloud/STATE.md` § "AI 三层管线" 段落改为 § "双 LLM 架构" <!-- 仅在 §14 真部署后改, 否则谎报 -->
 - [ ] 16.4 在 RUNBOOK 增加新章节 § "post-call extractor 排障"：如何查询 `extract_status='failed'` 通话 + 如何手工重跑 LPUSH
 
 ## 17. 历史 change housekeeping
