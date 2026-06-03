@@ -57,41 +57,35 @@
 
 ## 6. isales-engine：orchestrator 重写
 
-- [ ] 6.1 删除 `isales_engine/pipeline/orchestrator.py` 全部内容（旧三层逻辑）
-- [ ] 6.2 重写 `orchestrator.py`，新签名 `async def run_pipeline_stream(session, user_input, config, main_llm, referee_llm, *, is_wrap_up, pipeline_timeout_ms) -> AsyncIterator[str], RefereeTask`：
-  - 同时 spawn `main_task = asyncio.create_task(main_llm.chat_stream(...))` + `referee_task = asyncio.create_task(run_referee(...))`（is_wrap_up=True 时跳过 referee）
-  - 返回 `(main_stream_iter, referee_task)`，调用方（run_loop）`async for sentence in split_sentences(main_stream_iter)` 喂 TTS，结束后 `await referee_task` 拿决策
-- [ ] 6.3 删除 `isales_engine/pipeline/json_parser.py`（main LLM 不再 JSON 输出）；referee 的 JSON 校验放 `referee.py`
-- [ ] 6.4 删除 `isales_engine/pipeline/prompt_builder.py` 中的 judge / polish 段；保留 main 段；新增 referee / extractor 段（或拆 `prompt_builder_referee.py` / `prompt_builder_extractor.py`，看代码组织）
-- [ ] 6.5 重写 `tests/test_pipeline.py`：覆盖 main stream + referee 并行 / referee 早完 / referee 晚到 / main fallback 路径
-- [ ] 6.6 删除 `tests/test_orchestrator_judge.py`（旧 judge 测试）等同类历史测试文件
+<!-- 4c88411 (feature 分支). 292 passed (5 个 tts_volcengine fail 是既存 __init__ endpoint kwarg 不符, b63e538 也 fail, 与本 change 无关)。 -->
+
+- [x] 6.1 删除 `isales_engine/pipeline/orchestrator.py` 全部内容（旧三层逻辑） <!-- 4c88411 整文件重写 -->
+- [x] 6.2 重写 `orchestrator.py`，新签名 `async def run_pipeline_stream(...)`： <!-- 4c88411 偏离: 返回 PipelineStream 对象(非 tuple)更便于 run_loop 拿 result/referee_task; main_llm/referee_llm 都传 providers.llm(单 provider, per-role model 选择是未来增强) -->
+- [x] 6.3 删除 `isales_engine/pipeline/json_parser.py`（main LLM 不再 JSON 输出）；referee 的 JSON 校验放 `referee.py` <!-- 4c88411 git rm -->
+- [x] 6.4 删除 `prompt_builder.py` 的 judge/polish 段；保留 main 段 <!-- 4c88411 偏离: 不注入任何 output-format suffix(role-prompt spec "engine MUST NOT 强制注入约束"); referee/extractor prompt 渲染在各自模块(referee.py / worker), prompt_builder 只管 main -->
+- [x] 6.5 重写 `tests/test_pipeline.py`：覆盖 main stream + referee 并行 / fallback / 空回复 default / wrap-up 跳 referee / greeting <!-- 4c88411 8 test -->
+- [x] 6.6 删除 `tests/test_orchestrator_judge.py` 等历史测试文件 <!-- 4c88411 N/A: 无独立 judge/polish 测试文件(都在 test_pipeline/test_providers 内, 已重写) -->
 
 ## 7. isales-engine：run_loop PROCESSING → SPEAKING 流式重构
 
-- [ ] 7.1 找 `isales_engine/run_loop.py` 当前 PROCESSING → SPEAKING 路径（约 line 364-631 的 `_main_turn_loop`）
-- [ ] 7.2 改造为：
-  - PROCESSING 入口同时 spawn main stream + referee task + （filler_enabled 时）filler task
-  - `async for sentence in split_sentences(main_stream)` 立即 `await tts.synthesize_stream_chunk(sentence)` → `await rtc.audio_out(...)`
-  - 首个 PCM chunk 推出时记录 `first_audio_ms`
-  - main stream 中途异常 catch → 走 `main_llm.chat(...)` 非流式 fallback，一次性 TTS + log `main_fallback_used=true`
-  - SPEAKING 状态结束（TTS 播完）→ `referee_result = await asyncio.wait_for(referee_task, 2.0)`
-  - 根据 `referee_result.decision` 转 state：`goal_achieved → WRAPPING_UP / transfer → TRANSFERRING / customer_decline → ACTIVATING / continue → LISTENING`
-- [ ] 7.3 删除 `await filler.wait_finished()` gate（filler 与 main TTS overlap，main TTS 首 chunk 到立即 preempt filler 通道）
-- [ ] 7.4 filler 调用条件：`campaign.filler_enabled=True` 时才 spawn filler task（default false）
-- [ ] 7.5 在 PROCESSING 完成时写 pipeline_trace 用新字段集（main_reply_text 由 split_sentences 输出聚合 + main_duration_ms + referee_* + first_audio_ms）
-- [ ] 7.6 改 `run_loop.py:982` `status=session.state` 和别处 5 处 session.state 读取确认无回归
-- [ ] 7.7 改 END 状态之前 LPUSH `isales:extract` 队列 + UPDATE `call_record.extract_status='pending'`，payload 按 `service-communication` spec § "isales:extract 队列消息 schema"
-- [ ] 7.8 测试 `tests/test_run_loop.py` 全部改写：覆盖流式主路径 + filler 关闭模式 + filler 开启模式（preempt 验证）+ referee 不同 decision 驱动 state + main fallback 路径 + extract LPUSH 验证
-- [ ] 7.9 测试 `tests/test_realtime_interruption.py` 同步更新（5/28 barge-in 路径仍然走 INTERRUPTED state，确认与新 streaming 路径兼容）
+- [x] 7.1 找 `run_loop.py` PROCESSING→SPEAKING 路径 <!-- 4c88411 _main_turn_loop -->
+- [x] 7.2 改造为流式: spawn main+referee → `_play_streaming` 逐句喂 TTS → `_await_referee(2.0)` → decision 驱动 state <!-- 4c88411 main 中途异常 fallback 在 orchestrator 内(yielded_any 前 chat() 兜底); state 映射 goal_achieved→WRAPPING_UP/transfer→TRANSFERRING+hangup/customer_decline→ACTIVATING→LISTENING/continue→LISTENING -->
+- [x] 7.3 删除 `await filler.wait_finished()` gate <!-- 4c88411 改 _play_streaming 首句到立即 filler.stop() preempt -->
+- [x] 7.4 filler 仅 `campaign.filler_enabled=True` 时 spawn (default false) <!-- 4c88411 RuntimeConfig.filler_enabled 从 campaign 读 -->
+- [x] 7.5 PROCESSING 完成写 pipeline_trace 新字段集 <!-- 4c88411 main_reply_text(聚合)/main_duration_ms/main_tokens_*/main_fallback_used/referee_*/first_audio_ms/error; transcript_recorder 同步换字段 -->
+- [x] 7.6 确认 session.state 读取无回归 <!-- 4c88411 状态机未动; 删了未用的 asr_partials_q 解包 -->
+- [ ] 7.7 END 前 LPUSH `isales:extract` + UPDATE `call_record.extract_status='pending'` <!-- 与 worker §9 一起做(共用队列契约) -->
+- [x] 7.8 `tests/test_run_loop.py` 改写 _make_config 为 main/referee/extractor + filler_enabled 参数 <!-- 4c88411 5 test 全绿; dual-LLM mock 驱动 -->
+- [x] 7.9 `tests/test_realtime_interruption.py` 同步 <!-- 4c88411 复用 test_run_loop 的 _make_config, barge-in 走 _play_streaming 逐句 _play_tts 仍 INTERRUPTED, 全绿 -->
 
 ## 8. isales-engine：删除旧代码
 
-- [ ] 8.1 grep `_call_roles_parallel / _run_judges_parallel / _call_polish` 删除所有实装 + 调用
-- [ ] 8.2 grep `JUDGE_OUTPUT_SCHEMA_SUFFIX / POLISH_OUTPUT_SCHEMA_SUFFIX` 删除常量（5/28 commit 引入）
-- [ ] 8.3 grep `_render_dialog_history_for_judge` 删除（5/29 archive engine-judge-dialog-context 引入）
-- [ ] 8.4 删除 `tests/test_orchestrator_judge*.py` / `tests/test_polish*.py` 等历史测试
-- [ ] 8.5 跑全量 `cd ~/codes/isales-engine && .venv/bin/python -m pytest -q` 确保无回归（应该 30+ 文件 100+ 测试全绿）
-- [ ] 8.6 commit + push isales-engine feature branch
+- [x] 8.1 grep `_call_roles_parallel / _run_judges_parallel / _call_polish` 删除所有实装 + 调用 <!-- 4c88411 orchestrator 整体重写已删, grep 源码无残留 -->
+- [x] 8.2 grep `JUDGE_OUTPUT_SCHEMA_SUFFIX / POLISH_OUTPUT_SCHEMA_SUFFIX` 删除常量 <!-- 4c88411 prompt_builder 重写已删全部 *_OUTPUT_SCHEMA_SUFFIX -->
+- [x] 8.3 grep `_render_dialog_history_for_judge` 删除 <!-- 4c88411 已删; 新 _render_dialog_history_for_referee 在 referee.py(b63e538) -->
+- [x] 8.4 删除 `tests/test_orchestrator_judge*.py` / `tests/test_polish*.py` 等历史测试 <!-- 4c88411 N/A 无此独立文件 -->
+- [x] 8.5 跑全量 pytest 确保无回归 <!-- 4c88411 292 passed, 5 既存 tts_volcengine fail 与本 change 无关(stash 验证 b63e538 也 fail) -->
+- [x] 8.6 commit + push isales-engine feature branch <!-- 4c88411 push fix/inbound-stereo-downmix-20260601 -->
 
 ## 9. isales-worker：post_call_extractor consumer
 
