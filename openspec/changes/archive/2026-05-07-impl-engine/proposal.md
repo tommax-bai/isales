@@ -1,3 +1,8 @@
+<!-- PARTIALLY-SUPERSEDED-by: pipeline-stream-and-referee. The N-role PK +
+N×M judges + polish orchestrator built here is replaced by the dual-LLM
+streaming architecture (main streaming + referee side-band). The state machine /
+filler / transfer / wrap-up / transcript machinery from this change remains. -->
+
 ## Why
 
 阶段 4 的 isales-engine 是整个系统的核心：消费 scheduler 的 `engine:dial` 队列，驱动单通通话的状态机（`INIT → GREETING → LISTENING/SPEAKING/PROCESSING → ... → END`），编排 AI 三层并行管线（N 路角色 PK → N×M 路裁判 → 1 路润色），落 transcript / pipeline_trace、向 worker 派 `CallEnded`、向 api 推 `EngineEvent`。本 change 按 IMPLEMENTATION_PLAN.md 阶段 4 与 `call-state-machine` / `ai-pipeline` / `role-prompt` / `goal-achievement` / `filler` / `interruption-detection` / `silence-activation` / `human-handoff` / `transcript` / `service-communication` / `message-contract` / `provider-abc` 等 spec 实施 engine 骨架——**用 isales-common 已发的 Mock Provider 接通端到端**，不接真实 LLM/ASR/TTS（阶段 5），也不接 modem-controller IPC 与真实硬件（阶段 6）。

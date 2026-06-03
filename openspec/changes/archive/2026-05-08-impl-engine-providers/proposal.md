@@ -1,3 +1,8 @@
+<!-- PARTIALLY-SUPERSEDED-by: pipeline-stream-and-referee. The role/judge/polish
+JSON-mode prompt assembly + json_parser built here is replaced by main plain-text
+streaming + referee JSON. The provider ABCs / credential plumbing / TTS-ASR
+provider work from this change remains (and gains LLMProvider.chat_stream). -->
+
 ## Why
 
 阶段 4 的 isales-engine 已经把状态机 / 三层管线 / 实时模块 / 调度链路全部跑通，但所有 LLM/ASR/TTS Provider 都是 mock。阶段 5 的目标是把"端到端 mock 通话"升级为"端到端真实通话"——接 1 套真实 Provider（ASR：火山豆包；TTS：火山引擎；LLM：火山豆包大模型 + OpenAI 备选），让 engine 在不依赖真实硬件（stage 6）的前提下，可以用真音频文件 / 真线下麦克风跑出真 LLM 对话。同时把 stage 4 docstring 中标注的"SPEAKING 期间实时打断"补上——真 ASR 接入后才有意义。

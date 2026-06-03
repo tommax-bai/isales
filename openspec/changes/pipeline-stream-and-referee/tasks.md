@@ -125,9 +125,9 @@
 
 ## 12. campaign 配置数据重建脚本
 
-- [ ] 12.1 新建 `scripts/seed_pipeline_stream_campaign.py`：给现有 dev campaign 1 创建 main + referee + extractor 三个 role_config + 对应 prompt_version；prompt 内容用各 spec 推荐模板填充
-- [ ] 12.2 在 mac dev 跑 seed 脚本 ECS 同步跑
-- [ ] 12.3 ECS 上手工 verify `SELECT kind, model FROM role_config WHERE campaign_id=1` 含 main / referee / extractor 三行
+- [x] 12.1 新建 `scripts/seed_pipeline_stream_campaign.py` <!-- ba5ab0e 放 isales-api/scripts/; 幂等(先删本 campaign role_config+prompt_version 再建 main/referee/extractor 三行); prompt 用 spec 推荐模板; 读 ISALES_DATABASE_URL, 默认 campaign 1; SEED_*_MODEL env 可覆盖 model -->
+- [ ] 12.2 在 mac dev 跑 seed 脚本 ECS 同步跑 <!-- 部署步骤, 与 §14 ECS 部署一起做(需真 DB + 已 migrate) -->
+- [ ] 12.3 ECS 上手工 verify `SELECT kind, model FROM role_config WHERE campaign_id=1` <!-- 同上, 部署后验证 -->
 
 ## 13. mac dev 端到端验证（强阻断 ECS 部署）
 
@@ -165,9 +165,9 @@
 
 ## 17. 历史 change housekeeping
 
-- [ ] 17.1 在 `openspec/changes/archive/2026-05-29-engine-judge-dialog-context/proposal.md` 顶部加 HTML 注释 `<!-- SUPERSEDED-by: pipeline-stream-and-referee (judge layer removed, chat-history-into-judge thinking inherited to referee) -->`
-- [ ] 17.2 在 `openspec/changes/archive/2026-05-08-impl-web-polish/proposal.md` 顶部加 `<!-- SUPERSEDED-by: pipeline-stream-and-referee (polish LLM layer removed) -->`
-- [ ] 17.3 在 archive 其他相关 polish / judge 涉及的 changes 标 SUPERSEDED（grep `polish` / `judge` archive 目录确认全名单）
+- [x] 17.1 engine-judge-dialog-context proposal.md 顶部加 SUPERSEDED-by 注释 <!-- 本 commit -->
+- [x] 17.2 impl-web-polish proposal.md 顶部加 SUPERSEDED-by 注释 <!-- 本 commit -->
+- [x] 17.3 其他 polish/judge archive 标 SUPERSEDED <!-- 本 commit: impl-engine + impl-engine-providers 加 PARTIALLY-SUPERSEDED-by(pipeline 部分被替, 状态机/provider ABC 等保留); grep 确认这 4 个是全名单 -->
 
 ## 18. 验证 + archive
 

@@ -1,3 +1,6 @@
+<!-- SUPERSEDED-by: pipeline-stream-and-referee (polish LLM layer removed; the
+polish prompt-editing UI is deleted from the web admin). -->
+
 ## Why
 
 stage 7 的 impl-web 已经把 13 个路由 minimal 版本上线（4 vitest 全绿、vue-tsc 干净、build 通过、Nginx 部署配置完备），但 archive 时明确标了 32 个 follow-up 项。其中两类阻塞 v1 真上线：

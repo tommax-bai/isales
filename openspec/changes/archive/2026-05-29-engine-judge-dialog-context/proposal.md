@@ -1,3 +1,7 @@
+<!-- SUPERSEDED-by: pipeline-stream-and-referee (judge layer removed; the
+chat-history-into-judge idea is inherited by the referee LLM, which takes the
+last ≤3 rounds of dialog_history as input). -->
+
 ## Why
 
 iSales 三层 AI 管线的 judge LLM 之前调用合约是 `build_judge_messages(judge, candidate_reply)`
