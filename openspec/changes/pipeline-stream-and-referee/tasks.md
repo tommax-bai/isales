@@ -100,13 +100,15 @@
 
 ## 10. isales-api：role_config + campaign API schema 更新
 
-- [ ] 10.1 升级 isales-common 依赖到 1.6 版本
-- [ ] 10.2 `isales_api/routers/role_configs.py` 改 kind 枚举允许值 `{main, referee, extractor}`；删除 judge / polish 创建路径
-- [ ] 10.3 `isales_api/routers/campaigns.py` PATCH endpoint 加 `filler_enabled` 字段支持
-- [ ] 10.4 `isales_api/schemas/campaign.py` Pydantic 响应 model 加 `filler_enabled` 字段
-- [ ] 10.5 验证 admin API 接口契约：列出 role_configs 过滤 kind 用新枚举
-- [ ] 10.6 测试 `tests/test_role_configs_api.py` / `tests/test_campaigns_api.py` 更新
-- [ ] 10.7 commit + push isales-api
+<!-- f37395c (api main). 103 passed, ruff 干净。common filler_enabled schema 在 36d8faa(common)。 -->
+
+- [x] 10.1 升级 isales-common 依赖到新版本 <!-- f37395c pin >=0.5.0,<0.6 -->
+- [x] 10.2 `role_configs.py` kind 枚举 `{main,referee,extractor}` <!-- f37395c 偏离: 通用 CRUD, kind 校验走 common RoleKind enum 自动拒旧值, 无独立 judge/polish 创建路径需删; 仅改 docstring -->
+- [x] 10.3 `campaigns.py` PATCH 加 `filler_enabled` <!-- f37395c CampaignNestedUpdate 加字段; router model_dump 通用映射 -->
+- [x] 10.4 campaign 响应 model 加 `filler_enabled` <!-- f37395c 偏离: CampaignBase/CampaignRead 在 common schemas/campaign.py(非 api), 加在那里覆盖 Create+Read(36d8faa) -->
+- [x] 10.5 验证 role_configs 过滤 kind 用新枚举 <!-- f37395c test_kind_filter main/referee 全绿 -->
+- [x] 10.6 测试更新 <!-- f37395c 偏离文件名: test_campaign_configs.py + test_campaigns_crud.py(非 *_api.py); 迁移 role/judge/polish→main/referee/extractor + 加 filler_enabled 测试 -->
+- [x] 10.7 commit + push isales-api <!-- f37395c push main -->
 
 ## 11. isales-web：UI 重构
 
