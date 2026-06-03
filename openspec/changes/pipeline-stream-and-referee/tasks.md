@@ -1,12 +1,14 @@
 ## 1. isales-common：数据模型 + alembic migration
 
-- [ ] 1.1 在 `isales_common/models/role_config.py` 把 `RoleKind` enum 从 `{role, judge, polish}` 改成 `{main, referee, extractor}`；同步更新 SQLAlchemy 字段约束 + Pydantic schema
-- [ ] 1.2 在 `isales_common/models/pipeline_trace.py` 删除字段 `role_candidates / judge_results / polish_input / polish_output / polish_duration_ms / polish_role_config_id / polish_prompt_version_id / final_selected_candidate_index`；新增字段 `main_reply_text(Text) / main_duration_ms(Int) / main_tokens_in(Int) / main_tokens_out(Int) / main_fallback_used(Bool, default false) / referee_decision(Text) / referee_goal_type(Text, nullable) / referee_confidence(Real, nullable) / referee_duration_ms(Int) / first_audio_ms(Int) / error(Text, nullable)`
-- [ ] 1.3 在 `isales_common/models/call_record.py` 新增字段 `extracted(JSONB, nullable) / extract_status(VARCHAR(16), nullable) / extract_error(Text, nullable)`；`prompt_versions` JSONB 的 schema 文档化为 `{main_llm, referee_llm, extractor_llm, wrap_up_appended}`（DB 层仍是 JSONB 自由结构）
-- [ ] 1.4 在 `isales_common/models/campaign.py` 新增字段 `filler_enabled(Bool, default false)`
-- [ ] 1.5 在 `isales_common/models/prompt_version.py` 把 `scope_type` 允许值文档化为 `{main, referee, extractor}`
-- [ ] 1.6 删除 `isales_common/schemas/pipeline.py` 中的 `RoleSpec / JudgeSpec / PolishSpec / PipelineConfig` 旧数据类；新增 `MainSpec / RefereeSpec / ExtractorSpec / PipelineConfig (refactored)`，新 PipelineConfig schema：`{main: MainSpec, referee: RefereeSpec, extractor: ExtractorSpec, short_reply_active: bool}`
-- [ ] 1.7 alembic 写 migration `xxxx_pipeline_stream_and_referee.py`：
+<!-- 0c5d35f section 1+2 isales-common 全部完成, tests 158 passed, mypy/ruff 干净, alembic head=c3d4e5f6a7b8. 偏离见各 task 注释。 -->
+
+- [x] 1.1 在 `isales_common/models/role_config.py` 把 `RoleKind` enum 从 `{role, judge, polish}` 改成 `{main, referee, extractor}`；同步更新 SQLAlchemy 字段约束 + Pydantic schema <!-- 0c5d35f RoleKind+PromptScopeType 实际定义在 isales_common/enums.py(StrEnum/VARCHAR), 非 model 内; model+schema docstring 同步改 -->
+- [x] 1.2 在 `isales_common/models/pipeline_trace.py` 删除字段 `role_candidates / judge_results / polish_input / polish_output / polish_duration_ms / polish_role_config_id / polish_prompt_version_id / final_selected_candidate_index`；新增字段 `main_reply_text(Text) / main_duration_ms(Int) / main_tokens_in(Int) / main_tokens_out(Int) / main_fallback_used(Bool, default false) / referee_decision(Text) / referee_goal_type(Text, nullable) / referee_confidence(Real, nullable) / referee_duration_ms(Int) / first_audio_ms(Int) / error(Text, nullable)` <!-- 0c5d35f 偏离: error 列原本不存在(1.7 注释说"error 已存在"有误), 已新增 -->
+- [x] 1.3 在 `isales_common/models/call_record.py` 新增字段 `extracted(JSONB, nullable) / extract_status(VARCHAR(16), nullable) / extract_error(Text, nullable)`；`prompt_versions` JSONB 的 schema 文档化为 `{main_llm, referee_llm, extractor_llm, wrap_up_appended}`（DB 层仍是 JSONB 自由结构） <!-- 0c5d35f + CallRecordRead DTO 同步加三字段 -->
+- [x] 1.4 在 `isales_common/models/campaign.py` 新增字段 `filler_enabled(Bool, default false)` <!-- 0c5d35f -->
+- [x] 1.5 在 `isales_common/models/prompt_version.py` 把 `scope_type` 允许值文档化为 `{main, referee, extractor}` <!-- 0c5d35f model 文件名实为 prompt.py; enums.PromptScopeType 已改 -->
+- [x] 1.6 删除 `isales_common/schemas/pipeline.py` 中的 `RoleSpec / JudgeSpec / PolishSpec / PipelineConfig` 旧数据类；新增 `MainSpec / RefereeSpec / ExtractorSpec / PipelineConfig (refactored)`，新 PipelineConfig schema：`{main: MainSpec, referee: RefereeSpec, extractor: ExtractorSpec, short_reply_active: bool}` <!-- 0c5d35f 偏离: 旧 RoleSpec/JudgeSpec/PolishSpec/PipelineConfig 实际在 isales-engine/pipeline/prompt_builder.py(section 6 删除); schemas/pipeline.py 是全新创建(pydantic AppModel), 并 export 到 schemas/__init__ -->
+- [x] 1.7 alembic 写 migration `c3d4e5f6a7b8_pipeline_stream_and_referee.py`： <!-- 0c5d35f 偏离: kind/scope_type 是 VARCHAR+app validation 非 PG enum, 所以无 ALTER TYPE, 仅 DELETE 旧行; DELETE 同时清 prompt_version 旧 scope; data migration carry call_summary.extracted_fields -> call_record.extracted -->
   - `ALTER TYPE role_kind RENAME TO role_kind_old`
   - `CREATE TYPE role_kind AS ENUM ('main', 'referee', 'extractor')`
   - `DELETE FROM role_config WHERE kind IN ('role', 'judge', 'polish')`（DELETE 先于 ALTER COLUMN，避免 enum 切换时报旧值）
@@ -18,15 +20,15 @@
   - `ALTER TABLE call_record ADD COLUMN extracted JSONB / extract_status VARCHAR(16) / extract_error TEXT`
   - `ALTER TABLE campaign ADD COLUMN filler_enabled BOOL DEFAULT false`
   - data migration: `UPDATE call_record SET extracted = call_summary.extracted_fields FROM call_summary WHERE call_record.id = call_summary.call_record_id AND call_summary.extracted_fields IS NOT NULL`（保留历史数据迁移到新位置）
-- [ ] 1.8 写 alembic downgrade 路径（用于 rollback）：复原 enum + DROP 新字段 + 不复原 deleted role_config 行（v1 无产数据，acceptable）
-- [ ] 1.9 在 `isales-common` 跑 pytest 测试新 schema 数据类 `tests/test_pipeline_schemas.py`：覆盖 MainSpec / RefereeSpec / ExtractorSpec / PipelineConfig 序列化反序列化
-- [ ] 1.10 bump isales-common 版本（如 0.x.y+1），写 CHANGELOG 段落（"BREAKING: pipeline 三层架构改双 LLM 架构，role_config.kind 枚举改 / pipeline_trace 字段集换新"）
+- [x] 1.8 写 alembic downgrade 路径（用于 rollback）：复原 enum + DROP 新字段 + 不复原 deleted role_config 行（v1 无产数据，acceptable） <!-- 0c5d35f downgrade 复原 pipeline_trace 旧字段集(含 FK) + DROP 新字段; 不复原 deleted 行 -->
+- [x] 1.9 在 `isales-common` 跑 pytest 测试新 schema 数据类 `tests/test_pipeline_schemas.py`：覆盖 MainSpec / RefereeSpec / ExtractorSpec / PipelineConfig 序列化反序列化 <!-- 0c5d35f 6 个 test, extra=forbid 拒旧字段; 全套 158 passed -->
+- [x] 1.10 bump isales-common 版本（如 0.x.y+1），写 CHANGELOG 段落（"BREAKING: pipeline 三层架构改双 LLM 架构，role_config.kind 枚举改 / pipeline_trace 字段集换新"） <!-- 0c5d35f 0.4.0 -> 0.5.0 (BREAKING minor, v0.x) + CHANGELOG v0.5.0 段 -->
 
 ## 2. isales-common：Provider ABC 新增 chat_stream
 
-- [ ] 2.1 在 `isales_common/providers/llm.py` 新增 abstract method `chat_stream(messages, *, temperature, top_p, max_tokens) -> AsyncIterator[str]`；同时新增 `last_call_tokens_in / last_call_tokens_out / last_call_finish_reason` instance attributes（默认 None，子类在 chat_stream 完成时填充）
-- [ ] 2.2 更新 `isales_common/providers/__init__.py` export
-- [ ] 2.3 在 `isales-common` 跑 mypy / ruff 确保 ABC 类型注解正确
+- [x] 2.1 在 `isales_common/providers/llm.py` 新增 abstract method `chat_stream(messages, *, temperature, top_p, max_tokens) -> AsyncIterator[str]`；同时新增 `last_call_tokens_in / last_call_tokens_out / last_call_finish_reason` instance attributes（默认 None，子类在 chat_stream 完成时填充） <!-- 0c5d35f abstractmethod 返回 AsyncIterator(非 async def, 便于子类 async generator); MockLLMProvider(common testing) 同步实装 -->
+- [x] 2.2 更新 `isales_common/providers/__init__.py` export <!-- 0c5d35f LLMProvider 已在 __init__ export; chat_stream 是其方法无新 symbol -->
+- [x] 2.3 在 `isales-common` 跑 mypy / ruff 确保 ABC 类型注解正确 <!-- 0c5d35f mypy: Success no issues; ruff: 我改的文件干净(其余 8 报错是既存他文件) -->
 
 ## 3. isales-engine：LLM provider 4 个实装 chat_stream
 
