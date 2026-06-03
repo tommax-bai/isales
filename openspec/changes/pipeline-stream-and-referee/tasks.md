@@ -74,7 +74,7 @@
 - [x] 7.4 filler 仅 `campaign.filler_enabled=True` 时 spawn (default false) <!-- 4c88411 RuntimeConfig.filler_enabled 从 campaign 读 -->
 - [x] 7.5 PROCESSING 完成写 pipeline_trace 新字段集 <!-- 4c88411 main_reply_text(聚合)/main_duration_ms/main_tokens_*/main_fallback_used/referee_*/first_audio_ms/error; transcript_recorder 同步换字段 -->
 - [x] 7.6 确认 session.state 读取无回归 <!-- 4c88411 状态机未动; 删了未用的 asr_partials_q 解包 -->
-- [ ] 7.7 END 前 LPUSH `isales:extract` + UPDATE `call_record.extract_status='pending'` <!-- 与 worker §9 一起做(共用队列契约) -->
+- [x] 7.7 END 前 LPUSH `isales:extract` + UPDATE `call_record.extract_status='pending'` <!-- f63ef51 在 call_lifecycle.finalize_session; extractor ids 由 run_session 存到 session(call_session.py); payload {call_record_id,transcript_snapshot[{role,text,ts_ms}],extractor_role_config_id,extractor_prompt_version_id}; key=common redis_keys.EXTRACT_QUEUE(3c3f2c3); 无 extractor slot 或无 dialog 时跳过 -->
 - [x] 7.8 `tests/test_run_loop.py` 改写 _make_config 为 main/referee/extractor + filler_enabled 参数 <!-- 4c88411 5 test 全绿; dual-LLM mock 驱动 -->
 - [x] 7.9 `tests/test_realtime_interruption.py` 同步 <!-- 4c88411 复用 test_run_loop 的 _make_config, barge-in 走 _play_streaming 逐句 _play_tts 仍 INTERRUPTED, 全绿 -->
 
@@ -89,12 +89,14 @@
 
 ## 9. isales-worker：post_call_extractor consumer
 
-- [ ] 9.1 升级 isales-common 依赖到 1.6 写的新版本
-- [ ] 9.2 新建 `isales_worker/post_call_extractor.py`：BLPOP `isales:extract` 队列 → 调 LLM provider `chat(json_mode=True)` → UPDATE `call_record SET extracted = <result>, extract_status = 'done'`；失败 UPDATE `extract_status = 'failed', extract_error = <reason>`
-- [ ] 9.3 在 `isales_worker/main.py`（或对应入口）启动 extractor consumer task
-- [ ] 9.4 写 systemd unit `deploy/<linux|cloud>/systemd/isales-worker-extractor.service`（或集成进现有 isales-worker.service）
-- [ ] 9.5 测试 `tests/test_post_call_extractor.py`：成功路径 / LLM 超时 / JSON 校验失败 / DB 写失败
-- [ ] 9.6 commit + push isales-worker
+<!-- d84cbf7 (worker main). 50 passed, ruff/mypy 干净。PG 本机可达。 -->
+
+- [x] 9.1 升级 isales-common 依赖到新版本 <!-- d84cbf7 pin >=0.5.0,<0.6 + reinstall editable -->
+- [x] 9.2 新建 `isales_worker/post_call_extractor.py`：BLPOP `isales:extract` → 调 extractor LLM → UPDATE `extracted/extract_status='done'`；失败 `'failed'+extract_error` <!-- d84cbf7 偏离: worker LLMProvider ABC 无 chat(), 改加 extract(transcript,prompt) 抽象方法; MockProvider 实装(real provider stage5 再补); 失败不重 LPUSH(防雪崩); handle_extract_task 永不抛 -->
+- [x] 9.3 在 `isales_worker/main.py` 启动 extractor consumer task <!-- d84cbf7 extract_loop 与 callend/retry/metrics 并列 create_task + 优雅停 -->
+- [x] 9.4 systemd unit / 集成进现有 isales-worker.service <!-- d84cbf7 选择: in-process(main.py 内 task), 无独立 unit; 现有 isales-worker.service 直接 cover -->
+- [x] 9.5 测试 `tests/test_post_call_extractor.py`：成功 / LLM 失败 / JSON 校验失败 / bad-json / missing-id <!-- d84cbf7 5 test 全绿(真 PG) -->
+- [x] 9.6 commit + push isales-worker <!-- d84cbf7 push main -->
 
 ## 10. isales-api：role_config + campaign API schema 更新
 
