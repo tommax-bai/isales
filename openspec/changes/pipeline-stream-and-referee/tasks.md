@@ -32,24 +32,28 @@
 
 ## 3. isales-engine：LLM provider 4 个实装 chat_stream
 
-- [ ] 3.1 `providers/llm_openai_compatible.py` 实装 `chat_stream`：用 `stream=True` SSE，解析 `data: {...}` 行的 `delta.content` 作为 token yield；处理 `[DONE]` 终止；中途异常映射为 ProviderError 子类
-- [ ] 3.2 `providers/llm_volcengine.py`（如有独立 vendor 实装）实装 chat_stream，参考 vendor SDK 流式接口
-- [ ] 3.3 `providers/llm_ark.py` / `providers/llm_dashscope.py`（如有独立实装）实装 chat_stream
-- [ ] 3.4 mock provider `providers/llm_mock.py` 实装 chat_stream：按时间窗口模拟 token yield（用于本地测试）；支持配置 first_token_ms / per_token_ms 参数
-- [ ] 3.5 测试 `tests/test_provider_chat_stream.py`：每个 provider 覆盖正常流式 / 中途异常 / first token 之前 fail / vendor 不支持时 single_yield_fallback
-- [ ] 3.6 测试 `tests/test_provider_errors.py` 同步加 chat_stream 路径的异常映射 case
+<!-- engine 把 common 0.5.0 重装为 editable (pin 升 >=0.5.0,<0.6); section 3 是纯 additive, 自身测试全绿; runtime_config/orchestrator 仍引用旧 RoleKind, 由 section 6-7 修。 -->
+
+- [x] 3.1 `providers/llm_openai_compatible.py` 实装 `chat_stream`：用 `stream=True` SSE，解析 `data: {...}` 行的 `delta.content` 作为 token yield；处理 `[DONE]` 终止；中途异常映射为 ProviderError 子类 <!-- httpx client.stream + _parse_sse_line(); stream_options.include_usage 拿 token; 加 transport 注入点便于 MockTransport 测试; HTTP>=400 先 aread() 再 map_http_error -->
+- [x] 3.2 `providers/llm_volcengine.py`（如有独立 vendor 实装）实装 chat_stream，参考 vendor SDK 流式接口 <!-- N/A: 无独立 llm_volcengine.py; 火山豆包走 OpenAICompatibleLLMProvider(base_url=ark...), 3.1 已 cover -->
+- [x] 3.3 `providers/llm_ark.py` / `providers/llm_dashscope.py`（如有独立实装）实装 chat_stream <!-- N/A: 无独立 ark/dashscope LLM 文件, 全走 openai_compatible -->
+- [x] 3.4 mock provider `providers/llm_mock.py` 实装 chat_stream：按时间窗口模拟 token yield（用于本地测试）；支持配置 first_token_ms / per_token_ms 参数 <!-- KeywordDrivenMockLLM(first_token_ms, per_token_ms) 逐字符 yield _decide().content; 默认 0 不 sleep 保持测试快 -->
+- [x] 3.5 测试 `tests/test_provider_chat_stream.py`：每个 provider 覆盖正常流式 / 中途异常 / first token 之前 fail / vendor 不支持时 single_yield_fallback <!-- 10 test: SSE parser 单测 + happy + malformed-chunk-skip + 429-before-token + transport-error + mock streaming -->
+- [x] 3.6 测试 `tests/test_provider_errors.py` 同步加 chat_stream 路径的异常映射 case <!-- 加 503->ServerError / 400->InvalidRequest / ReadTimeout->Timeout 3 case; 复用 map_http/transport_error -->
 
 ## 4. isales-engine：sentence_splitter 模块
 
-- [ ] 4.1 新建 `isales_engine/streaming/__init__.py` + `isales_engine/streaming/sentence_splitter.py`，实装 `async def split_sentences(token_stream: AsyncIterator[str]) -> AsyncIterator[str]`：累积 token 到 buffer，命中 `。？！` / `\n\n` / 50 字 cap 时 yield 一句；stream 结束时 flush buffer
-- [ ] 4.2 测试 `tests/test_sentence_splitter.py`：中文标点切句 / 50 字 cap / stream 结束 flush / token 碎片化（"您"+"好"+"。"分 3 个 token）
+<!-- b63e538 (feature 分支 fix/inbound-stereo-downmix-20260601). 用户决策: engine 改造以 feature 分支为基(含全部 DingRTC/TTS-V3/ASR-V3/stereo 工作); origin/main 的 2 个 5/30 latency commit(filler 去阻塞/cancel-wait/连接复用) 由 section 6-7 流式重写覆盖; 分叉 reconcile 留 archive 后 followup。 -->
+
+- [x] 4.1 新建 `isales_engine/streaming/__init__.py` + `isales_engine/streaming/sentence_splitter.py`，实装 `async def split_sentences(token_stream: AsyncIterator[str]) -> AsyncIterator[str]`：累积 token 到 buffer，命中 `。？！` / `\n\n` / 50 字 cap 时 yield 一句；stream 结束时 flush buffer <!-- b63e538 -->
+- [x] 4.2 测试 `tests/test_sentence_splitter.py`：中文标点切句 / 50 字 cap / stream 结束 flush / token 碎片化（"您"+"好"+"。"分 3 个 token） <!-- b63e538 8 test 全绿 -->
 
 ## 5. isales-engine：referee 模块
 
-- [ ] 5.1 新建 `isales_engine/referee.py`，实装 `async def run_referee(session, user_last_utterance, recent_dialog_history, referee_spec, llm) -> RefereeResult`：调 `llm.chat(json_mode=True, messages=...)`，输入 prompt 按 `role-prompt` spec § "referee prompt 内容规范" 渲染，输出 JSON 校验（decision 枚举 / goal_type / confidence 范围），fail-open 默认 `continue`
-- [ ] 5.2 实装 `_render_dialog_history_for_referee(dialog_history) -> str`：渲染最近 ≤ 3 轮为 `用户：xxx\nAI：xxx` 多行；空 history 渲染占位 `（首轮对话，无历史）`（继承 5/29 archive engine-judge-dialog-context 的渲染规则）
-- [ ] 5.3 测试 `tests/test_referee.py`：4 种 decision 枚举 + fail-open 路径（timeout / invalid JSON / low confidence） + 占位 history
-- [ ] 5.4 `RefereeResult` 数据类放 `isales_engine/streaming/types.py` 或 `referee.py`，含 `decision / goal_type / confidence / duration_ms / raw_output`
+- [x] 5.1 新建 `isales_engine/referee.py`，实装 `async def run_referee(session, user_last_utterance, recent_dialog_history, referee_spec, llm) -> RefereeResult`：调 `llm.chat(json_mode=True, messages=...)`，输入 prompt 按 `role-prompt` spec § "referee prompt 内容规范" 渲染，输出 JSON 校验（decision 枚举 / goal_type / confidence 范围），fail-open 默认 `continue` <!-- b63e538 placeholder {{user_last_utterance}}/{{recent_dialog_history}} 替换进 campaign referee prompt; confidence<0.7 非continue降级continue; goal_achieved 缺 goal_type 降级 -->
+- [x] 5.2 实装 `_render_dialog_history_for_referee(dialog_history) -> str`：渲染最近 ≤ 3 轮为 `用户：xxx\nAI：xxx` 多行；空 history 渲染占位 `（首轮对话，无历史）`（继承 5/29 archive engine-judge-dialog-context 的渲染规则） <!-- b63e538 全角冒号 用户：/AI：; recent_dialog_rounds() 取 last 3 轮=6 entries -->
+- [x] 5.3 测试 `tests/test_referee.py`：4 种 decision 枚举 + fail-open 路径（timeout / invalid JSON / low confidence） + 占位 history <!-- b63e538 13 test -->
+- [x] 5.4 `RefereeResult` 数据类放 `isales_engine/streaming/types.py` 或 `referee.py`，含 `decision / goal_type / confidence / duration_ms / raw_output` <!-- b63e538 放 streaming/types.py + RefereeResult.fail_open() classmethod; 偏离: 不加 REFEREE_OUTPUT_SCHEMA_SUFFIX 强制后缀(campaign prompt 自带 schema, 遵循 feedback_avoid_multilayer_fallback) -->
 
 ## 6. isales-engine：orchestrator 重写
 
