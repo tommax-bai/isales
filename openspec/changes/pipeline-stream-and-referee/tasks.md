@@ -185,7 +185,7 @@
 
 ## 19. followup（不在本 change scope，记录在此用于下次 change 起源）
 
-- [ ] 19.1 followup change `asr-fast-eos`：把 `_PARTIAL_STABLE_S` 从 0.7s 降到 0.3s + vendor finalize race，进一步降低 700ms 首音频延迟
+- [x] 19.1 followup change `asr-fast-eos`：把 `_PARTIAL_STABLE_S` 从 0.7s 降到 0.3s + vendor finalize race，进一步降低 700ms 首音频延迟 <!-- 吸收进 `pipeline-latency-tail` change(A 项, 2026-06-04 propose): ASR 端点参数化+campaign 可调, 连同 B(LLM-TTS 预合成)/C(TTS 连接复用)/D(transfer 移出主链) 一起做。诊断见 call_record 137 -->
 - [ ] 19.2 followup change `pipeline-remove-filler`：本 change archive 后 3 个月内无 campaign 启用 filler 则删除全部 filler 代码（filler_manager / filler_set 表 / filler_phrase 表 / UI）
 - [ ] 19.3 followup change `pipeline-remove-streaming-fallback`：streaming 链路 30 天 SLA ≥ 99.5% 后删 main `chat()` 一次性 fallback
 - [ ] 19.4 followup change `campaign-feature-gating`：多 campaign A/B / 灰度发布机制
