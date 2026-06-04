@@ -6,6 +6,12 @@
 - [x] 1.4 bump isales-common 版本 + CHANGELOG <!-- 0.5.0 → 0.5.1 -->
 - [x] 1.5 跑 isales-common pytest（含 CampaignRead ORM round-trip 设 asr_eos_silence_ms） <!-- 158 passed; test_read_from_orm asserts asr_eos_silence_ms==250 -->>
 
+<!-- 2026-06-04 field-finding extension: §C 连接复用从 TTS 扩到 LLM。
+     OpenAICompatibleLLMProvider 原每轮新建 httpx client → 每轮对 ark 白付一次
+     TLS 握手 (~100-200ms 压在 EOS→首 token 前)。改持久 client + aclose (main.py
+     _run finally)。engine 654ff31, ECS 已部署 restart clean。+2 单测 (reuse/aclose),
+     314 engine pytest 全绿。详见用户 voxen 对比讨论 + [[project_pipeline_latency_tail_field_finding]] -->
+
 ## 2. isales-engine：C —— TTS 连接复用
 
 - [x] 2.1 `providers/tts_volcengine.py`：`__init__` 建持久 `self._client = httpx.AsyncClient(timeout=..., limits=httpx.Limits(keepalive...))`；`synthesize_stream` 用 `self._client.stream(...)` 替换每句新建 <!-- max_keepalive=4, keepalive_expiry=60 -->
