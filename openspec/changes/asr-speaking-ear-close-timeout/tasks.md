@@ -16,6 +16,18 @@
 - [x] 3.2 commit + push isales-engine（branch fix/inbound-stereo-downmix-20260601）
 - [x] 3.3 更新 deploy/cloud/STATE.md（ASR close_timeout 0.2 + SPEAKING 期间重连）
 
+> **⚠️ 2026-06-04 结论：close_timeout=0.2 approach REVERTED（不可行）**。真机
+> call 141/142 实证：短 close_timeout 不但没修好 barge-in，反而**把 ASR recv loop
+> 整个 wedge 掉**——EOS-promote 后 recv loop 不再 drain pending promote / 不重连
+> （日志无 yield_promoted / 无 reconnect_after_clean_exit / 无 ConnectionClosed），
+> ASR pump 直接停摆，用户该轮永不被处理，通话死在 silence_max。比改前**严格更差**
+> （改前 10s 慢重连但 call 138 能完整多轮对话）。push-stop guard 去掉了
+> audio_push_failed 错误但没解 recv-loop wedge。已 revert asr_volcengine 回 4af4067
+> 已知良好态（engine 53742b8 部署）。**barge-in 真因仍是"SPEAKING 期间 ASR 被
+> ws.close 关掉~10s 才重连"，但正解是重设计 per-turn 的 ASR close/reconnect——
+> 让连接跨轮保活（promote partial 为 final 但不 close ws，继续在同一连接听），
+> 不是 close_timeout 补丁。另起 change 做。** 部署/测试任务作废。
+
 ## 4. 真机验证（mac dev-no-modem 受控通话）
 
 - [ ] 4.1 跑真通话：量 `reconnect_after_clean_exit` 相对上一条 ASR 文本的间隔——确认从 ~10s 降到 ~200ms
