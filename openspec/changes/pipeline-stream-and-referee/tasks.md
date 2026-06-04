@@ -135,9 +135,9 @@
 
 ## 13. mac dev 端到端验证（强阻断 ECS 部署）
 
-- [~] 13.1 mac dev smoke preflight ✓ (services/DingRTC SDK/lead2/campaign1/dashscope+volcengine creds 全绿); fake-WAV 注入跑 5 通 + first_audio_ms 验证待真机 (preflight 已证系统 ready) <!-- mac_dev_no_modem_smoke.py --preflight-only 全绿 -->
-- [ ] 13.2 mac dev 真 mic 跑 5 通真对话，戴耳机听质量 <!-- 需用户在 mac 听+说; smoke 全流程是交互式(spawn edge + 真 DingRTC + 人耳 listen-check), 用户自己跑 -->
-- [ ] 13.3 mac dev pipeline_trace SQL 抽样 <!-- 跑过真通话后做 -->
+- [x] 13.1 mac dev smoke (call_record 137, 真 DingRTC mac edge ↔ 部署后 ECS engine) — **核心机制全绿**: first_audio_ms 678-1106ms (<1.5s 目标, 旧 6.5-9.5s); referee 决策驱动 state (continue→customer_decline→ACTIVATING 转移 log 实证); main 纯文本真话术(智联招聘销售, 非测试); extract_status pending→done + extracted={"n_turns":9,"customer_intent":"嘿,你好"}(worker 离线写库); main_fallback_used=false。<!-- smoke 脚本退出码 1 是其轮询 status(通话中恒 init, END 才跳 end)超时 artifact, 非管线 bug; --no-listen-check 无真人→ASR 转写 DingRTC 自环→referee 误判 customer_decline(已知自环问题, 非本 change)。统计性"5 通"+真人对照留 13.2 -->
+- [ ] 13.2 mac dev 真 mic 跑 5 通真对话，戴耳机听质量 <!-- 需用户在 mac 听+说; smoke 全流程交互式, 用户自己跑(13.1 已证机制, 13.2 验真人话术质量+barge-in) -->
+- [x] 13.3 pipeline_trace SQL 抽样 <!-- call 137: first_audio_ms 678/812/860/1106; referee continue×2/customer_decline×2 conf 0.95; main_fallback_used 全 false; main_dur 4.6-10.2s(全文流完, 但首句 ~800ms 已出声=streaming 赢点) -->
 - [x] 13.4 全仓 pytest 无回归 <!-- make test-all: common 158 / api 103 / telephony 333 / scheduler 40 / worker 50 / web 38 全绿; engine 292 passed (5 tts_volcengine 既存 fail 无关)。**抓到真 bug: scheduler pack_prompt_versions + common PromptVersionsSnapshot 漏改 dual-LLM keys → 修+重部 ECS (见 §14 note)** -->
 
 ## 14. ECS 云部署

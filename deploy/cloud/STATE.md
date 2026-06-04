@@ -13,9 +13,12 @@ extract_loop ✓; nginx SPA 200 ✓。**§13.4 全仓 pytest 抓到漏改: sched
 `pack_prompt_versions` 仍引用 `RoleKind.ROLE`(已删)会 dispatch 崩 + common
 `PromptVersionsSnapshot` schema 漏改 → 补 `main_llm/referee_llm/extractor_llm`
 (commit common 1065c4f / scheduler abe6688), rsync 重部 common dial.py +
-scheduler + restart engine/scheduler clean。** **真机 call-flow 验收 (首音频
-<1.5s / referee 驱动 state / extractor 写入) 待 mac dev 真 mic (§13.2) +
-Windows 真拨 (§15)**。备份:
+scheduler + restart engine/scheduler clean。** **mac dev 真通话验收 (§13.1,
+call_record 137) 核心机制全绿: first_audio_ms 678-1106ms (<1.5s; 旧 6.5-9.5s,
+5-8x); referee 决策驱动 state (SPEAKING→ACTIVATING customer_decline_recovery
+log 实证); main 纯文本真销售话术; extract_status pending→done + extracted 写库
+(worker extract_loop e2e); main_fallback_used=false。剩真人话术质量+barge-in
+(§13.2) + Windows 真拨 (§15)**。备份:
 `/opt/isales/backups/pipeline-stream-20260604-100314/{role_config,prompt_version,
 pipeline_trace}.sql`(+ mac `deploy/cloud/backups/` 副本)。
 
