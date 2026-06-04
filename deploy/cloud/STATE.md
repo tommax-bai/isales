@@ -1,6 +1,23 @@
 # cloud deployment — current state snapshot
 
-**Last updated**: 2026-06-04 10:10 CST — **pipeline-stream-and-referee
+**Last updated**: 2026-06-04 11:50 CST — **pipeline-latency-tail deployed**
+(感知延迟尾巴 A/B/C/D). 部署: scp 源码(editable install)→ ECS — common
+(`models/schemas/campaign.py` + 新 migration `d4e5f6a7b8c9`) / engine
+(`run_loop.py` producer-consumer + TTS 预合成, `tts_volcengine.py` 持久
+httpx client 连接复用, `asr_volcengine.py` partial_stable_s 0.7→0.4 可配,
+`runtime_config.py`+`factory.py`+`main.py` 透传 campaign.asr_eos_silence_ms,
+`transfer/manager.py` cheap/llm 拆分) / api (`schemas.py`
+CampaignNestedUpdate + asr_eos_silence_ms) / web (rebuild→`/var/www/isales-web/`).
+`alembic upgrade c3d4e5f6a7b8 → d4e5f6a7b8c9` (additive 一列 campaign.
+asr_eos_silence_ms INT NULL, 无破坏). 4 python 服务 restart: engine
+`credentials_loaded count=5 providers=['dashscope','volcengine']` +
+`isales_engine_started` clean ✓; api `Application startup complete` +
+`/campaigns` 401 + openapi 含 asr_eos_silence_ms ✓; SPA 200 ✓. **smoke-level
+绿; mac dev 真拨号体感验收 (句间空档 / EOS→首音频 / barge-in 不回归) 待跑
+(change tasks §9)**. 提交: common 063892c(0.5.1) / engine 0e8762e
+(branch fix/inbound-stereo-downmix-20260601) / api 76b1709 / web c0ac69b.
+
+Prior: 2026-06-04 10:10 CST — **pipeline-stream-and-referee
 deployed** (双 LLM 架构). 砍掉三层 PK/judge/polish 管线，改 main 流式 + referee
 旁路决策 + post-call extractor。部署: rsync 5 仓源码(editable install)→ ECS
 `/opt/isales/current/<repo>/`，`alembic upgrade a908d5971908 → c3d4e5f6a7b8`
