@@ -65,10 +65,10 @@
 
 - [~] 9.1 mac dev 跑真通话：量 EOS→首音频 + 句间空档 <!-- call_record 138 (2026-06-04 11:51), 8 轮真销售话术. 机制全绿: partial_stable thr=0.40 (§A); 每轮 3 句 TTS 在 ~0.5s 内连续起合=预合成重叠 (§B); tts_first_byte 274-588ms 持久连接 (§C). EOS→首音频 ≈ 1.4s (LLM TTFT ~700ms + TTS ~330ms). call_record.status 停在 init (dev-no-modem writeback 滞后, 同 call 137; 真值看 engine 日志) -->
 - [~] 9.2 对照基线确认改善 <!-- 机制层确认改善; 但见 9.3 体感主因落在 Non-Goal -->
-- [!] 9.3 barge-in + 端点 0.4 — **用户耳测: 有空档 + 打断没生效**。诊断: (a) barge-in = engine push_audio 整段灌 DingRTC SDK 外部音频缓冲, cancel engine task 不停已灌音 + SPEAKING 时入站被 AI 回灌主导(无 AEC) → ASR 听不见插话; 真因在 telephony/SDK 层 = **本 change 明确 Non-Goal**(不动 DingRTC 自环/VAD). (b) 空档主体是轮次空档(EOS→开口 ~1.4s), 大头 LLM TTFT 也是 **Non-Goal**(不换 main 模型做 TTFT). 我的改动未回归 barge-in (current_speaking_task cancel 链路保留+单测覆盖). 详见 [[project_pipeline_latency_tail_field_finding]] <!-- 体感主因=两条 Non-Goal, 各值独立 change -->
-- [ ] 9.4 校准 Q1/Q2/Q3 三档 <!-- 暂缓: 体感主因在范围外, Q1-Q3 微调收益有限, 待 barge-in/TTFT 专项后再校 -->
+- [!] 9.3 barge-in + 端点 0.4 — **用户耳测: 有空档 + 打断没生效**。**实证诊断 (call 138 日志)**: barge-in 失效真因 = **AI 说话整段(~9.7s)ASR 连接是关着的** —— `_partial_stability_monitor` 判完 EOS 后 `ws.close()`(6/01 Q-fix 跳 vendor 慢 finalize), `reconnect_after_clean_exit` 直到 AI 整轮说完(~10s)才触发。SPEAKING 期间没有活的 ASR 连接 → `partial_monitor` 收不到 partial → cancel 永不触发。纯 engine 侧 ASR 生命周期问题。**待挖**: close 后重连为何拖 ~10s。修法: EOS 后立即重连 / 不 close 改别法跳 finalize。（注: 早先归因"engine 灌 SDK 缓冲停不住 + AI 回灌无 AEC"已被实证**推翻** —— push_audio `_session.py:528` 已按 10ms 帧 ~real-time 节流; AI 说话时 `post_downmix_rms` 低、无回灌特征。）空档主体是轮次空档(EOS→开口 ~1.4s), 大头 LLM TTFT(doubao-pro-32k 无 thinking 参数)。 <!-- 真因=ASR 连接 SPEAKING 期间被关 -->
+- [ ] 9.4 校准 Q1/Q2/Q3 三档 <!-- 暂缓 -->
 
-> **§9 结论 (2026-06-04)**: A/B/C/D 机制层全部部署+验证生效。但用户真通话耳测体感主因 = barge-in 真打断 + LLM TTFT 轮次空档, 二者均为本 change 写明的 **Non-Goal**(telephony/SDK 层 + 换模型)。**archive 暂缓**, 等用户决定起 barge-in 专项 change / TTFT 专项 change / 还是先 archive 把主因转后续。
+> **§9 结论 (2026-06-04)**: A/B/C/D 机制层全部部署+验证生效。barge-in 失效**真因(实证)= SPEAKING 期间 ASR 连接被 EOS 的 ws.close() 关掉、~10s 才重连**(engine 侧, 可修)；空档大头是 LLM TTFT。早先"DingRTC 混音/回灌/AEC"归因已被 call 138 数据推翻、作废。**archive 暂缓**, 待用户定方向(ASR-重连专项 / TTFT 专项 / 固定话术缓存)。
 
 ## 10. 验证 + archive
 
