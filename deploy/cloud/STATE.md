@@ -1,6 +1,22 @@
 # cloud deployment — current state snapshot
 
-**Last updated**: 2026-06-04 11:50 CST — **pipeline-latency-tail deployed**
+**Last updated**: 2026-06-04 14:48 CST — **asr-speaking-ear-close-timeout +
+tts-cache-and-gated-filler deployed** (pipeline-latency-tail 的两个 followup).
+scp 源码 + `alembic d4e5f6a7b8c9 → e5f6a7b8c9d0`（additive `campaign.
+filler_delay_ms INT NULL`）。engine 改动：(1) `asr_volcengine` websocket
+`close_timeout=0.2`（旧库默认 10s）—— EOS-promote 后 ASR 重连不再阻塞 ~10s，
+SPEAKING 期间 ASR 保持在听，修 barge-in 失聪（call 138 实证根因；**非**早先被
+推翻的混音/AEC 理论）；(2) 新 `providers/tts_cache.py` `CachingTTSProvider` +
+进程级 `TtsCacheStore`（main.py 包装 per-call TTS）—— 固定话术 greeting/filler
+等命中零合成；(3) `run_loop._play_streaming` 时间门控垫词（首音频超
+`campaign.filler_delay_ms` NULL→600 才播缓存垫词）。4 python 服务 restart：
+engine `credentials_loaded count=5` + `isales_engine_started` clean；api openapi
+含 `filler_delay_ms`；SPA 200。提交：common 88335ee(0.5.2) / engine c520d81
+(branch fix/inbound-stereo-downmix-20260601) / api 4ea63e4 / web 8797db5。
+**barge-in + 缓存/垫词体感真机验收待跑**。**同时清理：DingRTC 混音/self-loopback/
+AEC barge-in 理论已从 engine 代码注释 + memory + docs 全删（call 138 实证证伪）。**
+
+Prior: 2026-06-04 11:50 CST — **pipeline-latency-tail deployed**
 (感知延迟尾巴 A/B/C/D). 部署: scp 源码(editable install)→ ECS — common
 (`models/schemas/campaign.py` + 新 migration `d4e5f6a7b8c9`) / engine
 (`run_loop.py` producer-consumer + TTS 预合成, `tts_volcengine.py` 持久

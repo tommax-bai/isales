@@ -12,9 +12,9 @@
 
 ## 3. 部署 + commit
 
-- [ ] 3.1 scp `asr_volcengine.py` → ECS `/opt/isales/current/isales-engine/...` + `systemctl restart isales-engine` + log clean（`isales_engine_started`）
-- [ ] 3.2 commit + push isales-engine（branch fix/inbound-stereo-downmix-20260601）
-- [ ] 3.3 更新 deploy/cloud/STATE.md（ASR close_timeout 0.2 + SPEAKING 期间重连）
+- [x] 3.1 scp `asr_volcengine.py` → ECS `/opt/isales/current/isales-engine/...` + `systemctl restart isales-engine` + log clean（`isales_engine_started`）
+- [x] 3.2 commit + push isales-engine（branch fix/inbound-stereo-downmix-20260601）
+- [x] 3.3 更新 deploy/cloud/STATE.md（ASR close_timeout 0.2 + SPEAKING 期间重连）
 
 ## 4. 真机验证（mac dev-no-modem 受控通话）
 
