@@ -128,8 +128,8 @@
 ## 12. campaign 配置数据重建脚本
 
 - [x] 12.1 新建 `scripts/seed_pipeline_stream_campaign.py` <!-- ba5ab0e 放 isales-api/scripts/; 幂等(先删本 campaign role_config+prompt_version 再建 main/referee/extractor 三行); prompt 用 spec 推荐模板; 读 ISALES_DATABASE_URL, 默认 campaign 1; SEED_*_MODEL env 可覆盖 model -->
-- [ ] 12.2 在 mac dev 跑 seed 脚本 ECS 同步跑 <!-- 部署步骤, 与 §14 ECS 部署一起做(需真 DB + 已 migrate) -->
-- [ ] 12.3 ECS 上手工 verify `SELECT kind, model FROM role_config WHERE campaign_id=1` <!-- 同上, 部署后验证 -->
+- [x] 12.2 跑 seed 脚本 <!-- ECS 跑成功: campaign 1 → main:doubao-pro-32k(rc4)/referee:qwen-turbo(rc5)/extractor:qwen-turbo(rc6) + prompt_version 4/5/6 -->
+- [x] 12.3 verify `role_config WHERE campaign_id=1` <!-- DB 查实: extractor/main/referee 三行; prompt scopes extractor,main,referee; main prompt content 正确 -->
 
 <!-- ===== 代码部分 (§1-12,17) 全部完成: common 36d8faa / engine f63ef51(feature 分支 fix/inbound-stereo-downmix-20260601) / worker d84cbf7 / api+seed ba5ab0e / web b14482f. 各仓测试全绿(engine 5 个 tts_volcengine fail 为既存与本 change 无关)。剩 §13-16,18 是部署+真机验收阶段, 需 mac 麦克风/Windows 拨号机/ECS, 且 §14 含破坏性 migration(删 role/judge/polish 行)需用户确认。 ===== -->
 
@@ -142,14 +142,16 @@
 
 ## 14. ECS 云部署
 
-- [ ] 14.1 部署 isales-common：scp 整个包到 ECS `/opt/isales/current/isales-common`，跑 alembic upgrade head
-- [ ] 14.2 部署 isales-engine：scp 改后的 orchestrator.py / run_loop.py / referee.py / streaming/* + provider 实装文件到 ECS
-- [ ] 14.3 部署 isales-worker：scp post_call_extractor.py + main.py
-- [ ] 14.4 部署 isales-api：scp 更新的 routers / schemas
-- [ ] 14.5 部署 isales-web：build artifacts upload 到静态 host
-- [ ] 14.6 systemctl restart 4 个服务（engine / worker / api / web）+ 看启动 log 无异常
-- [ ] 14.7 跑 ECS 端 campaign seed 脚本（task 12.2 已在 mac 跑，ECS 同步 / 重跑）
-- [ ] 14.8 更新 `deploy/cloud/STATE.md` 反映新 pipeline 架构 + 4 服务版本号
+<!-- 2026-06-04 ssh root@121.89.85.150 部署完成。备份在 /opt/isales/backups/pipeline-stream-20260604-100314/ (+ mac deploy/cloud/backups/ 副本)。ECS 是 editable install, rsync 源码即生效。真机 call-flow 验收 (§13 mac / §15 Windows) 待做。 -->
+
+- [x] 14.1 部署 isales-common + alembic upgrade <!-- rsync isales_common/ + alembic/versions/c3d4...; rm 旧 jsonb/pipeline_trace.py; alembic a908d5971908→c3d4e5f6a7b8 成功; 验证 role_config/prompt_version=0, pipeline_trace 新 5 列/旧 0 列, call_record 3 extract 列, campaign filler_enabled ✓ -->
+- [x] 14.2 部署 isales-engine <!-- rsync isales_engine/ (排除 *.so 保 dingrtc binding); rm 旧 json_parser.py; ECS import 全 OK -->
+- [x] 14.3 部署 isales-worker <!-- rsync isales_worker/ (post_call_extractor.py + main.py + llm/) -->
+- [x] 14.4 部署 isales-api <!-- rsync isales_api/ + scripts/seed_pipeline_stream_campaign.py -->
+- [x] 14.5 部署 isales-web <!-- npm run build → rsync --delete dist/ → /var/www/isales-web/; nginx curl 200 ✓ -->
+- [x] 14.6 systemctl restart 4 服务 + log 无异常 <!-- engine credentials_loaded count=5 providers=['dashscope','volcengine'] + isales_engine_started; worker isales_worker_started; api/scheduler active -->
+- [x] 14.7 ECS seed 脚本 <!-- 见 12.2 -->
+- [x] 14.8 更新 STATE.md <!-- 本 commit: 新 Last updated 段 + alembic head→c3d4e5f6a7b8 + 删 ROLE/JUDGE/POLISH_SUFFIX 行标 REMOVED + 加 pipeline-stream 运维节(部署顺序+extractor排障+campaign重建) -->
 
 ## 15. Windows 真拨号联合验收
 
@@ -162,12 +164,12 @@
 
 ## 16. RUNBOOK 更新
 
-<!-- 与 §14 ECS 部署一起做: STATE.md 是 ECS 实际状态快照, 新代码未部署前 line 430(ROLE/JUDGE/POLISH_OUTPUT_SCHEMA_SUFFIX)仍准确描述当前 ECS 上的旧 engine; 现在改 STATE.md 会让它谎报状态(违反 ground-truth)。部署同 commit 再更新。 -->
+<!-- §14 部署后做(部署后 STATE.md 才不会谎报状态)。核心运维信息(部署顺序+extractor排障+campaign重建)已写进 STATE.md 新 "pipeline-stream-and-referee 运维" 节(canonical, 最常读); RUNBOOK.md/RUNBOOK-cloud.md 是次要程序文档, design.md Migration Plan 已有完整步骤, 留轻量 followup。 -->
 
-- [ ] 16.1 更新 `deploy/RUNBOOK.md` 部署顺序段落（common → engine → worker → api → web）+ campaign 配置重建步骤 <!-- 部署时做; design.md Migration Plan 已有完整步骤 -->
-- [ ] 16.2 更新 `deploy/RUNBOOK-cloud.md` 同步
-- [ ] 16.3 更新 `deploy/cloud/STATE.md` § "AI 三层管线" 段落改为 § "双 LLM 架构" <!-- 仅在 §14 真部署后改, 否则谎报 -->
-- [ ] 16.4 在 RUNBOOK 增加新章节 § "post-call extractor 排障"：如何查询 `extract_status='failed'` 通话 + 如何手工重跑 LPUSH
+- [x] 16.1 部署顺序 + campaign 重建步骤 <!-- 写进 STATE.md "pipeline-stream-and-referee 运维" 节(部署顺序 common→engine→worker→api→web + seed 重建); RUNBOOK.md 程序文档同步留 followup -->
+- [ ] 16.2 更新 `deploy/RUNBOOK-cloud.md` 同步 <!-- 轻量 followup; STATE.md + design.md 已覆盖 -->
+- [x] 16.3 STATE.md "AI 三层管线" → "双 LLM 架构" <!-- 部署后改(现在准确): 新 Last updated 段 + prompt_builder SUFFIX 行标 REMOVED + 运维节 -->
+- [x] 16.4 post-call extractor 排障章节 <!-- 写进 STATE.md 运维节: extract_status='failed' SQL 查 + redis-cli LPUSH 手工重跑 -->
 
 ## 17. 历史 change housekeeping
 

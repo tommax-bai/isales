@@ -1,10 +1,25 @@
 # cloud deployment — current state snapshot
 
-**Last updated**: 2026-05-24 09:32 CST — **impl-provider-credential-db-ssot
+**Last updated**: 2026-06-04 10:10 CST — **pipeline-stream-and-referee
+deployed** (双 LLM 架构). 砍掉三层 PK/judge/polish 管线，改 main 流式 + referee
+旁路决策 + post-call extractor。部署: rsync 5 仓源码(editable install)→ ECS
+`/opt/isales/current/<repo>/`，`alembic upgrade a908d5971908 → c3d4e5f6a7b8`
+(破坏性: 删 role/judge/polish 行 + pipeline_trace 字段集换 main_*/referee_*/
+first_audio_ms)，seed 脚本重建 campaign 1 的 main(doubao-pro-32k)/referee
+(qwen-turbo)/extractor(qwen-turbo) 三 role_config + prompt_version，4 服务
+restart + web rebuild→`/var/www/isales-web/`。engine 启动
+`credentials_loaded count=5 providers=['dashscope','volcengine']` ✓; worker
+extract_loop ✓; nginx SPA 200 ✓。**真机 call-flow 验收 (首音频<1.5s / referee
+驱动 state / extractor 写入) 待 mac dev (§13) + Windows 真拨 (§15)**。备份:
+`/opt/isales/backups/pipeline-stream-20260604-100314/{role_config,prompt_version,
+pipeline_trace}.sql`(+ mac `deploy/cloud/backups/` 副本)。
+
+Prior: 2026-05-24 09:32 CST — **impl-provider-credential-db-ssot
 deployed**; provider 凭据从 env 切到 DB SSOT (provider_credential 表 Fernet
 加密)；engine startup 装载 `credentials_loaded count=2 providers=['volcengine']`
 ✓；env 4 个文件加 `ISALES_FERNET_KEY` 同值 + engine.env 删 VOLCENGINE 真值；
-alembic head a1b2c3d4e5f6 → b2c3d4e5f6a7。
+alembic head a1b2c3d4e5f6 → b2c3d4e5f6a7 (后又 → a908d5971908 campaign greeting,
+本次 → c3d4e5f6a7b8)。
 
 Prior: 2026-05-23 18:50 — **web-admin-campaign-workflow deployed**;
 campaign 进入客户面 4-entry top-nav，per-campaign 配置端点 (`/api/role-configs`
@@ -217,7 +232,9 @@ Service env files at `/etc/isales/env/{api,engine,scheduler,worker}.env`
 (root:isales 0640), mirrored from this repo's `deploy/cloud/env/*.env`. Each
 systemd unit has a `*.service.d/env.conf` drop-in pointing at its env file.
 
-Database schema: alembic head `b2c3d4e5f6a7` (advanced from `a1b2c3d4e5f6`
+Database schema: alembic head `c3d4e5f6a7b8` (advanced from `b2c3d4e5f6a7` →
+`a908d5971908` campaign greeting → `c3d4e5f6a7b8` pipeline-stream-and-referee
+on 2026-06-04). Prior `b2c3d4e5f6a7` (advanced from `a1b2c3d4e5f6`
 on 2026-05-24 by `impl-provider-credential-db-ssot §1.6` — 新建
 `provider_credential` 表，存 Fernet urlsafe-base64 cipher，UNIQUE
 `(provider_id, field_name)` + idx `provider_id`)。21 tables in `public`
@@ -427,7 +444,7 @@ Cross-link:
 - `memory/reference_artc_sdk.md` § "5 个 SDK 集成 gotcha" — DingRTC behavioural quirks
 - `isales-engine/isales_engine/providers/{tts_volcengine,asr_volcengine}.py` — V3 protocol impl
 - `isales-engine/isales_engine/run_loop.py` — `_partial_monitor` wall-clock elapsed + `_vad_monitor` ASR-bypass barge-in + VAD-corroboration (2026-05-28)
-- `isales-engine/isales_engine/pipeline/prompt_builder.py` — ROLE/JUDGE/POLISH_OUTPUT_SCHEMA_SUFFIX 强制 JSON schema (2026-05-28)
+- ~~`prompt_builder.py` — ROLE/JUDGE/POLISH_OUTPUT_SCHEMA_SUFFIX 强制 JSON schema (2026-05-28)~~ **REMOVED 2026-06-04 by pipeline-stream-and-referee**: main LLM 改纯文本流式，无 output-format suffix；referee 旁路 JSON 决策在 `isales_engine/referee.py`
 - `isales-telephony/scripts/mac_dev_no_modem_smoke.py` — reproducer
 
 ### PG-side runtime config (mutated 2026-05-28, NO commit — data-only)
@@ -761,6 +778,29 @@ ground truth.**
      (AT) + COM11 (audio SerialPcm) + ARTC pybind + cloud-edge gRPC
      client all wired through `main_windows.py` or `edge/main.py`
 7. **isales-web admin console deploy** — deferred until UX needs require it.
+
+## pipeline-stream-and-referee 运维 (2026-06-04)
+
+**部署顺序** (editable install, scp/rsync 源码即生效): common → engine → worker
+→ api → web。common 先跑 `alembic upgrade head`，再 seed campaign 配置，最后
+4 服务一起 restart（避免旧进程查到被删的 role 行）。详见 change `design.md`
+Migration Plan。
+
+**post-call extractor 排障**: engine 在 call 结束 LPUSH `isales:extract` +
+`call_record.extract_status='pending'`；worker `extract_loop` BLPOP 处理后置
+`'done'`(+`extracted`) 或 `'failed'`(+`extract_error`)，**失败不重 LPUSH**(防
+雪崩)。查失败通话:
+```sql
+SELECT id, extract_status, extract_error FROM call_record WHERE extract_status='failed';
+```
+手工重跑某通: `redis-cli LPUSH isales:extract '{"call_record_id":<id>,
+"transcript_snapshot":[...],"extractor_role_config_id":<id>,
+"extractor_prompt_version_id":<id>}'`（transcript_snapshot 从 call_record.
+transcript 取 dialog 事件）。
+
+**campaign 重建**: migration 删了所有 role/judge/polish 行；每个 campaign 需用
+`isales-api/scripts/seed_pipeline_stream_campaign.py <campaign_id>` 重建
+main/referee/extractor 三 role_config + prompt_version（或在 web admin 手建）。
 
 ## Bootstrap a new dev session — verify before asserting state
 
