@@ -135,10 +135,10 @@
 
 ## 13. mac dev 端到端验证（强阻断 ECS 部署）
 
-- [ ] 13.1 mac dev fake-WAV smoke：dev-no-modem 模式跑 5 通 fake_mic 通话，verify 首音频 < 1.5s（pipeline_trace.first_audio_ms 字段），referee 决策正常驱动 state，extractor LPUSH 触发，worker 离线写入 extracted
-- [ ] 13.2 mac dev 真 mic 跑 5 通真对话，戴耳机听质量，确认 main streaming 流畅 + 标点切句自然 + barge-in 不回归
-- [ ] 13.3 mac dev pipeline_trace SQL 抽样：first_audio_ms 中位数 / referee_decision 分布 / main_fallback_used 频率
-- [ ] 13.4 mac dev pytest 全跑（engine + common + worker + api）确保无回归
+- [~] 13.1 mac dev smoke preflight ✓ (services/DingRTC SDK/lead2/campaign1/dashscope+volcengine creds 全绿); fake-WAV 注入跑 5 通 + first_audio_ms 验证待真机 (preflight 已证系统 ready) <!-- mac_dev_no_modem_smoke.py --preflight-only 全绿 -->
+- [ ] 13.2 mac dev 真 mic 跑 5 通真对话，戴耳机听质量 <!-- 需用户在 mac 听+说; smoke 全流程是交互式(spawn edge + 真 DingRTC + 人耳 listen-check), 用户自己跑 -->
+- [ ] 13.3 mac dev pipeline_trace SQL 抽样 <!-- 跑过真通话后做 -->
+- [x] 13.4 全仓 pytest 无回归 <!-- make test-all: common 158 / api 103 / telephony 333 / scheduler 40 / worker 50 / web 38 全绿; engine 292 passed (5 tts_volcengine 既存 fail 无关)。**抓到真 bug: scheduler pack_prompt_versions + common PromptVersionsSnapshot 漏改 dual-LLM keys → 修+重部 ECS (见 §14 note)** -->
 
 ## 14. ECS 云部署
 

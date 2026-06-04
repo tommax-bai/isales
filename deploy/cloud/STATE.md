@@ -9,8 +9,13 @@ first_audio_ms)，seed 脚本重建 campaign 1 的 main(doubao-pro-32k)/referee
 (qwen-turbo)/extractor(qwen-turbo) 三 role_config + prompt_version，4 服务
 restart + web rebuild→`/var/www/isales-web/`。engine 启动
 `credentials_loaded count=5 providers=['dashscope','volcengine']` ✓; worker
-extract_loop ✓; nginx SPA 200 ✓。**真机 call-flow 验收 (首音频<1.5s / referee
-驱动 state / extractor 写入) 待 mac dev (§13) + Windows 真拨 (§15)**。备份:
+extract_loop ✓; nginx SPA 200 ✓。**§13.4 全仓 pytest 抓到漏改: scheduler
+`pack_prompt_versions` 仍引用 `RoleKind.ROLE`(已删)会 dispatch 崩 + common
+`PromptVersionsSnapshot` schema 漏改 → 补 `main_llm/referee_llm/extractor_llm`
+(commit common 1065c4f / scheduler abe6688), rsync 重部 common dial.py +
+scheduler + restart engine/scheduler clean。** **真机 call-flow 验收 (首音频
+<1.5s / referee 驱动 state / extractor 写入) 待 mac dev 真 mic (§13.2) +
+Windows 真拨 (§15)**。备份:
 `/opt/isales/backups/pipeline-stream-20260604-100314/{role_config,prompt_version,
 pipeline_trace}.sql`(+ mac `deploy/cloud/backups/` 副本)。
 
