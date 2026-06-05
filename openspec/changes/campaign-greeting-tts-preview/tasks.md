@@ -55,6 +55,9 @@
 
 <!-- 注: voice_model 表 + /voice-models CRUD + VoiceModelList 页 + voiceApi 暂保留不动(其它地方可能引用), 本 change 只是 campaign 不再 FK 它。 -->
 
+- [x] 4C.7 部署 ECS: scp common(model+schema+migration)+engine+api+web; `alembic upgrade head` e5f6a7b8c9d0→f6a7b8c9d0e1 (information_schema 确认 voice_id=varchar(128)); restart isales-api+isales-engine active 无 import error <!-- web bundle CampaignEdit-BWLpTz9D.js; STATE.md 部署日志已写; commits common f57e732/engine 71e6011/api 922db8e/web d058b93/meta d54f377 -->
+- [ ] 4C.8 浏览器验收: web 场景编辑「基础」tab 填音色 ID(如 zh_female_xiaohe_uranus_bigtts)+ 开场白 → 点试听播放; 真拨号验证该音色生效 <!-- 留用户; 服务端 tts-preview smoke 已绿(端点未变) -->
+
 ## 5. 部署 ECS
 
 - [x] 5.1 common 是 editable 安装(/opt/isales/current/isales-common)，scp 覆盖代码即生效，无需重装；httpx 0.28.1 已在共享 venv，新依赖满足 <!-- 单一共享 venv /opt/isales/current/venv; pip Editable project location 指向 current -->

@@ -427,7 +427,23 @@ observability scope opens.
 >    audio/wav + 76412 bytes + RIFF**（真 vendor 合成走共享 common provider）。
 > commits: common 2a127c5 / engine c109c61+1eb78b6 / api 7cf71a1 /
 > web 8b5b1ff / meta c5375c2.
-> Known follow-up: 浏览器内点「试听」播放 + 真拨号验证 §4B voice 接线仍欠。
+
+> **2026-06-05 (后续) — § 4C 音色改直填 speaker 串 (redeploy + migration):**
+> 用户决策放弃 ListSpeakers/AK-SK 路线，音色控件改文本框直填 vendor speaker；
+> `campaign.voice_id` 由 `BigInteger` FK(voice_model) 改为 `String(128)` 直存
+> speaker 串。
+> 1. scp common `{models/campaign.py, schemas/campaign.py, alembic/versions/
+>    f6a7b8c9d0e1_*}` + engine `runtime_config.py` + api `schemas.py` + web
+>    `dist/*`(bundle `CampaignEdit-BWLpTz9D.js`)。
+> 2. `alembic upgrade head`: **e5f6a7b8c9d0 → f6a7b8c9d0e1**(drop FK
+>    fk_campaign_voice_id_voice_model + alter voice_id → VARCHAR(128) USING
+>    NULL)。`information_schema` 确认 voice_id = character varying(128)。
+> 3. `systemctl restart isales-api isales-engine`；active，无 import error，
+>    engine `credentials_loaded count=5` + started。
+> engine runtime_config 现 `voice_speaker = campaign.voice_id or "default"`
+> (直用串，删 VoiceModel 查询)。commits: common f57e732 / engine 71e6011 /
+> api 922db8e / web d058b93 / meta d54f377.
+> Known follow-up: 浏览器内填音色 ID + 开场白 → 点「试听」播放；真拨号验证音色生效。
 
 ### Why PG 13 not PG 16
 
