@@ -408,6 +408,27 @@ observability scope opens.
 > mask preview 验证) 仍欠；HTTP layer / engine startup 装载日志确认
 > 后端链路 OK。
 
+> **2026-06-05 — campaign-greeting-tts-preview deploy (scp, editable):**
+> 1. scp `isales-common/isales_common/providers/{tts_volcengine.py(new),
+>    _errors.py}` → VolcengineTTSProvider + HTTP error mapping 下沉 common
+>    (engine + api 共用)；httpx 0.28.1 已在共享 venv，新依赖满足。
+> 2. scp engine `{providers/_errors.py(shim), providers/factory.py,
+>    runtime_config.py}`；`rm` 旧 engine `providers/tts_volcengine.py`；
+>    runtime_config 现解析 `campaign.voice_id → VoiceModel.voice_id`
+>    (此前硬编码 "default")。
+> 3. scp api `{routers/campaigns.py, schemas.py, common/wav.py(new)}` —
+>    新 `POST /campaigns/tts-preview`（开场白试听，无状态，返回 audio/wav）。
+> 4. scp `isales-web/dist/*` → `/var/www/isales-web/`（BasicTab 试听按钮，
+>    bundle `CampaignEdit-BaXYFyyZ.js`）。
+> 5. `systemctl restart isales-api isales-engine`；两服务 active，engine
+>    `credentials_loaded count=5` + `isales_engine_started` 无 import error。
+> 6. E2E smoke（铸 admin JWT 真调）：`POST /campaigns/tts-preview`
+>    {"您好，我是智联招聘的小雨", zh_female_xiaohe_uranus_bigtts} → **200 +
+>    audio/wav + 76412 bytes + RIFF**（真 vendor 合成走共享 common provider）。
+> commits: common 2a127c5 / engine c109c61+1eb78b6 / api 7cf71a1 /
+> web 8b5b1ff / meta c5375c2.
+> Known follow-up: 浏览器内点「试听」播放 + 真拨号验证 §4B voice 接线仍欠。
+
 ### Why PG 13 not PG 16
 
 `alinux3-updates` repo only carries `postgresql-13.23-2.0.1.al8`.

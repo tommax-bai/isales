@@ -43,17 +43,24 @@
 
 ## 5. 部署 ECS
 
-- [ ] 5.1 isales-common 发版后，engine/api 重装更新 pin（按 `[[feedback_ecs_deploy_scp]]` 走 scp 覆盖 + restart，不走 git pull）
-- [ ] 5.2 SCP 新 `runtime`/provider 文件到 ECS engine + api；`systemctl restart isales-engine isales-api`，journalctl 验证无 import error、`credentials_loaded` 正常
-- [ ] 5.3 构建 isales-web 产物 scp 到 `/var/www/isales-web/`（含 `BasicTab` 试听按钮）；浏览器硬刷确认按钮出现
-- [ ] 5.4 更新 `deploy/cloud/STATE.md`（若服务版本/pin 变化）
+- [x] 5.1 common 是 editable 安装(/opt/isales/current/isales-common)，scp 覆盖代码即生效，无需重装；httpx 0.28.1 已在共享 venv，新依赖满足 <!-- 单一共享 venv /opt/isales/current/venv; pip Editable project location 指向 current -->
+- [x] 5.2 SCP common(tts_volcengine.py 新 + _errors.py) + engine(_errors shim + factory + runtime_config) + api(campaigns + schemas + common/wav.py) 到 ECS；rm 旧 engine tts_volcengine.py + 清 pyc；`systemctl restart isales-api isales-engine` <!-- 两服务 active; engine credentials_loaded count=5 + isales_engine_started 无 import error; common 共享 provider import OK -->
+- [x] 5.3 web dist scp 到 `/var/www/isales-web/`；确认 CampaignEdit-BaXYFyyZ.js 含"选好「音色」后可试听" <!-- index.html 已覆盖指向新 bundle; 旧 BkidOE76 orphan 无害 -->
+- [x] 5.4 更新 `deploy/cloud/STATE.md`（tts-preview 端点 + provider 下沉）<!-- -->
 
 ## 6. 联合验收
 
-- [ ] 6.1 线上 web 进任一场景编辑「基础」tab，填开场白 + 选音色，点"试听"，浏览器应播放该句合成语音
-- [ ] 6.2 改音色后再试听，音色应随之变化；清空文案后按钮应 disabled
-- [ ] 6.3 改文案为 >200 字应被前端/后端拦下并给出可读提示
-- [ ] 6.4 ECS api log grep 试听端点一次合成，确认走共享 common provider（无 import error、无重复 vendor 客户端）
+- [x] 6.4 ECS 真调 endpoint(铸 admin JWT): POST /campaigns/tts-preview "您好，我是智联招聘的小雨" + zh_female_xiaohe_uranus_bigtts → **HTTP 200 + content-type audio/wav + 76412 bytes + 首字节 RIFF**，真 vendor 合成走共享 common provider，无 import error <!-- 服务端全链路实证 -->
+- [ ] 6.1 线上 web 进任一场景编辑「基础」tab，填开场白 + 选音色，点"试听"，浏览器应播放该句合成语音 <!-- 留用户在浏览器点; 服务端已实证返回真 WAV -->
+- [ ] 6.2 改音色后再试听，音色应随之变化；清空文案后按钮应 disabled <!-- 留用户 -->
+- [ ] 6.3 改文案为 >200 字应被前端/后端拦下并给出可读提示 <!-- 留用户; api 单测已覆盖 422 -->
+- [ ] 6.5 真拨号验证 engine voice 接线(§4B): campaign 设非 default 音色，真拨听到的应是该音色(与试听一致) <!-- 留 §6 真拨号; 无 DB 单测 harness -->
+
+<!-- 6.1-6.3 + 6.5 需真人浏览器/真拨号, 留用户; 6.4 服务端 smoke 已绿覆盖 api→common provider→vendor→WAV 全链 -->
+
+<!-- 全 5 仓部署 commit: common 2a127c5 / engine c109c61+1eb78b6 / api 7cf71a1 / web 8b5b1ff / meta c5375c2 -->
+
+- [ ] 6.6 `git -C ~/codes/isales-web push` 后续若动 dist 清理 orphan bundle（可选清理 BkidOE76）<!-- 低优先, 不影响功能 -->
 
 ## 7. Archive 准备
 
