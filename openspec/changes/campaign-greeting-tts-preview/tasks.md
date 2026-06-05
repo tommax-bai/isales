@@ -56,7 +56,8 @@
 <!-- 注: voice_model 表 + /voice-models CRUD + VoiceModelList 页 + voiceApi 暂保留不动(其它地方可能引用), 本 change 只是 campaign 不再 FK 它。 -->
 
 - [x] 4C.7 部署 ECS: scp common(model+schema+migration)+engine+api+web; `alembic upgrade head` e5f6a7b8c9d0→f6a7b8c9d0e1 (information_schema 确认 voice_id=varchar(128)); restart isales-api+isales-engine active 无 import error <!-- web bundle CampaignEdit-BWLpTz9D.js; STATE.md 部署日志已写; commits common f57e732/engine 71e6011/api 922db8e/web d058b93/meta d54f377 -->
-- [ ] 4C.8 浏览器验收: web 场景编辑「基础」tab 填音色 ID(如 zh_female_xiaohe_uranus_bigtts)+ 开场白 → 点试听播放; 真拨号验证该音色生效 <!-- 留用户; 服务端 tts-preview smoke 已绿(端点未变) -->
+- [x] 4C.9 修 IA gap: 开场白文案只在运营面 CampaignEdit(11-tab, 主 nav 到不了), 客户面 CampaignDetail(场景→详情, 用户实际用的页)缺开场白。给 CampaignDetail 补开场白 textarea + 试听按钮 + onSave PATCH greeting(空→null) + onRefresh load greeting <!-- web a2573be; dist scp ECS, CampaignDetail-Bm8jKwEZ.js 含"开场白文案"; 纯前端无后端改 -->
+- [ ] 4C.8 浏览器验收: 场景→详情页 填音色 ID(如 zh_female_xiaohe_uranus_bigtts)+ 开场白 → 点试听播放 + 保存; 真拨号验证音色+开场白生效 <!-- 留用户; 服务端 tts-preview smoke 已绿(端点未变) -->
 
 ## 5. 部署 ECS
 
