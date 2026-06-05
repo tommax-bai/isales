@@ -27,12 +27,16 @@
 
 ## 4. 验证与部署
 
+<!-- 单测 plays_pending_phrase_via_realtime_synth 已证 unblock；真机 e2e（开 dev campaign filler_enabled + 真拨确认日志出 filler event）待跑，需真实 edge+话机；DB 预检被 prod-read 权限拦下 -->
 - [ ] 4.1 在 dev campaign 上开 `filler_enabled=true`，跑 mac dev-no-modem e2e（或慢模型场景），确认日志出现 `filler` event 而非 `filler_skip_no_ready_phrase`
-- [ ] 4.2 engine SCP 覆盖 ECS + restart（参 `[[feedback_ecs_deploy_scp]]`）；web 发布
+<!-- engine: scp filler_manager.py 单文件(远端==pre-change baseline diff净) + restart clean; 部署文件含 p.text.strip()、GenerationStatus 全清。web: npm run build + scp dist + nginx reload, SPA 200。STATE.md 同步更新 -->
+- [x] 4.2 engine SCP 覆盖 ECS + restart（参 `[[feedback_ecs_deploy_scp]]`）；web 发布
 <!-- openspec validate --strict 通过 -->
 - [x] 4.3 `openspec validate filler-realtime-unblock-and-detail-toggle --strict` 通过
 
 ## 5. 回写与归档准备
 
-- [ ] 5.1 在本 tasks.md 用 HTML 注释回写各 task 的 PR#/commit/偏离说明
+<!-- engine 4d4a632 / web 5ad886b / meta fcd9e7d 已回写各 task 行 -->
+- [x] 5.1 在本 tasks.md 用 HTML 注释回写各 task 的 PR#/commit/偏离说明
+<!-- 等 4.1 真机 e2e 通过后 archive -->
 - [ ] 5.2 全 task 完成后准备 archive（合并 filler + web-admin-ui spec delta）

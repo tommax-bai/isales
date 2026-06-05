@@ -1,6 +1,22 @@
 # cloud deployment — current state snapshot
 
-**Last updated**: 2026-06-04 14:48 CST — **asr-speaking-ear-close-timeout +
+**Last updated**: 2026-06-05 16:27 CST — **filler-realtime-unblock-and-detail-toggle
+deployed** (engine + web). 真因：`filler_manager._pick_phrase` 选取门槛
+`generation_status==READY and audio_url` 是 stage-6 OSS 预录路径字段，v1.0 无 OSS /
+无 `regenerate_filler_audio` worker → `audio_url` 恒 NULL、`generation_status` 恒
+`pending` → 即使 `filler_enabled=true` 也每轮 `filler_skip_no_ready_phrase` 永不播。
+修法：选取改 `p.text.strip()`（仅要求文本非空），垫词走运行时实时 TTS + 进程缓存
+（`CachingTTSProvider` 已在，不依赖 OSS）；`audio_url`/`generation_status` 保留给
+stage-6。web：`CampaignDetail.vue` 基本信息卡加 filler 开关 + 触发延迟（原先只在运营
+编辑页 BasicTab）。部署：scp `filler_manager.py` 单文件覆盖（远端 == pre-change
+baseline，diff 干净）+ `systemctl restart isales-engine`（`cloud_edge_grpc_server_started`
++ `credentials_loaded count=5` + `isales_engine_started` clean）；web `npm run build` +
+scp dist + nginx reload（SPA 200）。提交：engine 4d4a632(branch
+fix/inbound-stereo-downmix-20260601) / web 5ad886b(main) / meta fcd9e7d(main)。
+**filler 真机 e2e（开 dev campaign filler_enabled + 真拨，确认日志出 `filler` event）
+待跑。**
+
+Prior: 2026-06-04 14:48 CST — **asr-speaking-ear-close-timeout +
 tts-cache-and-gated-filler deployed** (pipeline-latency-tail 的两个 followup).
 scp 源码 + `alembic d4e5f6a7b8c9 → e5f6a7b8c9d0`（additive `campaign.
 filler_delay_ms INT NULL`）。engine 改动：(1) `asr_volcengine` websocket
