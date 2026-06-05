@@ -39,6 +39,18 @@ sudo bash deploy/linux/scripts/install.sh v0.1.0
 
 # 4. Run schema migrations
 sudo bash deploy/linux/scripts/migrate.sh
+#    NOTE (engine-multi-referee-and-restructure, alembic a1b2c3d4e5f6): this
+#    migration auto-seeds multi-referee routing — each existing campaign's single
+#    referee gets label="main_judge", primary_referee_label is set, and an
+#    equivalent default routing_rules set (goal_achieved→WRAPPING_UP / transfer /
+#    customer_decline) is written so behavior stays unchanged. No manual seed
+#    needed. Verify post-upgrade: `SELECT id, primary_referee_label,
+#    jsonb_array_length(routing_rules) FROM campaign;` — every campaign that had
+#    a referee should show primary_referee_label='main_judge' and 3 rules.
+#    Campaigns created after the migration get their rules from the web
+#    「多流路由」tab. The one narrowing: the default goal_achieved rule pins
+#    goal_type='appointment' (the old referee chose it dynamically) — re-author
+#    per campaign if a different goal_type is needed.
 
 # 5. Switch the symlink + start services. First deploy will be outside the
 #    low-peak window — pass --force.

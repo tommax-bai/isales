@@ -1,13 +1,14 @@
-<!-- 本 delta 叠在 active change `pipeline-stream-and-referee` 引入的「main 流式 + 单 referee 旁路决策」之上。
-     下列 ADDED Requirements 把「单 referee」升级为「多 referee 并行 + 路由规则引擎」并新增「重组流」，
-     supersede pipeline-stream-and-referee 的 § "referee LLM 二级决策" 单 referee 行为。
-     实施顺序见 design.md Migration Plan：pipeline-stream-and-referee 先 archive，再实施本 change。 -->
+<!-- 本 delta 叠在已 archive 的 `pipeline-stream-and-referee` 引入的「main 流式 + 单 referee 旁路决策」之上。
+     base spec 已含 § "referee LLM 二级决策"（单 referee、输出 {decision, goal_type, confidence}）——
+     故「单 referee → N referee 并行」用 MODIFIED 改写该既有需求；
+     路由规则引擎 / 重组流 / InterruptText 来源 / 连续封顶为全新能力，用 ADDED。
+     实施顺序见 design.md Migration Plan。 -->
 
-## ADDED Requirements
+## MODIFIED Requirements
 
-### Requirement: 多 referee 并行决策
+### Requirement: referee LLM 二级决策
 
-每一轮 PROCESSING SHALL 支持 N 个（N ≥ 1）referee LLM 并行决策（替代单 referee）。engine MUST 在 PROCESSING 入口用 `asyncio.gather` 同时 spawn 所有 enabled 的 `kind=referee` role_config，与 main LLM streaming 并行，MUST NOT 串行或互相等待。每个 referee 独立 system prompt、独立输出分类枚举语义、独立 fail-open，engine MUST NOT 硬编码任何 referee 的枚举值。
+每一轮 PROCESSING SHALL 支持 N 个（N ≥ 1）referee LLM 并行决策（替代原单 referee）。engine MUST 在 PROCESSING 入口用 `asyncio.gather` 同时 spawn 所有 enabled 的 `kind=referee` role_config，与 main LLM streaming 并行，MUST NOT 串行或互相等待，MUST NOT 因等待任一 referee 阻塞 main 主链路。每个 referee 拥有独立 system prompt、独立输出分类枚举语义、独立 fail-open，engine MUST NOT 硬编码任何 referee 的枚举值。referee 调用 MUST 用 `chat(json_mode=True)`（非流式），便宜小模型（如 qwen-turbo / gpt-4o-mini / doubao-lite），典型延迟 ≤ 500ms。referee 的输出契约见 § "referee 输出契约（category + confidence）"，下游消费见 § "路由规则引擎（decider）"。
 
 #### Scenario: N 个 referee 并行 spawn
 
@@ -25,9 +26,11 @@
 - **WHEN** 某个 referee LLM 超时 / 返回非法输出 / confidence < 阈值
 - **THEN** engine MUST 将该 referee 视为「无 category 输出」（不命中任何规则），MUST NOT 抛异常阻塞通话，其他 referee 结果照常参与决策
 
+## ADDED Requirements
+
 ### Requirement: referee 输出契约（category + confidence）
 
-每个 referee LLM SHALL 输出严格 JSON `{category, confidence}`，其中 `category` 是该 referee prompt 自定义的分类字符串（闭集枚举，语义由 prompt 定义），`confidence ∈ [0, 1]`。engine MUST NOT 在 referee 输出中要求 `goal_type`——`goal_type` 由路由规则的 `goal_achieved` action 携带（见 § 路由规则引擎）。
+每个 referee LLM SHALL 输出严格 JSON `{category, confidence}`，其中 `category` 是该 referee prompt 自定义的分类字符串（闭集枚举，语义由 prompt 定义），`confidence ∈ [0, 1]`。engine MUST NOT 在 referee 输出中要求 `goal_type`——`goal_type` 由路由规则的 `goal_achieved` action 携带（见 § 路由规则引擎）。此契约替代原单 referee 的 `{decision, goal_type, confidence}` 强语义输出。
 
 #### Scenario: referee 输出被规则引擎消费
 

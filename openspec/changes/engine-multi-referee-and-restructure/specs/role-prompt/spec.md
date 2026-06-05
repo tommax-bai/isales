@@ -1,10 +1,12 @@
-<!-- 叠在 pipeline-stream-and-referee 的 referee prompt 规范之上：把「单 referee prompt」扩为「每个 referee 独立 prompt + 独立枚举语义」，并新增 restructure/rewrite prompt 规范。 -->
+<!-- base spec 已含 § "referee prompt 内容规范"（单 referee、固定 4 decision 枚举）。
+     本 delta 用 MODIFIED 把它扩为「每个 referee 独立 prompt + 独立闭集枚举（category）」；
+     restructure/rewrite prompt 规范为全新内容，用 ADDED。 -->
 
-## ADDED Requirements
+## MODIFIED Requirements
 
-### Requirement: 每个 referee 独立 prompt 与独立枚举语义
+### Requirement: referee prompt 内容规范
 
-每个 `kind=referee` 的 role_config SHALL 拥有独立的 system prompt，prompt 内 MUST 显式定义该 referee 输出的闭集分类枚举（category 取值集合）及每个取值的语义。不同 referee 的枚举集合互不相关，engine 不解释其语义。referee prompt MUST 约束 LLM 输出严格 JSON `{category, confidence}` 且 `category` ∈ 该 prompt 定义的闭集。
+每个 `kind=referee` 的 role_config SHALL 拥有独立的 system prompt，prompt 内 MUST 显式定义该 referee 输出的闭集分类枚举（category 取值集合）及每个取值的语义。不同 referee 的枚举集合互不相关，engine 不解释其语义。referee prompt MUST 约束 LLM 输出严格 JSON `{category, confidence}` 且 `category` ∈ 该 prompt 定义的闭集，MUST 指示「只输出枚举集合内的一个 category，不得自创取值，不输出解释/markdown」。referee prompt 输入变量遵循既有约定（`{{user_last_utterance}}` + `{{recent_dialog_history}}`，渲染规则见下）。
 
 #### Scenario: 单职责 referee prompt
 
@@ -16,6 +18,18 @@
 
 - **WHEN** referee LLM 被调用
 - **THEN** prompt MUST 指示「只输出枚举集合内的一个 category，不得自创取值，不输出解释/markdown」
+
+#### Scenario: prompt 输入填充
+
+- **WHEN** engine 调 referee LLM
+- **THEN** engine MUST 替换 `{{user_last_utterance}}` 为最新 ASR 文本；MUST 替换 `{{recent_dialog_history}}` 为最近 ≤ 3 轮（少于 3 轮取全部）按 `用户：xxx / AI：xxx` 格式拼接
+
+#### Scenario: dialog_history 为空
+
+- **WHEN** session 处于首轮（dialog_history 为空 / 只有 greeting）
+- **THEN** `{{recent_dialog_history}}` MUST 渲染为 `（首轮对话，无历史）` 占位字符串；MUST NOT 留空
+
+## ADDED Requirements
 
 ### Requirement: restructure / rewrite prompt 内容规范
 
