@@ -11,7 +11,7 @@
 | Capability | 文件 | 简介 |
 |---|---|---|
 | 状态机 | [`call-state-machine`](openspec/specs/call-state-machine/spec.md) | 通话生命周期状态集合与转换规则 |
-| AI 三层管线 | [`ai-pipeline`](openspec/specs/ai-pipeline/spec.md) | N 角色 PK + N×M 裁判 + 1 润色 |
+| AI 管线 | [`ai-pipeline`](openspec/specs/ai-pipeline/spec.md) | 双 LLM 流式：main 流式回复 + referee 旁路决策 + post-call extractor |
 | 角色 Prompt | [`role-prompt`](openspec/specs/role-prompt/spec.md) | Prompt 组装结构、JSON Mode、版本管理 |
 | 目标达成 | [`goal-achievement`](openspec/specs/goal-achievement/spec.md) | 实时判定 + WRAPPING_UP 收尾 |
 | 打断判定 | [`interruption-detection`](openspec/specs/interruption-detection/spec.md) | 白名单 + 时长双条件，不可撤销 |
@@ -25,6 +25,9 @@
 |---|---|---|
 | Transcript | [`transcript`](openspec/specs/transcript/spec.md) | 事件流 + dialog_history 双集合 + pipeline_trace |
 | Webhook 回调 | [`webhook-callback`](openspec/specs/webhook-callback/spec.md) | JsonLogic trigger + Jinja2 payload + HMAC 签名 |
+| 消息契约 | [`message-contract`](openspec/specs/message-contract/spec.md) | 跨服务消息体集中定义在 isales-common + 版本字段 + 通道矩阵覆盖 |
+| Provider ABC | [`provider-abc`](openspec/specs/provider-abc/spec.md) | ASR/TTS/LLM 异步流式接口抽象，集中定义在 isales-common |
+| Provider 凭据 | [`provider-credential`](openspec/specs/provider-credential/spec.md) | 凭据 DB 单一事实来源 + Fernet 加密 + provider_credential 表 |
 
 ## 调度与生命周期
 
@@ -32,15 +35,18 @@
 |---|---|---|
 | 重试与跟进 | [`retry-followup`](openspec/specs/retry-followup/spec.md) | 指数退避重试 + 固定间隔跟进 + 勿打识别 |
 | 时间窗口 | [`time-window`](openspec/specs/time-window/spec.md) | Campaign 多窗口 + 节假日 + 窗外推迟 |
+| 预约 | [`appointment`](openspec/specs/appointment/spec.md) | Appointment 数据模型 + 状态机 + 与 Lead 状态联动 |
 
 ## 基础设施
 
 | Capability | 文件 | 简介 |
 |---|---|---|
-| 总体架构 | [`architecture`](openspec/specs/architecture/spec.md) | 7 仓库 + 单主机部署 |
-| 硬件层 | [`device-hardware`](openspec/specs/device-hardware/spec.md) | USB GSM Modem 自研控制层 |
+| 总体架构 | [`architecture`](openspec/specs/architecture/spec.md) | 7 仓库 + 云-边拆分部署（5 服务上云 + 2 组件留边） |
+| 部署拓扑 | [`deployment-topology`](openspec/specs/deployment-topology/spec.md) | 云端 ECS systemd 5 units + 边缘 2 units + 端口 / 环境变量契约 |
+| 硬件层 | [`device-hardware`](openspec/specs/device-hardware/spec.md) | USB GSM Modem 自研控制层 + audio-bridge（DingRTC ↔ modem 桥接） |
 | 数据模型 | [`data-model`](openspec/specs/data-model/spec.md) | 全表清单 + 归属服务 |
-| 服务通信 | [`service-communication`](openspec/specs/service-communication/spec.md) | 通信通道矩阵 |
+| 服务通信 | [`service-communication`](openspec/specs/service-communication/spec.md) | 通信通道矩阵 + 云-边 gRPC 控制面 |
+| Web 管理面 | [`web-admin-ui`](openspec/specs/web-admin-ui/spec.md) | 客户面 / 运营面 view 清单 + 已 spec 能力的 UI 暴露 |
 
 ## 实施计划
 

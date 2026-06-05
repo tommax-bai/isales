@@ -1,6 +1,6 @@
 ## Purpose
 
-定义 AI 三层并行管线：N 个角色 LLM 并行 PK → N×M 个裁判 LLM 并行审查 → 1 个润色 LLM 选优拟人化。本规范覆盖管线编排、JSON 输出契约、失败兜底、降级路径。每一轮对话回复都 SHALL 走完整三层管线（除特殊状态外）。
+定义 AI 双 LLM 流式管线：每一轮对话由 **main LLM 流式输出纯文本回复**（token → 句界 → TTS chunk）+ **referee LLM 旁路输出决策枚举** 并行驱动，通话结束后由 **post-call extractor** 异步抽取结构化字段。本规范覆盖管线编排、流式与一次性 fallback、referee fail-open、pipeline_trace 落库契约。旧的 N 角色 PK → N×M 裁判 → 1 润色三层串联架构已废弃（背景见 archived change `pipeline-stream-and-referee`）。
 ## Requirements
 ### Requirement: 开场白不走管线
 

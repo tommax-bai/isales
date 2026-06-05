@@ -12,7 +12,7 @@ v1.0 SHALL 采用**云-边双套部署**：5 个软件服务（api / engine / sc
 #### Scenario: 边缘组件部署
 
 - **WHEN** v1.0 投产
-- **THEN** 边缘机（macOS Mac mini 或 Windows PC，平台后端归 D1）SHALL 运行 `isales-telephony` 单一 entry point 进程，进程内含两个 asyncio task：modem-controller（AT 命令 / PCM 设备 IO）与 audio-bridge（阿里 ARTC SDK 客户端 / 与 modem-controller 的环形 buffer 桥接）；MUST NOT 在边缘机部署 api / engine / scheduler / worker / web / DB / Redis 任何之一
+- **THEN** 边缘机（macOS Mac mini 或 Windows PC，平台后端归 D1）SHALL 运行 `isales-telephony` 单一 entry point 进程，进程内含两个 asyncio task：modem-controller（AT 命令 / PCM 设备 IO）与 audio-bridge（DingRTC SDK 客户端 / 与 modem-controller 的环形 buffer 桥接）；MUST NOT 在边缘机部署 api / engine / scheduler / worker / web / DB / Redis 任何之一
 
 #### Scenario: 不引入容器编排
 
@@ -32,10 +32,10 @@ v1.0 SHALL 采用**云-边双套部署**：5 个软件服务（api / engine / sc
 |---|---|---|---|
 | isales-common | SQLAlchemy 模型 / Pydantic Schemas / Provider ABC（ASR/TTS/LLM）/ Alembic 迁移 / utils / **proto 定义 cloud_edge.proto 与编译产物** / **cloud-edge transport 抽象** | 小 | 共享库 |
 | isales-api | 管理后台 CRUD（Campaign/Lead/Role/Voice/Analytics/Callback）+ WS 代理 | 中 | 云端 |
-| isales-engine | 实时通话引擎：状态机 / AI 三层管线 / 打断/沉默/垫词 / ASR/TTS/LLM Provider 实现 / **阿里 ARTC SDK server-side 入会 / cloud-edge gRPC server** | 大 | 云端 |
+| isales-engine | 实时通话引擎：状态机 / AI 双 LLM 流式管线（main 流式 + referee 旁路 + post-call extractor）/ 打断/沉默/垫词 / ASR/TTS/LLM Provider 实现 / **DingRTC SDK server-side 入会 / cloud-edge gRPC server** | 大 | 云端 |
 | isales-scheduler | 线索分发 / 时间窗口 / 重试与跟进 / 拨打前打包历史摘要；**dial 指令经 engine 的 cloud-edge gRPC 控制面下发** | 小 | 云端 |
 | isales-worker | 通话结束后的摘要 / 字段提取 / Webhook 回调 / 数据聚合 | 中 | 云端 |
-| isales-telephony | 单一边缘进程，asyncio 任务组：modem-controller（AT 命令 / PCM 设备 IO / udev / pyserial polling）+ audio-bridge（阿里 ARTC SDK 客户端 / PCM 重采样 / 与 modem-controller 同进程环形 buffer 桥接）+ cloud-edge gRPC client + 本地 SQLite 离线 buffer；保留 telephony-api HTTP 入口仅服务边缘本地的设备查询 / 运维 | 中 | **边缘** |
+| isales-telephony | 单一边缘进程，asyncio 任务组：modem-controller（AT 命令 / PCM 设备 IO / udev / pyserial polling）+ audio-bridge（DingRTC SDK 客户端 / PCM 重采样 / 与 modem-controller 同进程环形 buffer 桥接）+ cloud-edge gRPC client + 本地 SQLite 离线 buffer；保留 telephony-api HTTP 入口仅服务边缘本地的设备查询 / 运维 | 中 | **边缘** |
 | isales-web | Vue 3 前端（任务/线索/角色/音色/设备/数据看板/通话监控） | 中 | 云端（nginx 反代） |
 
 #### Scenario: 跨仓库职责重叠
