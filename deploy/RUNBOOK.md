@@ -39,7 +39,7 @@ sudo bash deploy/linux/scripts/install.sh v0.1.0
 
 # 4. Run schema migrations
 sudo bash deploy/linux/scripts/migrate.sh
-#    NOTE (engine-multi-referee-and-restructure, alembic a1b2c3d4e5f6): this
+#    NOTE (engine-multi-referee-and-restructure, alembic a7b8c9d0e1f2): this
 #    migration auto-seeds multi-referee routing — each existing campaign's single
 #    referee gets label="main_judge", primary_referee_label is set, and an
 #    equivalent default routing_rules set (goal_achieved→WRAPPING_UP / transfer /
