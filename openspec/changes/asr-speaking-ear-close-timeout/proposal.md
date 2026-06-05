@@ -1,3 +1,10 @@
+<!-- SUPERSEDED 2026-06-05 by `asr-vendor-packet-cadence`. close_timeout 理论已被
+实证推翻：`close_timeout=0.2` 真机 call 141/142 把 ASR recv loop wedge 掉、更差，
+已 revert engine 回 53742b8。当前部署代码已删 per-turn `ws.close`、改单条持久连接 +
+vendor `end_window_size` 切句，「连接被关」在线上不存在。ASR finalize 尾延迟真因是
+发包粒度违反 vendor 规格（10ms vs 100-200ms），见 `asr-vendor-packet-cadence`。本
+change 不实装、待 archive 作废。详见 [[project_pipeline_latency_tail_field_finding]]。 -->
+
 ## Why
 
 用户在 mac dev 真通话（`call_record 138`, 2026-06-04）实测「AI 说话时打不断」。`pipeline-latency-tail` 把首音频降下来了，但 barge-in 在 AI 说话期间完全不触发。
