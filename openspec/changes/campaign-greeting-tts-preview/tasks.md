@@ -41,6 +41,20 @@
 - [x] 4B.2 engine ruff + 全 pytest 无回归 <!-- ruff All checks passed; 314 passed (campaign.voice_id NULL 时 guard 跳过查询, 现有 mock 测试不受影响) -->
 - [x] 4B.3 spec delta：ai-pipeline 加 ADDED "引擎按 campaign 选定音色合成" <!-- voice-resolution 单测无现成 DB harness, 由 §6 真拨号验收覆盖 -->
 
+## 4C. 音色改为直填 speaker 字符串（用户决策：不用 ListSpeakers/不入库，文本框直填）
+
+<!-- 用户最终决策：音色列表实时拉/AK-SK 路线放弃；音色控件改文本框直填 vendor
+     speaker 串, campaign 直存该串。返工 §4(下拉) + §4B(FK 解析)。 -->
+
+- [x] 4C.1 isales-common: `Campaign.voice_id` `BigInteger` FK → `String(128)`(model) + CampaignBase/Update schema `int|None`→`str|None`(max 128) <!-- model + 2 schema 改; ForeignKey import 仍被 prompt_version FK 用, 不删 -->
+- [x] 4C.2 alembic migration `f6a7b8c9d0e1_campaign_voice_id_to_string`: drop FK `fk_campaign_voice_id_voice_model`(naming_convention) + alter type→VARCHAR(128) `USING NULL`; downgrade 反向 <!-- 本地 dev PG upgrade+downgrade+upgrade roundtrip 全过; head=f6a7b8c9d0e1 -->
+- [x] 4C.3 isales-engine: runtime_config 简化为 `voice_speaker = campaign.voice_id or "default"`, 删 VoiceModel import + db.get 查询(返工 §4B) <!-- ruff 过; 314 passed -->
+- [x] 4C.4 isales-api: CampaignNestedUpdate.voice_id `int|None`→`str|None`(max 128); tts-preview 端点不变(本就收 voice_id:str) <!-- 15 passed -->
+- [x] 4C.5 isales-web: BasicTab + CampaignDetail 音色 `el-select`→`el-input`(占位示例 speaker 串); 试听直接发 form.voice_id 串(删 VoiceModel id→speaker 解析 + voices 加载); types CampaignBase.voice_id number→string <!-- vue-tsc + build 绿; voiceApi/VoiceModel import 清理 -->
+- [x] 4C.6 data-model spec delta: ADDED "campaign.voice_id 持有 vendor speaker 字符串"; ai-pipeline delta 改为 speaker 串直用 <!-- -->
+
+<!-- 注: voice_model 表 + /voice-models CRUD + VoiceModelList 页 + voiceApi 暂保留不动(其它地方可能引用), 本 change 只是 campaign 不再 FK 它。 -->
+
 ## 5. 部署 ECS
 
 - [x] 5.1 common 是 editable 安装(/opt/isales/current/isales-common)，scp 覆盖代码即生效，无需重装；httpx 0.28.1 已在共享 venv，新依赖满足 <!-- 单一共享 venv /opt/isales/current/venv; pip Editable project location 指向 current -->
