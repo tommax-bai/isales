@@ -155,35 +155,18 @@ WRAPPING_UP 期间 engine SHALL 在 main system prompt 末尾追加预定义指�
 
 ### Requirement: referee prompt 内容规范
 
-referee LLM system prompt SHALL 严格指定输出 JSON schema + 决策枚举语义。MUST 显式说明 4 个 decision 枚举各自的判定标准（避免小模型误判）。
+每个 `kind=referee` 的 role_config SHALL 拥有独立的 system prompt，prompt 内 MUST 显式定义该 referee 输出的闭集分类枚举（category 取值集合）及每个取值的语义。不同 referee 的枚举集合互不相关，engine 不解释其语义。referee prompt MUST 约束 LLM 输出严格 JSON `{category, confidence}` 且 `category` ∈ 该 prompt 定义的闭集，MUST 指示「只输出枚举集合内的一个 category，不得自创取值，不输出解释/markdown」。referee prompt 输入变量遵循既有约定（`{{user_last_utterance}}` + `{{recent_dialog_history}}`，渲染规则见下）。
 
-```
-你是销售外呼对话的决策助手。基于"用户最后一句话"+ 最近 3 轮对话历史，判断本轮对话状态。
+#### Scenario: 单职责 referee prompt
 
-【输入】
-用户最后一句话：{{user_last_utterance}}
-最近 3 轮对话：
-{{recent_dialog_history}}
+- **WHEN** campaign 配置一个「拒绝识别」referee
+- **THEN** 其 prompt SHALL 定义闭集如 `OFFENSIVE / REJECT / OPERATOR / NEUTRAL` 并逐项说明语义，要求 LLM 只输出其一
+- **AND** 另一个「意图有效性」referee 的 prompt 独立定义 `POSITIVE / NEGATIVE`，两者枚举不共享
 
-【输出 JSON】
-{
-  "decision": "continue" | "goal_achieved" | "customer_decline" | "transfer",
-  "goal_type": "appointment" | "sale" | "callback" | null,
-  "confidence": 0.0~1.0
-}
+#### Scenario: referee prompt 强制闭集输出
 
-【枚举语义】
-- continue: 客户在正常对话中（包括犹豫 / 询问细节），不需要状态切换
-- goal_achieved: 客户明确同意了外呼目标（成交 / 约见 / 同意回访）。goal_type 必填
-- customer_decline: 客户明确拒绝或表达强烈反感
-- transfer: 客户主动要求转人工
-
-【confidence 评分】
-- 你的判断越确定，confidence 越接近 1.0
-- 模棱两可时给低分；< 0.7 系统会忽略你的决策走 continue
-
-只输出 JSON，不要任何解释。
-```
+- **WHEN** referee LLM 被调用
+- **THEN** prompt MUST 指示「只输出枚举集合内的一个 category，不得自创取值，不输出解释/markdown」
 
 #### Scenario: prompt 输入填充
 
@@ -231,6 +214,20 @@ extractor LLM 在 worker 服务中跑（post-call 异步），输入 = 完整 tr
 
 - **WHEN** engine LPUSH extract 任务
 - **THEN** `transcript_snapshot` payload MUST 是 dialog_history 的序列化（每个 entry `{role, text, ts_ms}`），由 worker 端按 `用户：xxx / AI：xxx` 渲染入 extractor prompt 的 `{{transcript}}` 占位
+
+### Requirement: restructure / rewrite prompt 内容规范
+
+`kind=restructure` 的 role_config prompt SHALL 是「对话包装/重写」指令：把输入文本用更口语化的方式重新组织、可调整语序与用词、MUST NOT 改变原意与目的、SHOULD 在开头加自然过渡衔接词、MUST NOT 输出 markdown/emoji/解释。restructure prompt 的输入是 InterruptText（单条文本），prompt MUST NOT 假设能看到对话历史。
+
+#### Scenario: restructure prompt 重组而不改意
+
+- **WHEN** restructure LLM 收到 InterruptText（上一句 AI 要点或被打断残留）
+- **THEN** prompt SHALL 指示「用口语化方式重新表达这句话，可换语序/用词、开头加过渡词，但不得更改含义或目的，直接输出结果」
+
+#### Scenario: restructure prompt 不依赖历史
+
+- **WHEN** 编写 restructure prompt
+- **THEN** prompt MUST NOT 引用「对话历史」「用户上一句」等上下文变量，因 engine 只喂单条 InterruptText
 
 ## Data Schema
 
