@@ -7,7 +7,8 @@
 - 在 web 场景编辑「基础」tab 的"开场白文案"输入框旁新增**「试听」按钮**：填了文案 + 选了音色后点击，浏览器当场播放这句话的合成语音。
 - isales-api 新增 `POST /campaigns/tts-preview`：入参 `{text, voice_id}`，用现有 `provider_credential` 凭据现合成 TTS（PCM）→ 封装为浏览器可播的 `audio/wav` → 返回。无状态、不落库、不上 OSS。
 - **TTS 真实实现（volcengine V3 SSE）从 isales-engine 下沉到 isales-common**，使 engine 与 api 共用同一份合成实现，避免在 api 侧重复实现一遍 vendor 协议。engine 改为从 isales-common 导入，对外行为不变。
-- 不改 engine 的开场白播放路径、不做预生成 / 持久化 / 启动预热——本 change 只交付"试听"这一只读反馈能力。
+- **引擎接线 campaign 选定音色**：`runtime_config` 此前硬编码 `voice_id="default"`，从不消费 `campaign.voice_id`；改为解析 `campaign.voice_id`（VoiceModel 外键）→ `VoiceModel.voice_id`（vendor speaker），使真实通话发音与 web 试听一致。NULL / 缺失回落默认 speaker。
+- 不做预生成 / 持久化 / 启动预热——试听是只读现合成能力。
 
 ## Capabilities
 
@@ -17,6 +18,7 @@
 ### Modified Capabilities
 - `web-admin-ui`: 新增"开场白文案试听"交互要求——管理端 SHALL 允许在保存前对当前文案 + 音色现合成并播放预览。
 - `provider-abc`: 放宽"真实实现仅在 isales-engine"的约束——被 engine 与 api 共用的 TTS 真实实现 SHALL 下沉到 isales-common，供两端从共享 `CredentialStore` 构建。
+- `ai-pipeline`: 新增"引擎按 campaign 选定音色合成"要求——引擎 SHALL 解析 `campaign.voice_id` → VoiceModel speaker 并用于播音（此前硬编码 default）。
 
 ## Impact
 

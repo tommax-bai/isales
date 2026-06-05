@@ -32,11 +32,14 @@
 - [x] 4.4 视觉：el-button size=small + .preview-row/.preview-hint，沿用既有 .hint 灰字风格 <!-- -->
 - [x] 4.5 跑 lint + build <!-- eslint EXIT 0; vite build 4.69s 成功, CampaignEdit chunk 36.19kB 含改动 -->
 
-<!-- 实施中发现 (留给用户/后续): engine runtime_config.py:295 硬编码 voice_id="default",
-     根本没把 campaign.voice_id(int FK)→VoiceModel.voice_id(vendor speaker) 解析喂给 TTS。
-     即真实通话目前一律用 default 音色(xiaohe), campaign 选的音色未被引擎消费。
-     本 change 的试听用所选音色现合成 → 试听能听到不同音色, 但与引擎当前实际播音(default)
-     不一致。这是独立的预存 gap, 不在本 change 范围; 建议另起 change 把 voice_id 接进 runtime_config。 -->
+## 4B. isales-engine：campaign voice_id 接线（本 session 追加，用户要求并入）
+
+<!-- 实施中发现: engine runtime_config.py 原硬编码 voice_id="default", 从不消费
+     campaign.voice_id → 真实通话一律 default 音色, 与试听不一致。用户选择并入本 change 修。 -->
+
+- [x] 4B.1 `runtime_config.py` import `VoiceModel`；用 `campaign.voice_id`(int FK) `await db.get(VoiceModel, id)` 解析出 `VoiceModel.voice_id`(vendor speaker)，return 时 `voice_id=voice_speaker` 替代硬编码 "default" <!-- NULL / VoiceModel 不存在 → 回落 "default"(provider 映射默认 speaker), 不抛错 -->
+- [x] 4B.2 engine ruff + 全 pytest 无回归 <!-- ruff All checks passed; 314 passed (campaign.voice_id NULL 时 guard 跳过查询, 现有 mock 测试不受影响) -->
+- [x] 4B.3 spec delta：ai-pipeline 加 ADDED "引擎按 campaign 选定音色合成" <!-- voice-resolution 单测无现成 DB harness, 由 §6 真拨号验收覆盖 -->
 
 ## 5. 部署 ECS
 
@@ -56,5 +59,8 @@
 
 - [x] 7.1 跑 `openspec validate campaign-greeting-tts-preview --strict` 全绿 <!-- valid -->
 - [x] 7.2 各 sub-repo commit：common 2a127c5 (main) / engine c109c61 (fix/inbound-stereo-downmix-20260601 分支) / api 7cf71a1 (main) / web 8b5b1ff (main) <!-- push 见下; engine 在 feature 分支(非 protected), 随该上下文走 -->
-- [ ] 7.3 meta-repo commit 本 change 4 artifact + tasks 进度回写 + push
+- [x] 7.3 meta-repo commit 本 change 4 artifact + tasks 进度回写 + push <!-- meta d7c621c; 全 5 仓已 push origin (common/api/web/meta → main, engine → fix/inbound-stereo-downmix-20260601) -->
+
+<!-- 7.4 /opsx:archive 留到 §5 部署 + §6 验收完成后 -->
+- [ ] 7.4 跑 `/opsx:archive campaign-greeting-tts-preview`，合并 spec delta（web-admin-ui + provider-abc）到 `openspec/specs/`，移动到 archive/
 - [ ] 7.4 跑 `/opsx:archive campaign-greeting-tts-preview`，合并 spec delta（web-admin-ui + provider-abc）到 `openspec/specs/`，移动到 `openspec/changes/archive/YYYY-MM-DD-campaign-greeting-tts-preview/`
