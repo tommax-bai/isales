@@ -89,3 +89,9 @@
 <!-- 7.4 /opsx:archive 留到 §5 部署 + §6 验收完成后 -->
 - [ ] 7.4 跑 `/opsx:archive campaign-greeting-tts-preview`，合并 spec delta（web-admin-ui + provider-abc）到 `openspec/specs/`，移动到 archive/
 - [ ] 7.4 跑 `/opsx:archive campaign-greeting-tts-preview`，合并 spec delta（web-admin-ui + provider-abc）到 `openspec/specs/`，移动到 `openspec/changes/archive/YYYY-MM-DD-campaign-greeting-tts-preview/`
+
+## 4D. 试听错误处理 + 音色 ID 诊断（用户报"试听失败"后追加）
+
+- [x] 4D.1 诊断: 用户 502 真因非凭据(xiaohe smoke 200)，是填的音色被 vendor 拒。api 端点把 synthesize 的 ProviderInvalidRequest 从笼统 502 拆为 400 tts_invalid_voice_or_text + logger.warning 记 vendor detail <!-- api 3ddda69 -->
+- [x] 4D.2 前端 ttsPreviewError(e) 共享 helper: 400→"音色 ID 无效或文案过长，请确认音色 ID(如 zh_female_xiaohe_uranus_bigtts)"; 其它→"试听失败，请稍后重试"。BasicTab + CampaignDetail 共用 <!-- web 91af9b4 -->
+- [x] 4D.3 部署 + smoke: bad voice "甜美桃子"→400, xiaohe→200; 日志见 vendor `code=55000000 resource ID is mismatched with speaker related resource` <!-- 真因: 用户填的是显示名/非 seed-tts-2.0 音色; 必须填 VoiceType 英文串且属当前 resource_id(seed-tts-2.0) -->
