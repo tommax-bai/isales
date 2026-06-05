@@ -80,7 +80,7 @@
 - [x] 7.1 `openspec validate engine-multi-referee-and-restructure --strict` 通过
 - [x] 7.2 `make test-all` 各服务绿（engine/common/api 单测 + web vitest）<!-- common 176 / engine 333 / api 119(+2 redis-env pre-existing) / web 44 / telephony 345 / worker 50 / scheduler 37(+3 redis-env，无 redis-server)。本 change 0 回归；5 个失败全为无 redis-server 的环境失败（api start/pause + scheduler dispatch/control/loop），baseline 亦失败 -->
 - [ ] 7.3 mac dev-no-modem e2e：配 2 裁判（意图有效性 + 拒绝识别）+ 重组流，验证「没接住→复述」「被打断→重说」「低置信→拖一轮」三场景 + goal_achieved 仍正常 <!-- 待真机：需起 engine + mac edge，本 session headless 无法跑；与 pipeline-stream-realmachine-acceptance 同属真机验收 -->
-- [ ] 7.4 SCP 部署 ECS engine/api + alembic upgrade + 给现网 campaign 跑 data migration seed 默认规则；更新 `deploy/cloud/STATE.md`（alembic head + 新字段）<!-- 待用户确认：outward-facing 生产部署 + RDS migration -->
+- [x] 7.4 SCP 部署 ECS engine/api + alembic upgrade + 给现网 campaign 跑 data migration seed 默认规则；更新 `deploy/cloud/STATE.md`（alembic head + 新字段）<!-- 2026-06-05 20:40：scp common+engine+api+scheduler editable 源码 + web rebuild；alembic f6a7b8c9d0e1→a7b8c9d0e1f2；seed 验证 campaign 1 main_judge+3规则 / campaign 2 未动；4 服务 restart clean + openapi 含 routing-rules(401) + SPA 200；备份 /opt/isales/backups/multi-referee-20260605-203424/pre.sql；STATE.md 已更新。踩坑：migration id 撞 appointment a1b2c3d4e5f6 → 改名 a7b8c9d0e1f2 后部署 -->
 - [x] 7.5 RUNBOOK 写「migration 后给每个 campaign seed 默认 routing_rules」步骤 <!-- deploy/RUNBOOK.md §1 step 4 加 a7b8c9d0e1f2 data-migration 说明 + 验证 SQL + goal_type 收窄提示；migration 自动 seed，无需手动 -->
 - [ ] 7.6 回写本 tasks.md（HTML 注释标 commit/PR/偏离）→ `/opsx:archive` <!-- 代码 task 全回写；archive 待 7.3 真机 + 7.4 部署 -->
 

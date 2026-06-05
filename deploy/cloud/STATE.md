@@ -1,7 +1,34 @@
 # cloud deployment — current state snapshot
 
-**Last updated**: 2026-06-05 16:27 CST — **filler-realtime-unblock-and-detail-toggle
+**Last updated**: 2026-06-05 20:40 CST — **engine-multi-referee-and-restructure
+deployed** (common + engine + api + scheduler + web). 单 referee dual-LLM 升级为
+「N 裁判并行 + 有序路由规则 decider + 重组流（口语化重说上一句/补打断残留/低置信拖一轮）」。
+部署（scp editable 源码）：common 13 文件（enums/models{campaign,role_config,
+pipeline_trace}/schemas{call,campaign,role_config,pipeline,jsonb/routing_rule,
+messages/dial}）+ engine 10 文件（run_loop/runtime_config/referee/streaming/types/
+pipeline{decider(new),orchestrator,prompt_builder}/providers/llm_mock/
+transcript_recorder/call_session）+ api 4 文件（routers{campaigns,role_configs}/
+routing_validation(new)/schemas）+ scheduler 1 文件（prompt.py：pack_prompt_versions
+referee_llm→referee_llms[]+restructure，proposal 误判"完全不动"）。**alembic
+`f6a7b8c9d0e1 → a7b8c9d0e1f2`**（role_config.label 列 + partial unique index /
+campaign.routing_rules JSONB+max_continuous_restructure+primary_referee_label /
+pipeline_trace 单 referee_* 字段换 referee_results 数组+matched_rule+restructure_* /
+data-migration 自动 seed）。**seed 验证**：campaign 1（含 referee id 5）→
+label=main_judge + primary_referee_label=main_judge + 3 条等价默认规则
+（goal_achieved/transfer/customer_decline）；campaign 2（无 referee）→ 未动（0 规则）。
+4 python 服务 restart clean（engine `credentials_loaded count=5` + `isales_engine_started`；
+api `Application startup complete` + openapi 含 `/campaigns/{id}/routing-rules` + 该端点 401）；
+web rebuild→`/var/www/isales-web/`（71 assets，SPA 200，新「多流路由」tab）。备份：
+`/opt/isales/backups/multi-referee-20260605-203424/pre.sql`（campaign+role_config+
+pipeline_trace dump）。提交：common `46b6d49`(0.7.0) / engine `dd739c4`(main，工作分支
+已 merge 回 main，4 文件冲突取分支版、丢弃被取代的 91f7005 旧降延迟补丁) / api `9a4ea3c` /
+scheduler `7b6a77f` / web `eccabc0` / meta `20a1c41`。**踩坑**：新 migration 初版 id
+撞了 2026-05-20 appointment 的 `a1b2c3d4e5f6` → alembic CycleDetected，部署前改名
+`a7b8c9d0e1f2`（commit 46b6d49）。**真机 e2e（2 裁判+重组流验三场景）待跑**。
+
+Prior: 2026-06-05 16:27 CST — **filler-realtime-unblock-and-detail-toggle
 deployed** (engine + web). 真因：`filler_manager._pick_phrase` 选取门槛
+`generation_status==READY and audio_url` 是 stage-6 OSS 预录路径字段，v1.0 无 OSS /
 `generation_status==READY and audio_url` 是 stage-6 OSS 预录路径字段，v1.0 无 OSS /
 无 `regenerate_filler_audio` worker → `audio_url` 恒 NULL、`generation_status` 恒
 `pending` → 即使 `filler_enabled=true` 也每轮 `filler_skip_no_ready_phrase` 永不播。
