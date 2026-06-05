@@ -1,3 +1,8 @@
+## RENAMED Requirements
+
+- FROM: `### Requirement: 三层并行管线编排`
+- TO: `### Requirement: AI 管线编排`
+
 ## MODIFIED Requirements
 
 ### Requirement: AI 管线编排

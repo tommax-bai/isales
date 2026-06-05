@@ -136,7 +136,7 @@
 ## 13. mac dev 端到端验证（强阻断 ECS 部署）
 
 - [x] 13.1 mac dev smoke (call_record 137, 真 DingRTC mac edge ↔ 部署后 ECS engine) — **核心机制全绿**: first_audio_ms 678-1106ms (<1.5s 目标, 旧 6.5-9.5s); referee 决策驱动 state (continue→customer_decline→ACTIVATING 转移 log 实证); main 纯文本真话术(智联招聘销售, 非测试); extract_status pending→done + extracted={"n_turns":9,"customer_intent":"嘿,你好"}(worker 离线写库); main_fallback_used=false。<!-- smoke 脚本退出码 1 是其轮询 status(通话中恒 init, END 才跳 end)超时 artifact, 非管线 bug; --no-listen-check 无真人→ASR 转写 DingRTC 自环→referee 误判 customer_decline(已知自环问题, 非本 change)。统计性"5 通"+真人对照留 13.2 -->
-- [ ] 13.2 mac dev 真 mic 跑 5 通真对话，戴耳机听质量 <!-- 需用户在 mac 听+说; smoke 全流程交互式, 用户自己跑(13.1 已证机制, 13.2 验真人话术质量+barge-in) -->
+- [ ] 13.2 mac dev 真 mic 跑 5 通真对话，戴耳机听质量 <!-- DEFERRED → followup change `pipeline-stream-realmachine-acceptance` §1.1 (物理: 需真人在 mac 听+说; 代码机制已由 13.1 全绿证明)。本 change archive 时此项有意未完成, 转独立验收 change 追踪 -->
 - [x] 13.3 pipeline_trace SQL 抽样 <!-- call 137: first_audio_ms 678/812/860/1106; referee continue×2/customer_decline×2 conf 0.95; main_fallback_used 全 false; main_dur 4.6-10.2s(全文流完, 但首句 ~800ms 已出声=streaming 赢点) -->
 - [x] 13.4 全仓 pytest 无回归 <!-- make test-all: common 158 / api 103 / telephony 333 / scheduler 40 / worker 50 / web 38 全绿; engine 292 passed (5 tts_volcengine 既存 fail 无关)。**抓到真 bug: scheduler pack_prompt_versions + common PromptVersionsSnapshot 漏改 dual-LLM keys → 修+重部 ECS (见 §14 note)** -->
 
@@ -155,12 +155,14 @@
 
 ## 15. Windows 真拨号联合验收
 
-- [ ] 15.1 Windows 真拨号 13301035545 e2e ≥ 10 通：覆盖 goal_achieved 路径（成功约见） / customer_decline 路径（客户拒绝） / transfer 路径（要求人工） / continue 路径（普通多轮聊）
-- [ ] 15.2 验证首音频 ≤ 1.5s（戴耳机听感 + journalctl `grep first_audio_ms`）
-- [ ] 15.3 验证 referee 决策驱动 WRAPPING_UP / TRANSFERRING 状态机转移正确
-- [ ] 15.4 验证 post-call extractor 异步写入 call_record.extracted 字段（SQL 查 + worker 日志）
-- [ ] 15.5 验证 5/28 barge-in 在新 streaming 链路下不回归
-- [ ] 15.6 验证 main streaming 网络抖动场景：mac 网络模拟 200ms 延迟 + 5% 丢包，看 fallback chat() 是否触发 + 通话能完成
+<!-- 整组 DEFERRED → followup change `pipeline-stream-realmachine-acceptance` §2.1-2.6 (物理 blocker: Windows 盒子 + SIM + 真拨号未 ready, 见 project_session_2026_06_04_handoff)。代码实装 + mac 机制验证(§13.1)全绿; 真机验收转独立 change, 待物理条件 ready 执行。本 change archive 时此组有意未完成。 -->
+
+- [ ] 15.1 Windows 真拨号 13301035545 e2e ≥ 10 通：覆盖 goal_achieved 路径（成功约见） / customer_decline 路径（客户拒绝） / transfer 路径（要求人工） / continue 路径（普通多轮聊） <!-- → acceptance §2.1 -->
+- [ ] 15.2 验证首音频 ≤ 1.5s（戴耳机听感 + journalctl `grep first_audio_ms`） <!-- → acceptance §2.2 -->
+- [ ] 15.3 验证 referee 决策驱动 WRAPPING_UP / TRANSFERRING 状态机转移正确 <!-- → acceptance §2.3 -->
+- [ ] 15.4 验证 post-call extractor 异步写入 call_record.extracted 字段（SQL 查 + worker 日志） <!-- → acceptance §2.4 -->
+- [ ] 15.5 验证 5/28 barge-in 在新 streaming 链路下不回归 <!-- → acceptance §2.5 -->
+- [ ] 15.6 验证 main streaming 网络抖动场景：mac 网络模拟 200ms 延迟 + 5% 丢包，看 fallback chat() 是否触发 + 通话能完成 <!-- → acceptance §2.6 -->
 
 ## 16. RUNBOOK 更新
 
@@ -179,9 +181,13 @@
 
 ## 18. 验证 + archive
 
-- [ ] 18.1 `openspec validate pipeline-stream-and-referee --strict` 最终通过
-- [ ] 18.2 跑 `/opsx:archive pipeline-stream-and-referee` 合并 spec delta 到 `openspec/specs/`，移动 change 目录到 `openspec/changes/archive/YYYY-MM-DD-pipeline-stream-and-referee/`
-- [ ] 18.3 archive commit + push meta-repo
+- [x] 18.1 `openspec validate pipeline-stream-and-referee --strict` 最终通过 <!-- 2026-06-05 通过: "Change is valid" -->
+- [x] 18.2 跑 `openspec archive pipeline-stream-and-referee -y` 合并 spec delta 到 `openspec/specs/`，移动 change 目录到 `openspec/changes/archive/2026-06-05-pipeline-stream-and-referee/` <!-- 2026-06-05 完成: +7/~18/-7/→1 合并到 8 spec; 修了 delta latent bug: ai-pipeline MODIFIED "AI 管线编排" 与 base "三层并行管线编排" header 不匹配 → 补 RENAMED FROM/TO 解决 -->
+- [x] 18.3 archive commit + push meta-repo <!-- 2026-06-05 本 commit -->
+
+## 18b. 真机验收拆出（archive 时新增）
+
+- [x] 18b.1 真机/真人验收(原 §13.2 + §15.1-15.6)拆为独立 followup change `pipeline-stream-realmachine-acceptance`(已 propose, active, 0/9)；物理 blocker(Windows 盒子+真人 mac 听说)未 ready，代码实装+mac 机制验证(§13.1)+ECS 部署(§14)已全绿；发现回归另起修复 change <!-- 用户决策: 转独立 followup 后 archive -->.
 
 ## 19. followup（不在本 change scope，记录在此用于下次 change 起源）
 
@@ -190,3 +196,4 @@
 - [ ] 19.3 followup change `pipeline-remove-streaming-fallback`：streaming 链路 30 天 SLA ≥ 99.5% 后删 main `chat()` 一次性 fallback
 - [ ] 19.4 followup change `campaign-feature-gating`：多 campaign A/B / 灰度发布机制
 - [ ] 19.5 followup change `referee-reliability`：referee 失败重试策略评估
+- [ ] 19.6 followup change `pipeline-stream-realmachine-acceptance`（已 propose, active）：吸收 §13.2 + §15.1-15.6 真机/真人验收，待 Windows 盒子 + 真人 mac 听说 ready 执行；纯验收无代码改动，发现回归另起修复 change

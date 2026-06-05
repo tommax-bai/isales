@@ -1,35 +1,33 @@
 ## Purpose
 
 定义 AI 三层管线的输入合约：每次调用 LLM 时 prompt 如何组装、对话历史如何注入、跟进上下文如何添加、收尾期间如何切换。本规范是 ai-pipeline 的配套规范——管线决定"调几次、谁审谁选"，本规范决定"每次调用喂什么"。
-
 ## Requirements
-
 ### Requirement: Prompt 由 Campaign 完全自定义
 
-所有 LLM 的 prompt 内容 SHALL 由 Campaign 完全控制，系统 MUST NOT 提供"统一裁判规则"或"统一润色 prompt"。系统 SHALL 仅提供工具与模板（v1 命令行 + v2 Web UI 可视化）。
+所有 LLM 的 prompt 内容 SHALL 由 Campaign 完全控制，系统 MUST NOT 提供"统一 referee 规则"或"统一 extractor prompt"。系统 SHALL 仅提供工具与模板（v2 Web UI 可视化）。三类 LLM（main / referee / extractor）的 prompt MUST 各自独立。
 
-#### Scenario: 角色 / 裁判 / 润色全部自定义
+#### Scenario: main / referee / extractor 全部自定义
 
 - **WHEN** Campaign 创建者编辑 LLM prompt
-- **THEN** 角色 LLM、裁判 LLM、润色 LLM 三类 prompt MUST 全部由 Campaign 自由编写；系统 MUST NOT 强加统一前缀或后缀（除收尾追加段落，详见下文）
+- **THEN** main LLM、referee LLM、extractor LLM 三类 prompt MUST 全部由 Campaign 自由编写；系统 MUST NOT 强加统一前缀或后缀（除收尾追加段落，详见下文）
 
-#### Scenario: 多角色 prompt 完全独立
+#### Scenario: campaign 只配置 1 个 main role
 
-- **WHEN** Campaign 配置 N 个角色
-- **THEN** 每个角色的 prompt MUST 完全独立编写，**MUST NOT 共享 base prompt**（多样性是 PK 的本意）
+- **WHEN** Campaign 配置 role
+- **THEN** main role MUST 恰好 1 个；referee MUST 恰好 1 个；extractor MUST 恰好 1 个（不再有 N 个 role / M 个 judge 的并行配置）
 
 ### Requirement: Prompt 三段式组装
 
-每次调用角色 LLM 时 engine SHALL 按以下结构组装：system message + 单条 user message。
+每次调用 main LLM 时 engine SHALL 按以下结构组装：system message + 单条 user message。
 
 #### Scenario: System message 内容
 
-- **WHEN** 组装 system message
-- **THEN** 内容 MUST = 角色身份 + 目标定义 + JSON 输出 schema；MAY 在末尾追加收尾指令（仅 WRAPPING_UP 期间）
+- **WHEN** 组装 main LLM 的 system message
+- **THEN** 内容 MUST = 角色身份 + 目标定义 + **纯文本输出约束**（详见 § "main system prompt 内容规范"）；MAY 在末尾追加收尾指令（仅 WRAPPING_UP 期间）
 
 #### Scenario: User message 拼接结构
 
-- **WHEN** 组装 user message
+- **WHEN** 组装 main LLM 的 user message
 - **THEN** 单条 user message 中 MUST 顺序包含：
   1. 【上次通话纪要】（仅跟进时存在）
   2. 【线索信息】name, phone, custom_data 等
@@ -37,7 +35,7 @@
 
 #### Scenario: 不使用标准 chat multi-turn
 
-- **WHEN** 调用 LLM Provider
+- **WHEN** 调用 main LLM Provider
 - **THEN** engine MUST 把整通对话作为单条 user message 文本传入；MUST NOT 拆成多条 message 调用 chat completion 接口
 
 ### Requirement: 对话过长不做截断
@@ -56,7 +54,7 @@ v1 SHALL 不做对话历史的截断或摘要，依赖 LLM 长上下文能力。
 
 ### Requirement: System Prompt 内容规范
 
-System prompt 由 Campaign 编写。系统 SHALL 提供以下结构作为推荐模板（isales-web 模板复用）；用户 MUST 能完全覆写：
+main LLM system prompt 由 Campaign 编写。系统 SHALL 提供以下结构作为推荐模板（isales-web 模板复用）；用户 MUST 能完全覆写：
 
 ```
 你是 {{角色身份描述}}。
@@ -64,50 +62,45 @@ System prompt 由 Campaign 编写。系统 SHALL 提供以下结构作为推荐�
 【目标】
 {{自由文本描述本次外呼的核心目标}}
 
-【判定为达成的具体标准】
-- {{标准 1}}
-- {{标准 2}}
-
-【可提取字段】
-{{字段名}}：{{含义和格式要求}}
-
-【输出格式】
-你必须严格按照以下 JSON 格式输出（不要添加任何解释性文字）：
-{
-  "reply": "<要播给用户的话术>",
-  "goal_achieved": <true 或 false>,
-  "goal_type": "<达成的目标类型，未达成时为空字符串>",
-  "extracted": { <本轮新提取到的结构化字段> }
-}
-
 【话术规范】
 - {{风格要求}}
 - {{合规要求}}
+
+【输出格式】
+你的输出必须遵循：
+1. 只输出你要对客户说的话，不要任何解释 / 元信息 / 引号包裹
+2. 不要使用 markdown 标题 / 加粗 / 列表
+3. 不要使用 emoji / 表情符号
+4. 不要输出 JSON / 代码块
+5. 如果有多句，用句号 / 问号 / 感叹号自然分隔
+6. 单句长度控制在 30 字以内（便于 TTS 自然停顿）
 ```
 
-#### Scenario: 模板提供建议结构
+**重要变化**: 与本 change 之前对比，main LLM **不再输出 JSON**（删除 `{reply, goal_achieved, goal_type, extracted}` schema 段）。结构化字段由 referee（goal_achieved + goal_type）+ post-call extractor（extracted）承担。
 
-- **WHEN** 用户在 isales-web 创建新角色
-- **THEN** 系统 MAY 提供上述结构作为可编辑模板；用户 SHALL 可完全覆写
+#### Scenario: 系统模板可覆写
+
+- **WHEN** Campaign 创建者使用模板
+- **THEN** 模板各段 SHALL 可独立编辑或删除
+
+#### Scenario: 输出格式约束必须保留
+
+- **WHEN** Campaign 创建者编辑 main prompt
+- **THEN** 即便完全覆写，系统 SHOULD 在 prompt 编辑器 UI 提示"必须包含纯文本输出约束"；engine 自身 MUST NOT 强制注入约束（保 Campaign 自由度，按 § "Prompt 由 Campaign 完全自定义"）
 
 ### Requirement: 收尾期间在 system prompt 末尾追加指令
 
-WRAPPING_UP 状态下 engine MUST 在原 system prompt **末尾追加**收尾指令段落，原内容 MUST 保持不变。
+WRAPPING_UP 期间 engine SHALL 在 main system prompt 末尾追加预定义指令（如"通话即将结束，请用一句话总结并道别"），追加位置 MUST 是最末。
 
-#### Scenario: 收尾追加段落
+#### Scenario: WRAPPING_UP 进入即追加
 
-- **WHEN** 进入 WRAPPING_UP 后调用角色 LLM
-- **THEN** system prompt 在原内容末尾追加：
-  ```
-  ---
-  【当前状态：收尾对话】
-  目标已达成。请简短确认或告别后结束对话，不要再尝试推进新议题。
-  ```
+- **WHEN** session 进入 WRAPPING_UP
+- **THEN** 该轮及之后 PROCESSING 调 main LLM 时，system prompt 末尾 MUST 含追加指令
 
-#### Scenario: prompt_versions 标记追加状态
+#### Scenario: prompt_versions 快照标记
 
-- **WHEN** 通话开始时记录 prompt_versions 快照
-- **THEN** 快照 MUST 包含 `wrap_up_appended: true/false`，便于 transcript 回放时区分
+- **WHEN** WRAPPING_UP 期间 main LLM 调用产生 pipeline_trace
+- **THEN** `call_record.prompt_versions.wrap_up_appended` MUST 标 `true`
 
 ### Requirement: 跟进通话的 prompt 增强
 
@@ -128,28 +121,9 @@ WRAPPING_UP 状态下 engine MUST 在原 system prompt **末尾追加**收尾指
 - **WHEN** scheduler 派发跟进通话
 - **THEN** dial 消息 MUST 携带 `last_call_summary` 字段；engine SHALL 把该摘要放入 user message 的「上次通话纪要」段，MUST NOT 自行查 call_summary 表
 
-### Requirement: JSON Mode 强制策略（两步保护）
-
-引擎 SHALL 优先使用 Provider 原生 JSON Mode；不支持的 Provider MUST 在 prompt 末尾贴 schema 描述并对响应做后处理。
-
-#### Scenario: 原生 JSON Mode 优先
-
-- **WHEN** Provider 支持 JSON Mode（OpenAI `response_format` / Claude tool use / 通义 / 豆包 / 智谱原生）
-- **THEN** engine MUST 启用原生 JSON Mode；Provider ABC 的 `supports_json_mode` 返回 true
-
-#### Scenario: 文本约束兜底
-
-- **WHEN** Provider 不支持原生 JSON Mode
-- **THEN** engine SHALL 在 system prompt 末尾贴 schema 描述；后处理顺序：① `json.loads` → ② 失败则正则提取 `{...}` 段重试 → ③ 再失败则降级（整段文本作为 reply，其他字段置空）
-
-#### Scenario: 解析失败的处理
-
-- **WHEN** 单角色 JSON 解析失败
-- **THEN** 该候选 MUST 直接淘汰；engine 进入 ai-pipeline 的"全部裁判否决"路径仅当 N 个角色全部失败
-
 ### Requirement: Prompt 版本管理
 
-`prompt_version` 表 SHALL 存储所有 prompt 历史；`role_config.current_prompt_version_id` 指向当前生效版本；通话开始时 engine MUST 把当时各 LLM 的 prompt_version_id 一次性写入 `call_record.prompt_versions` 字段。
+`prompt_version` 表 SHALL 存储所有 prompt 历史；`role_config.current_prompt_version_id` 指向当前生效版本；通话开始时 engine MUST 把当时各 LLM 的 prompt_version_id 一次性写入 `call_record.prompt_versions` 字段（**snapshot schema 改为 main / referee / extractor 三 key**）。
 
 #### Scenario: 编辑 prompt 自动建新版本
 
@@ -159,73 +133,104 @@ WRAPPING_UP 状态下 engine MUST 在原 system prompt **末尾追加**收尾指
 #### Scenario: 通话开始时写入快照
 
 - **WHEN** call_session 初始化
-- **THEN** engine MUST 把当前所有相关 prompt_version_id 写入 `call_record.prompt_versions`：
+- **THEN** engine MUST 把当前相关 prompt_version_id 写入 `call_record.prompt_versions`：
   ```json
   {
-    "role_llms": [{"role_config_id": 1, "prompt_version_id": 5}, ...],
-    "judge_llms": [{"role_config_id": 7, "prompt_version_id": 12}, ...],
-    "polish_llm": {"role_config_id": 9, "prompt_version_id": 3},
+    "main_llm": {"role_config_id": 1, "prompt_version_id": 5},
+    "referee_llm": {"role_config_id": 2, "prompt_version_id": 8},
+    "extractor_llm": {"role_config_id": 3, "prompt_version_id": 12},
     "wrap_up_appended": false
   }
   ```
+
+#### Scenario: prompt_version.scope_type 枚举
+
+- **WHEN** 创建 prompt_version 记录
+- **THEN** `scope_type` SHALL ∈ `{"main", "referee", "extractor"}`；旧值 `"role"` / `"judge"` / `"polish"` 在 alembic migration 中删除对应记录（详见 data-model spec）
 
 #### Scenario: 调试回放精准复现
 
 - **WHEN** 调试历史通话
 - **THEN** 通过 prompt_version_id 取到当时的原文，可精准复现调用时使用的 prompt
 
-### Requirement: Judge 拿到对话上下文
+### Requirement: referee prompt 内容规范
 
-engine 调用 judge LLM 时, user message MUST 包含两个 markdown section: 对话历史段
-（`### 对话历史` 标题，按 `用户：xxx / AI：xxx` 格式）+ 候选回复段（`### 销售 AI
-准备发给客户的候选回复` 标题）。本 Requirement MUST 仅约束 engine 这一侧 user message
-拼装规则，SHALL NOT 约束 PG-stored judge prompt 文案（业务侧自定义）。本 Requirement
-与已有 `JUDGE_OUTPUT_SCHEMA_SUFFIX` 机制正交——SUFFIX 仍 SHALL 追加到 system prompt
-末尾强约束 JSON 输出。
+referee LLM system prompt SHALL 严格指定输出 JSON schema + 决策枚举语义。MUST 显式说明 4 个 decision 枚举各自的判定标准（避免小模型误判）。
 
-#### Scenario: 标准多轮通话 N 轮对话历史
+```
+你是销售外呼对话的决策助手。基于"用户最后一句话"+ 最近 3 轮对话历史，判断本轮对话状态。
 
-- **WHEN** judge 在第 N 轮（N≥2）评判 candidate, `session.dialog_history` 已含 N-1
-  轮的 user / AI 发言
-- **THEN** user message 历史段 MUST 渲染为 N-1 行（每行 `用户：xxx` 或 `AI：xxx`），
-  按发言顺序排列；MUST NOT 包含尾部 `AI:` 提示行（judge 不是要说话的角色）；MUST
-  使用全角冒号 `：` 跟 role 端 `_render_dialog` 风格一致
+【输入】
+用户最后一句话：{{user_last_utterance}}
+最近 3 轮对话：
+{{recent_dialog_history}}
 
-#### Scenario: greeting 后首次评判，对话历史为空
+【输出 JSON】
+{
+  "decision": "continue" | "goal_achieved" | "customer_decline" | "transfer",
+  "goal_type": "appointment" | "sale" | "callback" | null,
+  "confidence": 0.0~1.0
+}
 
-- **WHEN** judge 在首轮评判 candidate, `session.dialog_history` 为空（greeting 路径
-  未将开场白追加到 `dialog_history`，或者其他空状态场景）
-- **THEN** 历史段 MUST 渲染显式占位字符串 `（尚无对话历史，这是首轮回复）`；MUST NOT
-  让历史段空白（避免 LLM 把"空"误读为信号缺失或 prompt corruption）；候选回复段 MUST
-  正常渲染
+【枚举语义】
+- continue: 客户在正常对话中（包括犹豫 / 询问细节），不需要状态切换
+- goal_achieved: 客户明确同意了外呼目标（成交 / 约见 / 同意回访）。goal_type 必填
+- customer_decline: 客户明确拒绝或表达强烈反感
+- transfer: 客户主动要求转人工
 
-#### Scenario: 用户/AI 前缀与角色风格
+【confidence 评分】
+- 你的判断越确定，confidence 越接近 1.0
+- 模棱两可时给低分；< 0.7 系统会忽略你的决策走 continue
 
-- **WHEN** engine 渲染对话历史段
-- **THEN** 用户发言 MUST 用 `用户：` 前缀，AI 发言 MUST 用 `AI：` 前缀；MUST NOT
-  使用英文 `user/assistant` 或别的中文标签；前缀与发言文本 MUST 用全角冒号 `：`
-  分隔（跟 role 端 `_render_dialog` 风格一致）
+只输出 JSON，不要任何解释。
+```
 
-#### Scenario: PG-stored judge prompt 文案不变
+#### Scenario: prompt 输入填充
 
-- **WHEN** Campaign 编辑者更新 `prompt_version` 表里 judge slot 的 prompt 内容
-- **THEN** engine MUST 仍把 PG-stored 文案完整作为 system prompt 内容（追加
-  `JUDGE_OUTPUT_SCHEMA_SUFFIX` 末尾）发给 LLM；本 Requirement MUST NOT 干涉 PG-stored
-  judge prompt 文案的写法、结构、风格或目标；业务侧 MAY 自由迭代文案
+- **WHEN** engine 调 referee LLM
+- **THEN** engine MUST 替换 `{{user_last_utterance}}` 为最新 ASR 文本；MUST 替换 `{{recent_dialog_history}}` 为最近 ≤ 3 轮（少于 3 轮取全部）按 `用户：xxx / AI：xxx` 格式拼接
 
-#### Scenario: SCHEMA_SUFFIX 不与 user message 段重复
+#### Scenario: dialog_history 为空
 
-- **WHEN** engine 调用 judge LLM
-- **THEN** `JUDGE_OUTPUT_SCHEMA_SUFFIX` MUST 仅追加到 system prompt 末尾；MUST NOT
-  在 user message 段重复追加；user message 末尾仅保留 `按上述系统提示的 JSON
-  schema 输出。` 一句作为 dashscope OpenAI-compat JSON mode 的字面 `json` 兜底
+- **WHEN** session 处于首轮（dialog_history 为空 / 只有 greeting）
+- **THEN** `{{recent_dialog_history}}` MUST 渲染为 `（首轮对话，无历史）` 占位字符串；MUST NOT 留空
 
-#### Scenario: 不跟 polish 端共用同一历史拼装
+### Requirement: extractor prompt 内容规范
 
-- **WHEN** engine 调用 polish LLM
-- **THEN** polish 的 user message MUST 仍按 polish 自己的规则（N 个 candidate 列
-  表）拼装；MUST NOT 共用本 Requirement 的对话历史段；本 Requirement 仅约束 judge
-  端拼装
+extractor LLM 在 worker 服务中跑（post-call 异步），输入 = 完整 transcript_snapshot；prompt SHALL 指定要抽取的字段 schema（Campaign 自定义）。
+
+```
+你是销售通话信息抽取助手。基于完整通话记录，抽取以下字段：
+
+【字段定义】
+{{campaign 自定义字段 schema，如：}}
+- customer_name (str): 客户姓名
+- intent (enum): "interested" | "considering" | "declined"
+- callback_time (datetime str): 客户同意的回访时间，如未约定则 null
+- ...
+
+【输入】
+{{transcript}}
+
+【输出 JSON】
+{
+  "customer_name": ...,
+  "intent": ...,
+  "callback_time": ...
+}
+
+只输出 JSON，所有字段都要给（无信息时给 null）。
+```
+
+#### Scenario: 字段 schema Campaign 自定义
+
+- **WHEN** Campaign 创建者编辑 extractor prompt
+- **THEN** 字段定义段 MUST 由 Campaign 完全自由编写；系统 MUST NOT 强制最小字段集（不同业务字段诉求差异大）
+
+#### Scenario: 输入 transcript 拼接格式
+
+- **WHEN** engine LPUSH extract 任务
+- **THEN** `transcript_snapshot` payload MUST 是 dialog_history 的序列化（每个 entry `{role, text, ts_ms}`），由 worker 端按 `用户：xxx / AI：xxx` 渲染入 extractor prompt 的 `{{transcript}}` 占位
 
 ## Data Schema
 
