@@ -95,3 +95,5 @@
 - [x] 4D.1 诊断: 用户 502 真因非凭据(xiaohe smoke 200)，是填的音色被 vendor 拒。api 端点把 synthesize 的 ProviderInvalidRequest 从笼统 502 拆为 400 tts_invalid_voice_or_text + logger.warning 记 vendor detail <!-- api 3ddda69 -->
 - [x] 4D.2 前端 ttsPreviewError(e) 共享 helper: 400→"音色 ID 无效或文案过长，请确认音色 ID(如 zh_female_xiaohe_uranus_bigtts)"; 其它→"试听失败，请稍后重试"。BasicTab + CampaignDetail 共用 <!-- web 91af9b4 -->
 - [x] 4D.3 部署 + smoke: bad voice "甜美桃子"→400, xiaohe→200; 日志见 vendor `code=55000000 resource ID is mismatched with speaker related resource` <!-- 真因: 用户填的是显示名/非 seed-tts-2.0 音色; 必须填 VoiceType 英文串且属当前 resource_id(seed-tts-2.0) -->
+
+- [x] 4D.4 已知限制(用户知悉, 暂不处理): 火山音色分 seed-tts-1.0 / 2.0 两个模型版本, 音色 id 不带版本信息; 系统固定走 tts_resource_id(默认 seed-tts-2.0)。实测 `_uranus_bigtts`(xiaohe)属 2.0, `_moon_bigtts`(zh_male_wennuanahu)属 1.0 → 跨版本音色会报 code=55000000 "resource ID mismatched"。当前仅默认版本(2.0)的音色可用; 用 1.0 音色需把 provider_credential.volcengine.tts_resource_id 改 seed-tts-1.0(全局)。后续如要混用, 另起 change 加 per-campaign 模型版本字段或自动适配。

@@ -42,4 +42,6 @@
 
 - [x] 5.1 在本 tasks.md 用 HTML 注释回写每个 task 的 PR# / commit / 偏离说明
   <!-- 本次回写；sub-repo commit = isales-telephony 4c7d3d1。 -->
-- [ ] 5.2 commit + push isales-telephony 与 meta-repo（遵守 push 规则，main 直推 OK）
+- [x] 5.2 commit + push isales-telephony 与 meta-repo（遵守 push 规则，main 直推 OK）
+  <!-- isales-telephony 4c7d3d1 → debug/mac-dev-no-modem-asr-stereo-fix-20260601 (fast-forward); meta-repo 348d89c → main. -->
+
