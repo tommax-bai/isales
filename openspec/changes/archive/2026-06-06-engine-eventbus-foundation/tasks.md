@@ -25,7 +25,7 @@
   - review 跟进②(change-2 HAZARD):`await bus.start()` 后留显式注释——当前 start→return 之间无可抛点故 run_session finally 安全托管 bus;change-2 一旦在此窗口加可抛 `await`,必须 try/except 兜 `bus.aclose()` 否则泄漏 dispatcher 协程。**故意不加当前不可达的防御死代码**(避免"为做而做"),改留 loud marker。
   - review 裁定:`fix-then-ship` / `must_fix=[]`——cross-lane 重排 & partial 丢弃为真但经 monitor latch+gate / drop-oldest-keep-best 证不可观测,byte-identity 成立。
 
-### Phase 1b — manual-hangup 迁移(✅ 2.6 已完成)+ barge-in 反转(⏸ 2.5 DEFERRED)
+### Phase 1b — manual-hangup 迁移(✅ 2.6 已完成);barge-in 反转 2.5/2.7 → 移交 change-3
 
 - [x] 2.6 `main.py` `_on_manual_hangup`/`_on_transfer`:改 `sess.bus.post(ManualHangupRequested/TransferRequested)`;删 `_ManualHangupRequested` 异常类 + 死 `except` 块 + `request_manual_hangup`。
   - **bus 生命周期 = 与 session 同寿**:bus 改成「**CallSession 构造即建**(`bus: EventBus = field(default_factory=EventBus)`,未 start)」;run_session subscribe 控制 bridge + start + finally aclose。`_start_listen_pumps` 只 register lane + 加 ASR producers/bridges,用 `session.bus`。
@@ -35,14 +35,13 @@
   - **测试**:新 `tests/test_control_bridges.py`(4 例,补 manual-hangup 此前零覆盖);`test_listen_pumps_bridge.py` 改 bus 从 session 建+收。**全套 335 passed**(331 + WIP 自带 4)/ 27 skipped,ruff 净,validate 过。
   - **WIP 处理**:`git stash` 9 文件 multi-Edge WIP → 干净树做 2.6 → commit → `git stash pop` 复原(Auto-merge main.py 干净,区域不重叠);must-fix 只改 call_session/run_loop(不在 WIP)故无需再 stash。
   - **review should_consider(留待)**:① `main.py` 的 `if sess.bus is None` guard + 注释已过时(bus 永非 None)——因 main.py 缠 WIP,留待 WIP 落地/下次碰 main.py 时清;② `EventBus.aclose()` 非 cancel-shielded(SIGTERM 二次 cancel 可能中断 drain 漏无损事件)——PRE-EXISTING,归 EventBus-hardening;③ 可加 run_session 级 e2e manual-hangup 测试(现 control bridge 测试用 fake main task,未走真 re-entrancy,已人工 trace 无死锁)。
-- [ ] 2.5 `_partial_monitor`/`_vad_monitor`:触发改 `post(InterruptRequested(source, user_text))`;playback owner 订阅并**自取消**(取代 reach-across `current_speaking_task.cancel()`);`barge_in_active` flat flag 取代 `interruption_signaled`。
-  - **DEFER 理由**:① 改打断 signal-then-cancel 时序(call-143 race),memory 明记"需真机复验、别盲推";golden net 确定性 mock,**不覆盖** barge-in 竞态。② `test_realtime_interruption.py` 直接 unit-test monitor 的 reach-across,改 producer 会破坏它。③ 自然 gate = change-3 真机真拨 UX gate(blueprint §7,需物理 SIM7600 rig)。
-- [ ] 2.7 保留 legacy reach-across cancel 作为可回退分支(removal trigger = change-2 router 接管 + call-143 真机复验)。
-  - NOTE:monitor 未碰,**reach-across 仍是唯一且默认路径**;本条只在 2.5 落地、新 self-cancel 成为默认后才有意义。当前无双路径、无 fallback 叠层。
+> **2.5 / 2.7 — 已移交 change-3 `engine-tools-multidialogue-gating`**(barge-in 反转 + legacy reach-across 回退分支),不在本 change 验收范围。理由:改打断 signal-then-cancel 时序(call-143 race)需**真机真拨复验**(memory 明记别盲推),golden net 确定性 mock 不覆盖 barge-in 竞态,`test_realtime_interruption.py` 直测 monitor reach-across 会被破坏;自然 gate = change-3 真机 UX gate(blueprint §7,需物理 SIM7600 rig)。当前 monitor 未碰、reach-across 仍是唯一且默认路径,无双路径/无 fallback 叠层。
+> - 2.5 `_partial_monitor`/`_vad_monitor` 触发改 `post(InterruptRequested(...))` + playback owner 自取消(取代 reach-across `current_speaking_task.cancel()`),`barge_in_active` flat flag 取代 `interruption_signaled`。
+> - 2.7 保留 legacy reach-across cancel 作为可回退分支(removal trigger = change-3 router 接管 + call-143 真机复验)。
 
 ## 3. 校验 + 部署
 
-- [ ] 3.1 `openspec validate engine-eventbus-foundation --strict` 通过(本会话跑)
+- [x] 3.1 `openspec validate engine-eventbus-foundation --strict` 通过(本会话跑)
 - [x] 3.2 engine 全套测试绿(`-k 'eventbus or run_loop or golden or interruption'` 子集 39 绿 + 全套 326 绿)。meta-repo `make test-all` 受 sibling venv 探测影响,以 engine 内直跑为准。
-- [ ] 3.3 部署 engine 到 ECS soak(Phase 1a 零行为风险,可先发);STATE.md 更新 —— **待用户决定**(见会话末选项)。
-- [ ] 3.4 Phase 1b 收尾后再 archive 本 change,然后才开 `engine-multi-route-dispatch`(避免 ai-pipeline delta 互覆盖)。
+> **3.3 ECS soak — archive 后可选 follow-up(零行为风险,非阻塞)**:Phase 1a/1b 纯增量,建议归档后把 engine 发 ECS 灰跑观察一轮再依赖;不阻塞 archive,也不阻塞 change-2 propose。
+- [x] 3.4 archive 本 change(2026-06-06 本会话),随后开 change-2 `engine-multi-route-dispatch`。注:change-1 cluster=service-communication 与 change-2 cluster=ai-pipeline+call-state-machine **不重叠**,本可并行;archive 在前更干净(满足蓝图 §5 纪律)。change-2 设计为**纯 ADDED delta**(SelectRouter + StatusProjector 躲 kill-switch),不 MODIFY 任何现有 requirement,故也不与 active 的 `referee-hangup-action`(MODIFIED decider)/ `call-state-machine-soften-guard`(MODIFIED 状态集合)互踩。
