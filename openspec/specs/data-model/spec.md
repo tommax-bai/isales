@@ -174,15 +174,6 @@ JSONB 字段 SHALL 用于半结构化的配置或事件流；任何新引入的 
 - **WHEN** 通话开始时快照 prompt_versions
 - **THEN** `referee_llms` 数组 SHALL 含本通话每个 referee 的 label + model + prompt_version_id；配了重组流时 `restructure_llm` 非空
 
-## Cross-Reference
-
-各表的字段语义、约束、状态机 SHALL 在以下 capability spec 中查询：
-
-- 业务行为：`interruption-detection`, `silence-activation`, `goal-achievement`, `filler`, `human-handoff`
-- 输入输出：`role-prompt`, `transcript`, `webhook-callback`
-- 调度与流程：`call-state-machine`, `retry-followup`, `time-window`, `ai-pipeline`
-- 基础设施：`architecture`, `device-hardware`, `service-communication`
-
 ### Requirement: campaign.voice_id 持有 vendor speaker 字符串
 
 `campaign.voice_id` SHALL 为 `String(128)`、可空，直接持有 TTS vendor 的 speaker 标识字符串（如 `zh_female_xiaohe_uranus_bigtts`），由管理员在场景表单填写。该列 MUST NOT 是指向 `voice_model` 的外键——音色不在本系统编目，引擎与试听端点都将该字符串原样传给 TTS provider。NULL / 空串表示使用 provider 默认音色。
@@ -196,3 +187,12 @@ JSONB 字段 SHALL 用于半结构化的配置或事件流；任何新引入的 
 
 - **WHEN** 设置 campaign 的音色
 - **THEN** 系统 MUST NOT 要求该 speaker 预先存在于 `voice_model` 表；`campaign.voice_id` MUST NOT 对 `voice_model` 施加外键约束
+
+## Cross-Reference
+
+各表的字段语义、约束、状态机 SHALL 在以下 capability spec 中查询：
+
+- 业务行为：`interruption-detection`, `silence-activation`, `goal-achievement`, `filler`, `human-handoff`
+- 输入输出：`role-prompt`, `transcript`, `webhook-callback`
+- 调度与流程：`call-state-machine`, `retry-followup`, `time-window`, `ai-pipeline`
+- 基础设施：`architecture`, `device-hardware`, `service-communication`
