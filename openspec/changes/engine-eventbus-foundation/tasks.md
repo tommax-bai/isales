@@ -25,14 +25,18 @@
   - review 跟进②(change-2 HAZARD):`await bus.start()` 后留显式注释——当前 start→return 之间无可抛点故 run_session finally 安全托管 bus;change-2 一旦在此窗口加可抛 `await`,必须 try/except 兜 `bus.aclose()` 否则泄漏 dispatcher 协程。**故意不加当前不可达的防御死代码**(避免"为做而做"),改留 loud marker。
   - review 裁定:`fix-then-ship` / `must_fix=[]`——cross-lane 重排 & partial 丢弃为真但经 monitor latch+gate / drop-oldest-keep-best 证不可观测,byte-identity 成立。
 
-### Phase 1b — barge-in 反转 + manual-hangup(⏸ DEFERRED,见理由)
+### Phase 1b — manual-hangup 迁移(✅ 2.6 已完成)+ barge-in 反转(⏸ 2.5 DEFERRED)
 
+- [x] 2.6 `main.py` `_on_manual_hangup`/`_on_transfer`:改 `sess.bus.post(ManualHangupRequested/TransferRequested)`;删 `_ManualHangupRequested` 异常类 + 死 `except` 块 + `request_manual_hangup`。
+  - **bus 生命周期上移**:bus 从「`_start_listen_pumps` 建 / `_stop_listen_pumps` 销」改成「**run_session 入口建 + `session.bus` + start;finally aclose**」——因为控制面挂断要从拨号起就能用(`request_manual_hangup` 旧行为靠 dial_consumer 在拨号时设的 `session.tasks["main"]`,从通话一开始就在),bus 若等到 greeting 后才建会丢 greeting 期挂断。`_start_listen_pumps` 改用 `session.bus`(`assert not None`),不再 start/aclose。`call_session.py` + `bus: EventBus | None` 字段。
+  - **控制 bridge**:`_subscribe_control_bridges(session, bus)` 订阅 `ManualHangupRequested`/`TransferRequested` → `_terminate(cause)`(= 旧 `request_manual_hangup` 体:设 `MANUAL_HANGUP` + `main.cancel()`),**逐字节等价**(含 transfer→MANUAL_HANGUP 的 stage-4 stub)。死 `except _ManualHangupRequested` 确认从不触发(`main.cancel()` 抛裸 CancelledError),删除无行为影响;manual-hangup 的实际 finalize 一直在 dial_consumer/finalize 侧,本 change 没动。
+  - **测试**:新 `tests/test_control_bridges.py`(4 例,补此前零覆盖的 manual-hangup 机制);`tests/test_listen_pumps_bridge.py` 改成 bus 从 session 建+收。全套 **331 passed / 27 skipped**,ruff 净。
+  - **HAZARD 解除**:bus 归 run_session.finally 托管后,1a 留的 change-2 dispatcher 泄漏隐患自动消解(_start_listen_pumps 即便中途抛,finally 仍 aclose)。
+  - **WIP 处理**:`git stash` 那 9 文件 multi-Edge WIP → 干净树做 2.6 → commit → `git stash pop` 复原(已核 main.py 区域不重叠,pop 干净)。
 - [ ] 2.5 `_partial_monitor`/`_vad_monitor`:触发改 `post(InterruptRequested(source, user_text))`;playback owner 订阅并**自取消**(取代 reach-across `current_speaking_task.cancel()`);`barge_in_active` flat flag 取代 `interruption_signaled`。
-  - **DEFER 理由**:① 改打断 signal-then-cancel 时序(run_loop.py:1459-1461,call-143 race),memory 明记"需真机复验、别盲推";golden net 是确定性 mock,**不覆盖** barge-in 竞态。② `test_realtime_interruption.py` 直接 unit-test monitor 的 reach-across 行为,改 producer 会破坏它。③ 自然 gate = change-3 的真机真拨 UX gate(blueprint §7,需物理 SIM7600 Windows rig)。
-- [ ] 2.6 `main.py` `_on_manual_hangup`/`_on_transfer`:改 `sess.bus.post(ManualHangupRequested/TransferRequested)`;删 `_ManualHangupRequested` 异常类 + `request_manual_hangup`。
-  - **DEFER 理由**:① `main.py` 现有**未提交的 multi-Edge gRPC WIP**(9 文件,独立另一摊);本条要改 main.py,`git add main.py` 会把无关 WIP 卷进 Phase-1 commit(非交互无法分 hunk)。② `_ManualHangupRequested` **从不被 raise**(line 162 `except` 实为死代码;现行 manual-hangup 靠 `main.cancel()` 裸 CancelledError),"迁移"比清单写的换一行更微妙,需连带清死代码。③ 自然 gate = WIP 落地后,或随 change-2 的 `call_terminator`(统一 6 路 hangup 终止)一起做。
+  - **DEFER 理由**:① 改打断 signal-then-cancel 时序(call-143 race),memory 明记"需真机复验、别盲推";golden net 确定性 mock,**不覆盖** barge-in 竞态。② `test_realtime_interruption.py` 直接 unit-test monitor 的 reach-across,改 producer 会破坏它。③ 自然 gate = change-3 真机真拨 UX gate(blueprint §7,需物理 SIM7600 rig)。
 - [ ] 2.7 保留 legacy reach-across cancel 作为可回退分支(removal trigger = change-2 router 接管 + call-143 真机复验)。
-  - NOTE:1a 未碰 monitor,**reach-across 仍是唯一且默认路径**;本条只在 2.5 落地、新 self-cancel 成为默认后才有意义(届时旧路径作回退)。当前无双路径、无 fallback 叠层。
+  - NOTE:monitor 未碰,**reach-across 仍是唯一且默认路径**;本条只在 2.5 落地、新 self-cancel 成为默认后才有意义。当前无双路径、无 fallback 叠层。
 
 ## 3. 校验 + 部署
 
