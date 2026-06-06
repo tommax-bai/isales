@@ -31,4 +31,4 @@
 
 - [x] 5.1 `openspec validate engine-multi-route-dispatch --strict` 通过。
 - [x] 5.2 engine 全套测试绿（349 passed / 27 skipped，含新单测 + golden 双跑 + ruff 净）；`git stash pop` 复原多-Edge WIP。
-- [ ] 5.3 本 change archive 须在写 change-3 ai-pipeline MODIFIED delta **之前**（蓝图 §5）。【留待 /opsx:archive】
+- [x] 5.3 本 change archive 完成（2026-06-06，`archive/2026-06-06-engine-multi-route-dispatch`；SelectRouter ADDED delta 合进 specs/ai-pipeline）——在写 change-3 ai-pipeline MODIFIED delta **之前**（蓝图 §5）。
