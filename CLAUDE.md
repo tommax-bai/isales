@@ -12,7 +12,7 @@ This is the **iSales meta-repo**. It contains specs, the implementation plan, an
 ../isales-telephony   # telephony-api (HTTP) + modem-controller (AT commands, USB GSM modem)
 ../isales-scheduler   # lead dispatch, time windows, retry/follow-up
 ../isales-worker      # post-call summary, webhook fan-out
-../isales-engine      # realtime call engine: state machine + 3-layer AI pipeline (N-role PK + N×M judges + 1 polish)
+../isales-engine      # flat event/role-driven, gate-first realtime call engine: dual-LLM pipeline (1 main streaming reply + N parallel referee LLMs gating before audio release + 1 offline extractor)
 ../isales-web         # Vue 3 admin frontend
 ```
 

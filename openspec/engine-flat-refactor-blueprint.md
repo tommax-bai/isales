@@ -1,10 +1,25 @@
 # iSales Engine — Flat Event/Role-Driven Refactor (Master Blueprint)
 
-> Status: **planning / pre-proposal**. The authoritative plan for flattening `isales-engine`
-> to a fully event/role-driven (voxen-flat) architecture. Evolves
-> `engine-voxen-refactor-plan.md` (which captured the decision journey).
-> Source: 6-agent exhaustive blueprint (2026-06-06), ~130 concrete changes across 6 repos.
-> Supersedes the active `referee-hangup-action` change (§8).
+> Status: **✅ EXECUTED (2026-06-07)** — kept as the decision/rationale record, NOT a
+> forward plan. All three changes landed: `engine-eventbus-foundation` +
+> `engine-multi-route-dispatch` (archived); `engine-tools-multidialogue-gating`
+> (implemented, incl. the **CallStatus 11→4 collapse** + **Phase-4 legacy/flag
+> deletion**, engine commit `a7e5576`).
+>
+> ⚠️ **As-built DIVERGED from the §4 file plan** — read the archived changes +
+> `openspec/changes/engine-tools-multidialogue-gating/` for truth, not this §4
+> list. Gate-first is cohesive in `run_loop._run_gated_turn` + `_select_gated_route`;
+> the planned `turn_controller.py` / `status_projector.py` / `handlers.py` /
+> `fsm_subscriber.py` / `call_terminator.py` / `session_finalizer.py` /
+> `routes/dialogue.py|tools.py|referees.py|selector.py|builder.py` were **NOT
+> created**. `StatusProjector` = the existing `StateMachine` as a **synchronous
+> sole-writer** (no bus subscriber). The `ENGINE_USE_ROUTER` kill-switch + the
+> change-2 effect-route scaffolding (`select_router.py`, `routes/`) were created
+> then **deleted in Phase-4** (git is the rollback, not a runtime flag).
+>
+> _Original header (historical): "planning / pre-proposal", evolved
+> `engine-voxen-refactor-plan.md`; 6-agent blueprint 2026-06-06, ~130 changes
+> across 6 repos; superseded `referee-hangup-action` (§8)._
 
 ## 0. Locked decisions
 

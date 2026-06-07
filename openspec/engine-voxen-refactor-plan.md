@@ -1,9 +1,15 @@
 # iSales Engine → voxen-style EventBus + Multi-Route Refactor Plan
 
-> Status: **planning / pre-proposal**. This is the overarching plan for a multi-change
-> refactor of `isales-engine` to voxen's architecture. It supersedes the active
-> `referee-hangup-action` change (hangup folds in as a tool route — see §9).
-> Source analysis: 5-agent deep study of `voxen-main` + `isales-engine` (2026-06-06).
+> Status: **✅ EXECUTED (2026-06-07) / superseded** — this is the earlier decision-journey
+> record (evolved into `engine-flat-refactor-blueprint.md`, which is itself now
+> executed). The refactor shipped: EventBus + multi-route + gate-first + CallStatus
+> 11→4 + Phase-4 legacy/flag deletion (engine commit `a7e5576`). For as-built truth
+> see the archived changes + `openspec/changes/engine-tools-multidialogue-gating/`;
+> the file-layout / phasing / open-tuning-knobs below are **historical planning**, not
+> current state.
+>
+> _Original header (historical): "planning / pre-proposal"; 5-agent study of
+> `voxen-main` + `isales-engine` 2026-06-06; superseded `referee-hangup-action` (§9)._
 
 ## 0. Locked decisions
 

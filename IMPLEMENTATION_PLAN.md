@@ -23,7 +23,7 @@
 阶段 3：isales-scheduler  +  isales-worker     │
    │ (调度 + 异步后处理，可不依赖 engine 单测)   │
    ▼                                           │
-阶段 4：isales-engine 骨架 (状态机 + Mock 管线) │
+阶段 4：isales-engine 骨架 (事件/角色驱动 + Mock 管线) │
    │                                           │
    ▼                                           │
 阶段 5：isales-engine AI 管线接通真实 Provider  │
@@ -189,24 +189,24 @@
 
 ## 阶段 4：isales-engine 骨架（5~7 天，最关键）
 
-**目标：** 状态机 + AI 管线编排能跑通**端到端 mock 通话**（不接真实硬件、不调真 LLM）。
+**目标：** 事件/角色驱动的 gate-first 编排 + AI 管线能跑通**端到端 mock 通话**（不接真实硬件、不调真 LLM）。
 
 **产出（分子模块）：**
 
 | 子模块 | 内容 |
 |--------|------|
-| `engine/state_machine.py` | 实现 DESIGN.md §3 的全部状态转换 |
+| `engine/state_machine.py` | CallStatus 4 态机（init / in_call / transferring / end）；GREETING/SPEAKING/LISTENING 等 8 个旧 phase 降级为引擎内部 flag/event，不再是通话状态 |
 | `engine/call_session.py` | 单通电话的会话对象，持有所有 timer / state / context |
 | `engine/session_manager.py` | 全局会话注册表 + Redis 并发计数器 |
-| `engine/pipeline/orchestrator.py` | 三层管线编排（含润色失败降级、全部裁判否决兜底） |
-| `engine/pipeline/role_llm.py` | N 路并行调用 |
-| `engine/pipeline/judge_llm.py` | N×M 并行裁判 |
-| `engine/pipeline/polish_llm.py` | 选优+润色 |
+| `engine/pipeline/orchestrator.py` | gate-first 双 LLM 编排（先裁判后放音：referee gate 通过才释放主 LLM 流式回复音频） |
+| `engine/pipeline/main_llm.py` | 单路主 LLM 流式生成回复 |
+| `engine/pipeline/referee_llm.py` | N 路并行裁判 LLM（category + confidence），放音前 gate |
+| `engine/pipeline/extractor.py` | 离线字段提取（不在实时回复路径上） |
 | `engine/realtime/filler_manager.py` | 垫词选择和播放控制（可被打断） |
 | `engine/realtime/interruption_detector.py` | 白名单 + 时长双条件判定 |
 | `engine/realtime/silence_detector.py` | 沉默激活（带次数上限） |
 | `engine/transfer/manager.py` | 4 种转人工触发 + TRANSFERRING 状态 |
-| `engine/wrapup/manager.py` | WRAPPING_UP 状态、双计数器（轮数+时长）、简化管线、收尾挂断话术 |
+| `engine/wrapup/manager.py` | 收尾（引擎内部 flag/event，非通话状态）、双计数器（轮数+时长）、简化管线、收尾挂断话术 |
 | `engine/pipeline/json_parser.py` | 角色 LLM JSON 输出解析 + schema 校验，失败时回退为纯文本 reply（标记字段为空） |
 | `engine/queue_consumer.py` | 消费 scheduler 的 dial 队列 |
 | `engine/event_publisher.py` | 通话事件推送到 Redis Pub/Sub |
@@ -217,8 +217,8 @@
   - 触发打断，状态机正确流转
   - 触发沉默激活 2 次后挂断
   - 触发转人工，状态机进入 TRANSFERRING
-  - 全部裁判否决，回复用默认话术
-  - 润色失败，降级到第一个通过的候选
+  - 裁判 gate 全部否决（放音前拦截），回复用默认话术
+  - 主 LLM 流式生成异常，降级到默认话术
 - 并发跑 10 通 mock 电话，全局计数器准确
 
 ---
@@ -252,7 +252,7 @@
 
 **产出（engine 侧）：**
 - `engine/telephony_client.py`：连本地 modem-controller IPC，封装 dial/hangup + 双向 PCM 流
-- 原拨号流：scheduler → 队列 → engine → telephony-api `/devices/select` → engine 调 modem-controller dial → modem-controller 通过 AT 拨打 → 接通后双向 PCM 流转 → engine 状态机驱动 GREETING / SPEAKING / LISTENING ...
+- 原拨号流：scheduler → 队列 → engine → telephony-api `/devices/select` → engine 调 modem-controller dial → modem-controller 通过 AT 拨打 → 接通后双向 PCM 流转 → engine 事件/角色驱动 gate-first 编排（greeting / speaking / listening 等为引擎内部 flag/event）...
 
 **验收：**
 - 单个 USB GSM modem 插入开发机，端到端打通自己手机，至少 3 轮真实对话
@@ -266,7 +266,7 @@
 **目标：** 全部管理面 UI 可用。
 
 **产出（按页面）：**
-- 任务管理（Campaign CRUD + 角色/裁判/润色/垫词嵌套配置）
+- 任务管理（Campaign CRUD + 角色/裁判/垫词嵌套配置）
 - 线索管理（CSV 导入 / 状态查询 / 跟进时间）
 - 音色管理（列表 + 试听）
 - 设备管理（device / SIM 卡 / 绑定历史）
@@ -338,14 +338,14 @@
 4. analytics 聚合定时任务
 
 ### isales-engine（建议 ~11 PR，最复杂）
-1. 仓库骨架 + 状态机 stub（含 WRAPPING_UP）+ 单元测试
+1. 仓库骨架 + CallStatus 4 态机 stub（init/in_call/transferring/end；收尾等为内部 flag/event）+ 单元测试
 2. session_manager + 全局并发计数器
-3. orchestrator + Mock Provider 三层管线 + JSON 输出解析
+3. orchestrator + Mock Provider 双 LLM gate-first 管线（主 LLM 流式 + N 路裁判）+ JSON 输出解析
 4. filler_manager（含被打断逻辑）
 5. interruption_detector
 6. silence_detector
 7. transfer manager + TRANSFERRING 状态
-8. **wrapup manager + WRAPPING_UP 简化管线 + 双计数器 + 挂断话术**
+8. **wrapup manager（收尾为引擎内部 flag/event）+ 简化管线 + 双计数器 + 挂断话术**
 9. queue_consumer + event_publisher
 10. ASR/TTS/LLM 真实 Provider 实现
 11. telephony_client（连 modem-controller IPC）+ 真实硬件端到端拨打
@@ -383,6 +383,6 @@
 最小可上线标准：
 1. 单 engine 实例支持 50 路并发 8 小时不崩
 2. 端到端：导入 100 条线索 → 自动外呼 → 至少 80% 通话能完成 3 轮以上对话
-3. 至少 1 个 Campaign 完整跑通（音色 / 角色 / 裁判 / 润色 / 转人工 / 回调）
+3. 至少 1 个 Campaign 完整跑通（音色 / 角色 / 裁判 gate / 转人工 / 回调）
 4. 后台 UI 能完成全部管理操作，不需要直接改 DB
 5. 通话录音、transcript、提取字段、回调日志四类数据完整可查

@@ -9,7 +9,7 @@ isales-api         # FastAPI HTTP 后台（campaigns / leads / calls / ...）
 isales-telephony   # /devices /sim-cards + modem-controller 守护进程
 isales-scheduler   # 调度器（campaign 启停 / 拨号队列）
 isales-worker      # 后台 worker（callback / recording upload / watchdog）
-isales-engine      # 实时通话引擎（状态机 + 双 LLM 流式管线 + cloud-edge gRPC server）
+isales-engine      # 实时通话引擎（事件/角色驱动 gate-first + 双 LLM 流式管线 + cloud-edge gRPC server）
 isales-web         # Vue 3 管理面
 ```
 
