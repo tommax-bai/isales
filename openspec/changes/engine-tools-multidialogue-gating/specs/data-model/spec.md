@@ -109,7 +109,7 @@
 
 ### Requirement: isales-common 0.8.0 加性迁移
 
-本 change 的全部 schema 变更（PERSONA / REFEREE_HANGUP / tools / route&tool action / 门控列 / pipeline_trace 字段 / persona_llms）SHALL 由**一条加性 alembic 迁移**承载（down_rev `a7b8c9d0e1f2`），isales-common 版本 SHALL 由 0.7.0 升至 **0.8.0**。下游 api / scheduler / worker pin SHALL 同步到 `>=0.8,<0.9`。`CallStatus` 枚举 MUST 不变（仅加投影 docstring）。
+本 change 的全部 schema 变更（PERSONA / REFEREE_HANGUP / tools / route&tool action / 门控列 / pipeline_trace 字段 / persona_llms）SHALL 由**一条加性 alembic 迁移**承载（down_rev `a7b8c9d0e1f2`），isales-common 版本 SHALL 由 0.7.0 升至 **0.8.0**。下游 api / scheduler / worker pin SHALL 同步到 `>=0.8,<0.9`。`CallStatus` 枚举 SHALL 由 11 值**收缩为 4 值** `{init, in_call, transferring, end}`（见 call-state-machine spec § 状态集合——原 8 个细粒度阶段降级为引擎内部概念）；`call_record.status` 为 `String(16)` 列（非 PG enum），收缩**无需 DB 迁移**（与上述加性迁移正交），收缩前历史行旧值为可接受孤儿（v1 无生产数据）。
 
 #### Scenario: 加性迁移可回滚
 

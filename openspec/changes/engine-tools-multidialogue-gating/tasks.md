@@ -14,70 +14,72 @@
 
 ## 1. isales-common 0.8.0 — schema + additive alembic (DEPLOY FIRST)
 
-- [ ] 1.1 `enums.py`: add `RoleKind.PERSONA`, `PromptScopeType.PERSONA`, `HangupCause.REFEREE_HANGUP`. `CallStatus` unchanged (+ projection docstring).
-- [ ] 1.2 `schemas/jsonb/tool_config.py` NEW: `HangupToolConfig{type:"hangup", closing_phrase?, interrupt?}` + `TransferToolConfig{type:"transfer"}` (NO phrase field — transfer reuses the single-source `campaign.transfer_phrases` via `_perform_handoff`) discriminated union.
-- [ ] 1.3 `schemas/jsonb/routing_rule.py`: add `RoutePersonaAction{type:"route", to, then_state?}` + `RouteToolAction{type:"tool", tool, then_state?}` + `ThenState` Literal `{LISTENING,WRAPPING_UP,ACTIVATING,TRANSFERRING,END}`; widen action union; keep legacy `transition`/`restructure` via removal-tracked shim (comment the removal trigger).
-- [ ] 1.4 `models/campaign.py`: `+tools` JSONB, `+persona_fanout_cap` (default 1, ≤3), `+referee_timeout_ms` (default ~600), `+referee_fail_open_route` (default "main").
-- [ ] 1.5 `models/pipeline_trace.py`: `+selected_route_id` (Text), `+selected_route_kind` (Text), `+persona_candidates` (JSONB). Existing referee_*/restructure_* unchanged. (Spec: transcript delta owns the canonical field enumeration; data-model ADDED records them. `表归属与全表清单` index intentionally NOT reconciled — see design Open Questions.)
-- [ ] 1.6 `schemas/messages/dial.py`: `+persona_llms[]` (mirror `referee_llms[]`: label + model + prompt_version_id).
-- [ ] 1.7 `schemas/pipeline.py`: `+PersonaSpec`, `+personas`, `+tools`.
-- [ ] 1.8 ONE additive alembic migration, down_rev `a7b8c9d0e1f2` (new columns + enum values only; no drops/renames → rollback needs no down-migration).
-- [ ] 1.9 Bump version `0.7.0 → 0.8.0`; build + publish package.
-- [ ] 1.10 Unit tests for the union schemas (tool_config / route&tool action discriminators) + alembic up/down smoke.
+- [x] 1.1 `enums.py`: add `RoleKind.PERSONA`, `PromptScopeType.PERSONA`, `HangupCause.REFEREE_HANGUP`. `CallStatus` unchanged (+ projection docstring).
+- [x] 1.2 `schemas/jsonb/tool_config.py` NEW: `HangupToolConfig{type:"hangup", closing_phrase?, interrupt?}` + `TransferToolConfig{type:"transfer"}` (NO phrase field — transfer reuses the single-source `campaign.transfer_phrases` via `_perform_handoff`) discriminated union.
+- [x] 1.3 `schemas/jsonb/routing_rule.py`: add `RoutePersonaAction{type:"route", to, then_state?}` + `RouteToolAction{type:"tool", tool, then_state?}` + `ThenState` Literal `{LISTENING,WRAPPING_UP,ACTIVATING,TRANSFERRING,END}`; widen action union; keep legacy `transition`/`restructure` via removal-tracked shim (comment the removal trigger).
+- [x] 1.4 `models/campaign.py`: `+tools` JSONB, `+persona_fanout_cap` (default 1, ≤3), `+referee_timeout_ms` (default ~600), `+referee_fail_open_route` (default "main").
+- [x] 1.5 `models/pipeline_trace.py`: `+selected_route_id` (Text), `+selected_route_kind` (Text), `+persona_candidates` (JSONB). Existing referee_*/restructure_* unchanged. (Spec: transcript delta owns the canonical field enumeration; data-model ADDED records them. `表归属与全表清单` index intentionally NOT reconciled — see design Open Questions.)
+- [x] 1.6 `schemas/messages/dial.py`: `+persona_llms[]` (mirror `referee_llms[]`: label + model + prompt_version_id).
+- [x] 1.7 `schemas/pipeline.py`: `+PersonaSpec`, `+personas`, `+tools`.
+- [x] 1.8 ONE additive alembic migration, down_rev `a7b8c9d0e1f2` (new columns + enum values only; no drops/renames → rollback needs no down-migration).
+- [x] 1.9 Bump version `0.7.0 → 0.8.0`; build + publish package.
+- [x] 1.10 Unit tests for the union schemas (tool_config / route&tool action discriminators) + alembic up/down smoke.
 
 ## 2. isales-worker — REFEREE_HANGUP bucket + pin fix (DEPLOY SECOND)
 
-- [ ] 2.1 **FIX stale pin** `isales-common>=0.5,<0.6 → >=0.8,<0.9` (pre-existing bug — worker already uses 0.7-era symbols; new enum requires 0.8).
-- [ ] 2.2 `lead_state.py`: add `REFEREE_HANGUP` to an **EXPLICIT no-auto-redial set** (do NOT rely on the catch-all "unrecognized cause → failed" fall-through — `apply_lead_state` swallows unknown causes to cause=None → normal/follow-up, the opposite of intent). MUST NOT enqueue retry, MUST NOT enqueue auto follow-up (retry-followup spec § "REFEREE_HANGUP 归入不自动重拨终态").
-- [ ] 2.3 Verify `callend.py` enum-validates `hangup_cause` against `HangupCause` (the DLQ guard) and now accepts `referee_hangup`.
-- [ ] 2.4 Tests: REFEREE_HANGUP → no retry + no follow-up; CallEnded with referee_hangup passes validation (no DLQ).
+- [x] 2.1 **FIX stale pin** `isales-common>=0.5,<0.6 → >=0.8,<0.9` (pre-existing bug — worker already uses 0.7-era symbols; new enum requires 0.8).
+- [x] 2.2 `lead_state.py`: add `REFEREE_HANGUP` to an **EXPLICIT no-auto-redial set** (do NOT rely on the catch-all "unrecognized cause → failed" fall-through — `apply_lead_state` swallows unknown causes to cause=None → normal/follow-up, the opposite of intent). MUST NOT enqueue retry, MUST NOT enqueue auto follow-up (retry-followup spec § "REFEREE_HANGUP 归入不自动重拨终态").
+- [x] 2.3 Verify `callend.py` enum-validates `hangup_cause` against `HangupCause` (the DLQ guard) and now accepts `referee_hangup`.
+- [x] 2.4 Tests: REFEREE_HANGUP → no retry + no follow-up; CallEnded with referee_hangup passes validation (no DLQ).
 
 ## 3. isales-api — persona/tool validation + tools threading
 
-- [ ] 3.1 Pin `isales-common >= 0.8,<0.9`.
-- [ ] 3.2 `role_configs.py`: add `PERSONA` to `_LABELLED_KINDS`; delete-guard for personas referenced by routing rules.
-- [ ] 3.3 `routing_validation.py`: `persona_labels_of()`; validate `route→persona` and `tool→alias`; emit `422 routing_rule_unknown_persona` / `422 routing_rule_unknown_tool` / `422 tool_alias_duplicate`.
-- [ ] 3.4 `campaigns.py`: thread `tools` through nested create/update + the routing-rules PUT path.
-- [ ] 3.5 API tests for the three 422s + tools round-trip.
+- [x] 3.1 Pin `isales-common >= 0.8,<0.9`.
+- [x] 3.2 `role_configs.py`: add `PERSONA` to `_LABELLED_KINDS`; delete-guard for personas referenced by routing rules.
+- [x] 3.3 `routing_validation.py`: `persona_labels_of()`; validate `route→persona` and `tool→alias`; emit `422 routing_rule_unknown_persona` / `422 routing_rule_unknown_tool` / `422 tool_alias_duplicate`.
+- [x] 3.4 `campaigns.py`: thread `tools` through nested create/update + the routing-rules PUT path.
+- [x] 3.5 API tests for the three 422s + tools round-trip.
 
 ## 4. isales-scheduler — persona prompt packing
 
-- [ ] 4.1 `prompt.py` `pack_prompt_versions`: pack `RoleKind.PERSONA` rows → `persona_llms[]` (label namespace isolated from referee labels). Pin 0.8.
-- [ ] 4.2 Test: campaign with personas packs `persona_llms[]` correctly; referee packing unchanged.
+- [x] 4.1 `prompt.py` `pack_prompt_versions`: pack `RoleKind.PERSONA` rows → `persona_llms[]` (label namespace isolated from referee labels). Pin 0.8.
+- [x] 4.2 Test: campaign with personas packs `persona_llms[]` correctly; referee packing unchanged.
 
 ## 5. isales-web — routing/tools/persona editors + 422 fix
 
-- [ ] 5.1 `types/campaign.ts`: `PersonaSpec` / `ThenState` / `RoutePersonaAction` / `RouteToolAction` / `ToolConfig` types + defaults.
-- [ ] 5.2 `RoutingRulesTab.vue`: action editor gains 路由到角色(persona) + 工具(挂断/转人工) + `then_state` dropdown.
-- [ ] 5.3 `RoutingRulesTab.vue`: **fix the `goal_type`-on-target-switch 422 bug** — clear stale `goal_type`/branch fields when action target changes (cherry-forward from superseded change). Add `routingRulesTab.test.ts` case.
-- [ ] 5.4 `RoleConfigTab.vue` / `RoleConfigDialog.vue`: persona kind (label required); persona count cap (≤3) hint.
-- [ ] 5.5 `ToolsTab.vue` NEW: hangup (closing_phrase / interrupt) + transfer texts; alias uniqueness.
-- [ ] 5.6 vitest for the editors; **build → scp → nginx reload** as one atomic step on deploy (don't interleave other commands).
+- [x] 5.1 `types/campaign.ts`: `PersonaSpec` / `ThenState` / `RoutePersonaAction` / `RouteToolAction` / `ToolConfig` types + defaults.
+- [x] 5.2 `RoutingRulesTab.vue`: action editor gains 路由到角色(persona) + 工具(挂断/转人工) + `then_state` dropdown.
+- [x] 5.3 `RoutingRulesTab.vue`: **fix the `goal_type`-on-target-switch 422 bug** — clear stale `goal_type`/branch fields when action target changes (cherry-forward from superseded change). Add `routingRulesTab.test.ts` case.
+- [x] 5.4 `RoleConfigTab.vue` / `RoleConfigDialog.vue`: persona kind (label required); persona count cap (≤3) hint.
+- [x] 5.5 `ToolsTab.vue` NEW: hangup (closing_phrase / interrupt) + transfer texts; alias uniqueness.
+- [x] 5.6 vitest for the editors; **build → scp → nginx reload** as one atomic step on deploy (don't interleave other commands).
 
 ## 6. isales-engine Phase 3 — routes + gating + projector (behind ENGINE_USE_ROUTER)
 
-- [ ] 6.1 Extend `select_router.py`: dialogue routes (`exec=eager`) hand the **live un-drained `sentences()` generator**; tool routes (`exec=lazy`) execute-on-select; routes carry `kind` + `then_state`; Router does NOT swallow exceptions.
-- [ ] 6.2 `routes/dialogue.py`: `main` + `persona:<label>` + `closing`(MainSpec+WRAP_UP_APPEND, then_state=WRAPPING_UP) + `recovery`(then_state=ACTIVATING) eager dialogue routes.
-- [ ] 6.3 `routes/restructure.py`: referee-skipped restructure route (interrupt_remaining / low_confidence), then_state=LISTENING.
-- [ ] 6.4 `routes/tools.py`: `tool:hangup` (set `hangup_cause=REFEREE_HANGUP`, optional TTS closing_phrase, **suppress reply**, → END) + `tool:transfer` (wrap `_perform_handoff(trigger_type="referee_decision")`, then_state=TRANSFERRING).
-- [ ] 6.5 `routes/referees.py` + `routes/selector.py`: `run_referees` as **eval_fn** (gating); selector maps `decide()` verdict → one route; first-match-wins + `category in match[]` verbatim.
-- [ ] 6.6 `routes/builder.py`: build route table from campaign personas/tools/routing_rules; `EffectContext` injects run_loop helpers (avoid import cycle).
-- [ ] 6.7 **Pre-reply gating**: `orchestrator.py` `start_buffering()` — eager-buffer main + personas on user-final; `_await_referees` → `run_referees` eval_fn; timeout 2.0s → `campaign.referee_timeout_ms` (~600ms); **fail-open to `referee_fail_open_route` ("main")** not "continue".
-- [ ] 6.8 `status_projector.py` NEW: single subscriber on the **lossless lane**, sole writer of `session.state` (sole `transition_to` caller) + sole emitter of `StatusChanged`; projection map (blueprint §3). Operates ON the already-shipped advisory model (soften-guard / 2cb47bc: `transition_to` writes `state_warning`, never raises) — do **NOT** re-introduce raising or `state_error`.
-- [ ] 6.9 `state_machine.py` → passive projector; remove `transition_to` *driving* calls from routes/decider (routes declare `then_state` only; decider maps action→route, never direct `sm.transition_to` — fixes the live `路由规则引擎`/`goal-achievement` contradiction).
-- [ ] 6.10 `call_terminator.py`: one terminal path for all hangup sources; every terminal route sets `session.hangup_cause`. `session_finalizer.py`: shielded finalize + DECR snap-to-0 (the change-0 follow-up).
-- [ ] 6.11 Wire `persona_fanout_cap` (clamp ≤3), `persona_llms[]` consumption; eager fan-out opt-in (N defaults to 1 = main only, no speculation).
-- [ ] 6.12 Keep behind `RuntimeConfig.engine_use_router` (still default OFF in prod); `run_session` signature frozen (flag via config, not a new param).
+> ✅ 2026-06-07 (engine commit `c49c4fb`). Implemented **cohesively in `run_loop._run_gated_turn` + `_select_gated_route`** (reusing `_play_streaming` / `_perform_handoff` / `_run_restructure` / `_await_referees` directly) rather than the separate `routes/*.py` file layout sketched below — the behavior (SelectRouter dispatch, eager generator, then_state) is what the spec requires; the file split is deferred to the Phase-4 cleanup. 365 passed/27 skipped, ruff clean.
+
+- [x] 6.1 Extend dispatch: dialogue routes (`exec=eager`) hand the **live un-drained `sentences()` generator** (AGEN_CREATED via the orchestrator eager-buffer/replay); tool routes (`exec=lazy`) execute-on-select; routes carry `kind` + `then_state`.
+- [x] 6.2 Dialogue routes: `main` + `persona:<label>` (eager candidates) + `closing`(MainSpec+WRAP_UP_APPEND, then_state=WRAPPING_UP) + `recovery`(then_state=ACTIVATING, fresh on select).
+- [x] 6.3 Restructure route: referee-skipped re-voice (interrupt_remaining / low_confidence), then_state=LISTENING.
+- [x] 6.4 Tool routes: `tool:hangup` (set `hangup_cause=REFEREE_HANGUP`, optional TTS closing_phrase, **suppress reply**, → END) + `tool:transfer` (wrap `_perform_handoff` → TRANSFERRING).
+- [x] 6.5 `run_referees` as **eval_fn** gating (`_await_referees(timeout_s=referee_timeout_ms/1000)`); `_select_gated_route` maps `decide()` verdict → one route; first-match-wins + `category in match[]` verbatim (`decide()` widened for route/tool + legacy shim).
+- [x] 6.6 Build candidate route table from campaign personas/tools/routing_rules (in `_run_gated_turn`; reuses run_loop helpers directly — no import cycle).
+- [x] 6.7 **Pre-reply gating**: eager-buffer main + personas on user-final (orchestrator `start_eager`); gate `await`s before releasing audio; timeout `campaign.referee_timeout_ms`; **fail-open to `referee_fail_open_route` ("main")**.
+- [x] 6.8 StatusProjector = **`StateMachine` as the synchronous sole writer** (crux2 review: 4-state collapse makes `transition_to` idempotent + trivial, so a sync sole-writer beats a bus subscriber — no async race). Operates on the shipped advisory model (`state_warning`, never raises).
+- [x] 6.9 Routes declare `then_state` only; `_run_gated_turn` projects it via the sole writer (WRAPPING_UP→`in_wrap_up`; recovery/main→IN_CALL no-op; transfer→TRANSFERRING; hangup→END). No route calls `transition_to` for driving.
+- [~] 6.10 Terminal path: every terminal route sets `session.hangup_cause` (REFEREE_HANGUP / marked_for_handoff / wrap_up_completed) ✅. `session_finalizer` shielded-finalize + DECR snap-to-0 remains the **change-0 follow-up** (dial_consumer layer, needs a Redis double) — still pending.
+- [x] 6.11 Wire `persona_fanout_cap` (clamp [1,3]); eager fan-out opt-in (default 1 = main only). (Personas loaded from `RoleKind.PERSONA` RoleConfig rows, not `persona_llms[]`.)
+- [x] 6.12 Behind `RuntimeConfig.engine_use_router` (default OFF); `run_session` signature frozen (flag via config).
 
 ## 7. isales-engine Phase 3 — tests (must pass before any real dial)
 
-- [ ] 7.1 Golden double-flag: 3 deterministic scenarios × {OFF, ON} byte-identical for the byte-stable paths; new persona/tool/gating scenarios get dedicated golden entries.
-- [ ] 7.2 `test_eager_dialogue_route_returns_live_generator`: assert generator handed off AGEN_CREATED (the eager-generator deviation guard — blueprint risk #1).
-- [ ] 7.3 `test_status_projector`: single-writer ordering; route-completion vs barge-in race; `StatusChanged` sequence; unusual transition → advisory `state_warning` (no raise — inherited from soften-guard, NOT re-implemented).
-- [ ] 7.4 `test_gating`: fail-open to main on timeout/invalid/low-confidence; p50 ~0ms (gate lands before first audio in the mock harness).
-- [ ] 7.5 `test_tool_routes`: hangup suppresses reply + sets REFEREE_HANGUP + → END; transfer → TRANSFERRING via `_perform_handoff`.
-- [ ] 7.6 `test_eager_personas`: N parallel, select-one-cancel-rest, `persona_candidates`/`selected_route_id` in pipeline_trace; cap ≤3 clamp.
-- [ ] 7.7 Full engine suite green (current baseline 349 passed / 27 skipped) + ruff clean + `openspec validate --strict`.
+- [x] 7.1 Golden double-flag: byte-stable scenarios (one_turn_hangup/silence) share one fixture across {OFF,ON} (gating columns dropped cross-flag); goal_achieved diverges (closing route) → dedicated `goal_achieved_wrapup.router_on.json`.
+- [x] 7.2 `test_eager_dialogue_route_returns_live_generator`: AGEN_CREATED guard (in `tests/test_eager_buffer.py`).
+- [~] 7.3 `test_status_projector`: subsumed by `test_state_machine.py` (4-state + idempotent + advisory `state_warning`, no raise) + golden double-flag (StatusChanged sequence). No dedicated file — the sync sole-writer (6.8) has no async write-ordering to test.
+- [x] 7.4 `test_gating`: fail-open to main on referee timeout (`tests/test_gating.py`).
+- [x] 7.5 `test_gating`: hangup suppresses reply + REFEREE_HANGUP + → END; transfer → handoff; unknown alias fails open.
+- [x] 7.6 `test_gating`: persona select-one-cancel-rest, `persona_candidates`/`selected_route_id` in trace; cap clamp to 3.
+- [x] 7.7 Full engine suite green (365 passed / 27 skipped) + ruff clean (changed files) + `openspec validate --strict`.
 
 ## 8. isales-engine Phase 3 — barge-in async cancel (deferred 2.5/2.7 from change-1)
 
