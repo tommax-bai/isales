@@ -21,7 +21,14 @@ active；50051+8000 listen；ECS `CallStatus=['init','in_call','transferring','e
 `isales_engine_started` clean，无 live ENGINE_USE_ROUTER reader（run_loop:691 仅注释、
 settings:120 死字段——随 multi-edge commit 删）；web SPA 200（4 态监控）。**⚠️ 无开关无秒级
 回滚**（git revert `67af3b6`→上一态 + 重 rsync + alembic downgrade）。**§9 真机 SIM7600 验收
-待跑**（gate-first 打断/转人工/裁判挂断/多 persona；需 edge daemon + 真电话）。
+（2026-06-07 深夜重跑）：✅ gate-first 双向对话通（call #166，ASR 转写+AI 逐轮回复）、延迟健康
+~1.0-1.5s（ASR-EOS 400ms + LLM 首 token + TTS 首字节 0.25-0.38s，无单一瓶颈）；🔴 **发现 bug2 远端
+挂断不 finalize**——用户挂断后 edge 干净拆线但**无显式 gRPC 挂断给引擎**、引擎也不在 RTC 对端离开时
+finalize → `call_record` 卡 `init`/`pipeline_trace` 空/session held open（对比引擎主动静音挂断
+#165 finalize 正常 persisted=True）。修区=引擎 finalize-on-remote-hangup + edge 发显式 hangup
+CallEvent，关联 change `device-status-reset-on-call-end`。**待办**：修 bug2 → 拿干净 pipeline_trace
+测裁判放音延迟 + 验裁判 category；测裁判挂断/转人工需先配回 routing_rules（现 `[]`）。另：边缘 modem
+偶进采集坏态（引擎收静音），USB 物理重插复位（详见 isales-telephony Windows STATE.md 2026-06-07 块）。
 
 Prior: 2026-06-05 20:40 CST — **engine-multi-referee-and-restructure
 deployed** (common + engine + api + scheduler + web). 单 referee dual-LLM 升级为
