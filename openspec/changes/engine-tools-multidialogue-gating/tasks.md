@@ -96,14 +96,21 @@
 - [ ] 9.5 Real dial: **eager persona** select-one (if enabling N>1) — verify cancelled-persona token billing acceptable; or keep N=1 for the gate.
 - [ ] 9.6 Capture pipeline_trace + transcript from the gate dials; confirm wire contract byte-stable vs legacy.
 
-## 10. Phase 4 — flip default ON + DELETE legacy (ONE commit, after §9 passes)
+## 10. Phase 4 — DELETE legacy + ENGINE_USE_ROUTER (engine commit `a7e5576`)
 
-- [ ] 10.1 Flip `ENGINE_USE_ROUTER` default ON.
-- [ ] 10.2 DELETE `_main_turn_loop` while + if/elif effect ladder (run_loop.py 838-906) + the change-2 effect-route adapter.
-- [ ] 10.3 DELETE `_await_user_or_silence`, the `_ManualHangupRequested` sentinel + `request_manual_hangup` + `main.cancel()` sentinel path.
-- [ ] 10.4 DELETE the `ENGINE_USE_ROUTER` flag itself (no more double-path / double-flag).
-- [ ] 10.5 Re-run full suite + golden (now single-path) green; ruff clean.
-- [ ] 10.6 Same-commit discipline (blueprint §5 "strike while iron is hot"): flag-on + deletion land together, not split across sessions.
+> ⚠️ Sequencing changed (user call 2026-06-07): Phase-4 ran **before** the §9
+> real-machine gate. Rationale: git is the rollback (no runtime kill-switch
+> needed); legacy code + the flag are a burden on future refactors
+> ([[feedback-avoid-multilayer-fallback]]). The §9 real-machine gate is now a
+> **deploy gate** (validate on SIM7600 before any customer deploy), not a
+> flag-flip gate; rollback = `git revert` + redeploy.
+
+- [x] 10.1 gate-first is now unconditional (no flag to flip — it IS the default).
+- [x] 10.2 DELETED the legacy `_main_turn_loop` speak-then-judge body (~300 lines) + the change-2 effect-route adapter (`routes/effects.py` / `routes/selector.py` / `routes/builder.py` / `select_router.Router`+`ExecutableRoute`).
+- [~] 10.3 `_await_user_or_silence` is SHARED by gate-first (the pull-loop shell was kept) — NOT deleted. `_ManualHangupRequested`/`request_manual_hangup`/`main.cancel()` already migrated to the bus in change-1 (not present). Also deleted the now-dead `_cancel_referees`.
+- [x] 10.4 DELETED `ENGINE_USE_ROUTER` (runtime_config + the settings read; `select_router.py` removed, `Directive` inlined). ⚠ `settings.py` still defines the now-dead `engine_use_router` field — entangled in the working tree with the uncommitted gRPC WIP; remove it when committing that workstream.
+- [x] 10.5 Full suite 347 passed / 27 skipped; golden single-path green; ruff clean (changed files).
+- [x] 10.6 Same-commit discipline: the deletion landed in one commit (`a7e5576`).
 
 ## 11. Archive discipline
 
