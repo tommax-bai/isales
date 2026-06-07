@@ -1,6 +1,29 @@
 # cloud deployment — current state snapshot
 
-**Last updated**: 2026-06-05 20:40 CST — **engine-multi-referee-and-restructure
+**Last updated**: 2026-06-07 19:33 CST — **engine-tools-multidialogue-gating
+(gate-first) deployed** (common + worker + api + scheduler + engine + web). 引擎从
+「先说后判 / 11 态 FSM-as-controller」改为 **gate-first 先判后说 + CallStatus 11→4
+(init/in_call/transferring/end) + eager 多 persona 投机 + lazy hangup/transfer tool +
+StatusProjector(=StateMachine 同步唯一写者) + Phase-4 删 legacy/ENGINE_USE_ROUTER**。
+**部署机制改用 rsync**（首次；`git archive` 干净导出 → `rsync -az --delete` over SSH，
+排除工作树 WIP + build/`*.so`/vendor/logs；MSYS2 rsync+openssh，见
+[[reference-ecs-github-egress]] memory）。**scoping**：engine 上 `67af3b6`（gate-first，
+**不含** multi-edge `cf59640`——`engine-send-timeout-multi-edge` 自己另验另上）；scheduler
+上 `82906e3`（persona packing，**不含** wake_event `04b5660`）；common/worker/api/web 上
+各自 HEAD（common `9be81f6` / worker `633977c` / api `6147403` / web `46e5c79`）。
+**alembic `a7b8c9d0e1f2 → b8c9d0e1f2a3`**（tools + personas + pre-reply gating 列：
+pipeline_trace.selected_route_id/selected_route_kind/persona_candidates +
+role_config tool/persona 行 + campaign tools/persona_fanout_cap/referee_timeout_ms 等）。
+**数据安全**：部署前查 `call_record.status` distinct = 仅 `end`(152)/`init`(5)，均在 4 态枚举内，
+无需迁移旧行。备份 `/opt/isales/backups/change3-20260607-192409/pre.sql.gz`。**验证**：6 服务
+active；50051+8000 listen；ECS `CallStatus=['init','in_call','transferring','end']`；门控 3 列
+已建；engine 启动 `cloud_edge_grpc_server_started`+`credentials_loaded count=5`+
+`isales_engine_started` clean，无 live ENGINE_USE_ROUTER reader（run_loop:691 仅注释、
+settings:120 死字段——随 multi-edge commit 删）；web SPA 200（4 态监控）。**⚠️ 无开关无秒级
+回滚**（git revert `67af3b6`→上一态 + 重 rsync + alembic downgrade）。**§9 真机 SIM7600 验收
+待跑**（gate-first 打断/转人工/裁判挂断/多 persona；需 edge daemon + 真电话）。
+
+Prior: 2026-06-05 20:40 CST — **engine-multi-referee-and-restructure
 deployed** (common + engine + api + scheduler + web). 单 referee dual-LLM 升级为
 「N 裁判并行 + 有序路由规则 decider + 重组流（口语化重说上一句/补打断残留/低置信拖一轮）」。
 部署（scp editable 源码）：common 13 文件（enums/models{campaign,role_config,
