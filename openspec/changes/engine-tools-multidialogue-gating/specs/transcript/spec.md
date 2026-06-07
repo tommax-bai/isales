@@ -50,3 +50,20 @@
 - **WHEN** 查询本 change archive 之前写入的 pipeline_trace 历史记录
 - **THEN** 旧单 referee 字段 `referee_decision` / `referee_goal_type` / `referee_confidence` / `referee_duration_ms` MUST 已被本 change 的 alembic migration 删除（v1 无真实数据，acceptable）
 - **AND** UI MUST NOT 试图读取这些旧字段；调试视图 MUST 仅展示新字段集（含 `referee_results` 数组 + restructure 字段 + 门控选路字段）
+
+### Requirement: 三段式存储模型
+
+通话事件流、AI 管线 trace、录音音频 SHALL 分三处存储，避免互相污染。
+
+#### Scenario: 三处存储位置
+
+- **WHEN** 通话结束 engine 落 DB
+- **THEN** 数据 SHALL 分别落到：
+  - 通话事件流 → `call_record.transcript`（JSONB array）
+  - dual-LLM 管线（main LLM 流式 + N 路 referee 并行）trace → 独立表 `pipeline_trace`（按 call_record_id + turn_id）
+  - 整通录音音频 → OSS（`call_record.recording_url` 引用）
+
+#### Scenario: trace 不污染 transcript
+
+- **WHEN** 运营或坐席查 transcript
+- **THEN** transcript JSONB MUST NOT 包含管线候选、裁判细节、润色输入；这些 MUST 存在 pipeline_trace 表

@@ -99,6 +99,15 @@
 - **WHEN** modem-controller 上报远端挂断
 - **THEN** `→ END` (reason=`user_hangup`)
 
+### Requirement: WRAPPING_UP 期间走简化管线
+
+WRAPPING_UP 状态（现为内部 `in_wrap_up` 标志）下任何 PROCESSING MUST 走简化管线（仅 main LLM 流式，跳过 referee），**MUST NOT 启用 PK / 裁判 / 垫词**（详见 ai-pipeline 与 filler）。
+
+#### Scenario: WRAPPING_UP 期间用户提出新问题
+
+- **WHEN** WRAPPING_UP 期间用户说话且不被识别为反悔/挂机
+- **THEN** engine 走简化管线，状态在 WRAPPING_UP 内闭环（不退回主管线）
+
 ## ADDED Requirements
 
 ### Requirement: StatusProjector 单写者投影状态
