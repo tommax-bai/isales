@@ -89,7 +89,27 @@
 
 ## 9. Real-machine UX gate (SIM7600 Windows rig — confirmed in hand: COM12 AT / COM11 audio)
 
-- [ ] 9.1 Deploy common(0.8) → worker → api/scheduler/web → engine (flag still OFF). Smoke each layer.
+> **2026-06-07 deploy + trigger-config DONE; real dials (9.2–9.6) PENDING user + phone.**
+> - **Deployed to cloud via rsync** (first rsync deploy; see [[reference-ecs-github-egress]]):
+>   common `9be81f6` + worker `633977c` + api `6147403` + scheduler `82906e3` (persona,
+>   excl wake_event) + engine `67af3b6` (gate-first, **excl** multi-edge `cf59640`) + web
+>   `46e5c79`. alembic `a7b8c9d0e1f2→b8c9d0e1f2a3`. Verified: 6 svc active, CallStatus 4-state,
+>   gating cols present, engine clean startup (no live ENGINE_USE_ROUTER), SPA 200. Backup
+>   `/opt/isales/backups/change3-20260607-192409/pre.sql.gz`. **No rollback flag = git revert.**
+>   Full cloud snapshot in `deploy/cloud/STATE.md` 2026-06-07 block.
+> - **campaign 1 configured for §9 triggers** (raw SQL, user-approved, schema-validated):
+>   `campaign.tools` = `end_call`(hangup+closing_phrase) + `transfer_default`(transfer);
+>   `routing_rules` += `customer_hangup→tool:end_call` + transfer migrated to `tool:transfer_default`;
+>   main_judge prompt → new `prompt_version 7` adding `customer_hangup` category (old id=5 = rollback).
+>   SQL kept at `C:\Users\tianx\codes\_gatefirst_config.sql`.
+> - **device 3 (edge-01) reset `dialing→idle`** (call #157 residual).
+> - **REMAINING to dial**: (a) user starts edge daemon `_run_daemon_dev.py` (.venv-3.12) → 4 READY +
+>   grpc_connected; (b) reset a lead → `new` (only when daemon up + phone in hand — scheduler auto-dials):
+>   `UPDATE lead SET status='new',retry_count=0,follow_up_count=0,next_call_at=NULL,last_hangup_cause=NULL WHERE id=2;`
+>   (c) dial + say trigger lines; (d) capture pipeline_trace + transcript.
+> - **Trigger lines**: hangup = "我不需要，你别再打了，挂了啊，再见。"; transfer = "你是机器人吧？给我转个真人，转人工。"; barge-in = talk over the AI mid-reply. (confidence ≥0.7 needed; speak clearly.)
+
+- [x] 9.1 Deploy common(0.8) → worker → api/scheduler/web → engine. ✅ 2026-06-07 via rsync; gate-first unconditional (no flag — Phase-4 deleted it). Each layer smoked.
 - [ ] 9.2 Real dial: **barge-in** mid-reply — verify async self-cancel race (no double-cancel, no lost lossless event), reply restructure works.
 - [ ] 9.3 Real dial: **transfer** route → TRANSFERRING → connecting phrase → END.
 - [ ] 9.4 Real dial: **referee hangup** route — gate selects `tool:hangup`, reply suppressed, optional closing_phrase, → END with `cause=referee_hangup`; CallEnded reaches worker (no DLQ); lead not auto-redialed.
@@ -108,7 +128,7 @@
 - [x] 10.1 gate-first is now unconditional (no flag to flip — it IS the default).
 - [x] 10.2 DELETED the legacy `_main_turn_loop` speak-then-judge body (~300 lines) + the change-2 effect-route adapter (`routes/effects.py` / `routes/selector.py` / `routes/builder.py` / `select_router.Router`+`ExecutableRoute`).
 - [~] 10.3 `_await_user_or_silence` is SHARED by gate-first (the pull-loop shell was kept) — NOT deleted. `_ManualHangupRequested`/`request_manual_hangup`/`main.cancel()` already migrated to the bus in change-1 (not present). Also deleted the now-dead `_cancel_referees`.
-- [x] 10.4 DELETED `ENGINE_USE_ROUTER` (runtime_config + the settings read; `select_router.py` removed, `Directive` inlined). ⚠ `settings.py` still defines the now-dead `engine_use_router` field — entangled in the working tree with the uncommitted gRPC WIP; remove it when committing that workstream.
+- [x] 10.4 DELETED `ENGINE_USE_ROUTER` (runtime_config + the settings read; `select_router.py` removed, `Directive` inlined). ✅ The now-dead `engine_use_router` field in `settings.py` was removed in the gRPC-WIP commit `cf59640` (2026-06-07, when that workstream was committed). NB: the **deployed** engine is `67af3b6` (pre-`cf59640`) so it still carries the dead field — harmless (no reader; verified run_loop has no live read), drops on the next engine deploy.
 - [x] 10.5 Full suite 347 passed / 27 skipped; golden single-path green; ruff clean (changed files).
 - [x] 10.6 Same-commit discipline: the deletion landed in one commit (`a7e5576`).
 
