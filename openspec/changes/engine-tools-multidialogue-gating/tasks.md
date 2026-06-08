@@ -38,6 +38,12 @@
 - [x] 3.2 `role_configs.py`: add `PERSONA` to `_LABELLED_KINDS`; delete-guard for personas referenced by routing rules.
 - [x] 3.3 `routing_validation.py`: `persona_labels_of()`; validate `route→persona` and `tool→alias`; emit `422 routing_rule_unknown_persona` / `422 routing_rule_unknown_tool` / `422 tool_alias_duplicate`.
 - [x] 3.4 `campaigns.py`: thread `tools` through nested create/update + the routing-rules PUT path.
+<!-- api 81173da (2026-06-08) — 偏离修复: 3.4 只改了 handler (campaigns.py:356 reads
+     payload.tools) 但漏了 PATCH schema → CampaignNestedUpdate 没声明 tools/persona_fanout_cap/
+     referee_timeout_ms/referee_fail_open_route → AttributeError → 每个 PATCH /campaigns/{id}
+     都 500 (test_campaigns_crud.py 4 红). 补 4 字段后 4 红→10 绿. 这 4 个字段原先 create-only
+     (AppModel extra='forbid' 下 PATCH 会 422)，补全后可编辑——是 §5.7 web 控件能落地的前提. -->
+
 - [x] 3.5 API tests for the three 422s + tools round-trip.
 
 ## 4. isales-scheduler — persona prompt packing
@@ -51,8 +57,21 @@
 - [x] 5.2 `RoutingRulesTab.vue`: action editor gains 路由到角色(persona) + 工具(挂断/转人工) + `then_state` dropdown.
 - [x] 5.3 `RoutingRulesTab.vue`: **fix the `goal_type`-on-target-switch 422 bug** — clear stale `goal_type`/branch fields when action target changes (cherry-forward from superseded change). Add `routingRulesTab.test.ts` case.
 - [x] 5.4 `RoleConfigTab.vue` / `RoleConfigDialog.vue`: persona kind (label required); persona count cap (≤3) hint.
+<!-- web a9c0af7 (2026-06-08) — 升级: 5.4 原本只做了 hint 文案，但 spec §5.4 ADDED 要求 BLOCK
+     over-cap enabling (厂商对取消的投机 token 也计费). 现做成硬阻断: RoleConfigTab.onDialogSave
+     在 main(1)+已启用人设 > persona_fanout_cap 时拒绝保存并保持 dialog 打开. cap 值由 CampaignEdit
+     以 prop 传入 (依赖 §5.7 让 cap 可见可改). -->
 - [x] 5.5 `ToolsTab.vue` NEW: hangup (closing_phrase / interrupt) + transfer texts; alias uniqueness.
 - [x] 5.6 vitest for the editors; **build → scp → nginx reload** as one atomic step on deploy (don't interleave other commands).
+- [x] 5.7 `RoutingRulesTab.vue`: 开口前门控 controls for the 3 orphan gating scalars — `persona_fanout_cap` (stepper [1,3]), `referee_timeout_ms` (number ms), `referee_fail_open_route` (select: main + personas + closing/recovery/restructure). They were in `types/campaign.ts` (§5.1) + rode `{...form}` but had NO input control — operators were stuck on defaults 1/600/"main".
+<!-- web a9c0af7 (2026-06-08) — 新增覆盖缺口: §5.x 原无任何任务给这 3 个标量加控件 (data-model §1.4
+     + engine §6.7/§6.11 用了它们，web 漏接). 放进 RoutingRulesTab 与同族 primary_referee_label /
+     max_continuous_restructure 并列. 依赖 §3.4 修复才能在编辑时存进. -->
+- [x] 5.8 Reachability: fix `CampaignList.vue` Edit-button route name `campaign-edit` → `operations-campaign-edit` (the only page mounting RoutingRules/Tools/RoleConfig tabs was unreachable via the button); add 「高级配置」 entry from customer-facing `CampaignDetail.vue` to the full tab editor.
+<!-- web a9c0af7 (2026-06-08) — 未被任何任务追踪的 bug: check:routes 之前应能抓到 campaign-edit
+     不在定义集合 (22 routes)，修后 route lint clean. CampaignDetail (客户面场景详情) 原先无入口
+     进 routing/tools/persona/gating/restructure，加按钮跳 operations-campaign-edit. -->
+
 
 ## 6. isales-engine Phase 3 — routes + gating + projector (behind ENGINE_USE_ROUTER)
 
