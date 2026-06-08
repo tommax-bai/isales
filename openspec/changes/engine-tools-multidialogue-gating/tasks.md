@@ -151,9 +151,21 @@
 - [x] 10.5 Full suite 347 passed / 27 skipped; golden single-path green; ruff clean (changed files).
 - [x] 10.6 Same-commit discipline: the deletion landed in one commit (`a7e5576`).
 
-## 11. Archive discipline
+## 11. Folded-in (2026-06-08): per-keyword 挂断结束语 + 静音空话术直挂
 
-- [ ] 11.1 `openspec validate --strict` for this change + `--specs` (22/22) green before archive.
-- [ ] 11.2 Record the two scope decisions (gating reconciliation D1, projector-moved-from-change-2) in this change's design.md (done) so future sessions don't re-litigate.
-- [ ] 11.3 Update `project_engine_flat_refactor` memory + STATE.md files if deployment state changes (same commit as the deploy).
-- [ ] 11.4 `/opsx:archive engine-tools-multidialogue-gating` — sync specs/, move to archive/.
+<!-- Folded from the abandoned standalone change `engine-hangup-tool-and-sidecar-rehome`:
+     gate-first already defines tool:hangup / tools schema / REFEREE_HANGUP / retry no-redial,
+     so only these two genuine deltas land here. -->
+
+- [ ] 11.1 isales-common `schemas/jsonb/routing_rule.py`: `RouteToolAction` 增加可选 `closing_phrase?: str`（per-rule，命中时覆盖 `HangupToolConfig.closing_phrase`）；api `routing_validation` 校验单句。
+- [ ] 11.2 engine SelectRouter `tool:hangup`: 结束语按 per-keyword 优先解析（命中规则 `closing_phrase` → 工具配置 → 皆空则直挂）；同一 hangup 工具被不同关键字复用、各带话术。
+- [ ] 11.3 engine 静音超限挂断: `silence_hangup_phrase` 为空时直接挂断、删除 `outcome.text or "再见。"` 兜底（cause=`silence_max_reached`）。
+- [ ] 11.4 web `RoutingRulesTab.vue`: 「挂断」动作每条规则可填单句结束语（留空标注"=直接挂断"）；支持同一 hangup 工具多关键字复用。
+- [ ] 11.5 单测: OFFENSIVE/HANGUP 各取对应结束语 + 命中规则与工具配置皆空时直挂 + 静音空话术直挂。
+
+## 12. Archive discipline
+
+- [ ] 12.1 `openspec validate --strict` for this change + `--specs` green before archive.
+- [ ] 12.2 Record the two scope decisions (gating reconciliation D1, projector-moved-from-change-2) in this change's design.md (done) so future sessions don't re-litigate.
+- [ ] 12.3 Update `project_engine_flat_refactor` memory + STATE.md files if deployment state changes (same commit as the deploy).
+- [ ] 12.4 `/opsx:archive engine-tools-multidialogue-gating` — sync specs/, move to archive/.

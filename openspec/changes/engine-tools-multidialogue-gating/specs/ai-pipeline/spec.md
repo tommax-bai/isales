@@ -187,13 +187,18 @@ campaign MAY 配置 N 个 `kind=persona` 的对话角色（label 必填）。`ca
 
 campaign MAY 在 `tools` JSONB 配置 `hangup` / `transfer` 工具（schema 见 data-model spec）。路由规则 `{type: tool, tool: <alias>}` 命中时，engine SHALL 经 `SelectRouter` 走对应 **lazy** tool route（仅命中才 `execute()`）：
 
-- `tool:hangup`：SHALL 设 `session.hangup_cause = REFEREE_HANGUP`，可选先 TTS 播 `closing_phrase` 单句，**抑制本轮对话回复**（gating 下裁决先于音频，hangup 天然**替代**已缓冲回复、无半句抢断），驱动 → END。
+- `tool:hangup`：SHALL 设 `session.hangup_cause = REFEREE_HANGUP`，可选先 TTS 播 `closing_phrase` 单句，**抑制本轮对话回复**（gating 下裁决先于音频，hangup 天然**替代**已缓冲回复、无半句抢断），驱动 → END。结束语来源 SHALL 按 **per-keyword 优先**解析：命中规则的 `RouteToolAction.closing_phrase` 非空时取之（同一 hangup 工具可被不同关键字复用、各带话术）；为空 / 缺省时回落 `HangupToolConfig.closing_phrase`；两者皆空则直接挂断、不播话术。
 - `tool:transfer`：SHALL 复用现有 `_perform_handoff(trigger_type="referee_decision")` → TRANSFERRING；衔接话术沿用**单一来源** `campaign.transfer_phrases`（与 human-handoff 4 触发路径同源，MUST NOT 引入第二套话术配置）。
 
 #### Scenario: tool:hangup 抑制回复并以 REFEREE_HANGUP 收尾
 
 - **WHEN** 某轮门控裁决命中 `{type: tool, tool: hangup}`
-- **THEN** engine MUST 设 `session.hangup_cause = REFEREE_HANGUP`；若 `closing_phrase` 非空 SHALL 先 TTS 播该单句、否则立即收尾；MUST NOT 释放本轮已缓冲的对话回复音频；驱动通话 → END
+- **THEN** engine MUST 设 `session.hangup_cause = REFEREE_HANGUP`；按 per-keyword 优先解析出的结束语若非空 SHALL 先 TTS 播该单句、否则立即收尾；MUST NOT 释放本轮已缓冲的对话回复音频；驱动通话 → END
+
+#### Scenario: 不同关键字命中同一 hangup 工具取各自结束语
+
+- **WHEN** referee 输出 `OFFENSIVE` 命中携带 `closing_phrase="不打扰了，再见"` 的规则；另一轮输出 `HANGUP` 命中携带 `closing_phrase="那再见"` 的规则（两条规则引用同一 hangup 工具）
+- **THEN** engine SHALL 分别播"不打扰了，再见" / "那再见"后挂断，结束语取自**命中规则**而非工具配置的固定值；若命中规则与工具配置的 `closing_phrase` 皆空，engine MUST 直接挂断、不播话术
 
 #### Scenario: tool:transfer 转人工复用单一话术源
 

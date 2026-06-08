@@ -52,7 +52,9 @@
 `campaign.routing_rules` 的 `action` 联合 SHALL 新增两个成员，并保持 iSales 既有 `category in match[]` first-match-wins 语义不变：
 
 - `RoutePersonaAction{type: "route", to: <persona-label | closing | recovery | restructure>, then_state?: ThenState}`
-- `RouteToolAction{type: "tool", tool: <alias>, then_state?: ThenState}`
+- `RouteToolAction{type: "tool", tool: <alias>, then_state?: ThenState, closing_phrase?: str}`
+
+`RouteToolAction.closing_phrase` 为可选**单句**，仅对 `tool: hangup` 有意义：命中规则携带它时 SHALL **覆盖** `HangupToolConfig.closing_phrase`，使多条不同关键字（referee category）的规则复用**同一个** hangup 工具、各带不同结束语；省略时回落到工具配置的 `closing_phrase`，**两者皆空 / 缺省时直接挂断、不播话术**。
 
 `ThenState` SHALL 为 Literal `{LISTENING, WRAPPING_UP, ACTIVATING, TRANSFERRING, END}`。legacy `{type: transition}` / `{type: restructure}` 成员 SHALL 经 **removal-tracked shim** 保留（removal trigger = 后续全量迁移后的清理 change），MUST NOT 在本 change 删除以免破坏存量。
 
@@ -65,6 +67,11 @@
 
 - **WHEN** 路由规则 action 为 `{type: tool, tool: "hangup", then_state: "END"}`
 - **THEN** 系统 MUST 校验 `tool` 指向 campaign `tools` 已定义 alias；未定义 MUST 在保存时拒绝（api `422 routing_rule_unknown_tool`）
+
+#### Scenario: 同一 hangup 工具按关键字携带不同结束语
+
+- **WHEN** 同一 referee 下两条规则分别为 `{match: ["OFFENSIVE"], action: {type: "tool", tool: "hangup", closing_phrase: "不打扰了，再见"}}` 与 `{match: ["HANGUP"], action: {type: "tool", tool: "hangup", closing_phrase: "那再见"}}`
+- **THEN** 两条规则 MUST 校验通过、复用同一个 hangup 工具 alias；engine 选中时 SHALL 取**命中规则**的 `closing_phrase`（覆盖工具配置）；`closing_phrase` 若提供 MUST 为单句字符串，省略或空串表示直接挂断
 
 #### Scenario: legacy action 经 shim 向后兼容
 
