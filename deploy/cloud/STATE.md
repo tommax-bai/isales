@@ -1,6 +1,23 @@
 # cloud deployment — current state snapshot
 
-**Last updated**: 2026-06-08 15:16 CST — **web「工具触发」客户向扁平编辑器 + §11.4 per-rule 结束语
+**Last updated**: 2026-06-08 16:03 CST — **web 场景配置「一页到底」deployed**（web only，change
+`web-admin-scene-single-page-config` §1-6 + 部署）。兑现 one-role-ia 的 D6 deferred:把场景的 13-tab
+高级编辑器 `CampaignEdit` 折进 `CampaignDetail`，全部 per-campaign 设置能力**纵向全展开、单页到底**（用户决定
+不折叠）——进度 / 基本信息(含 TTS 试听) / 可拨时段 / 3 个 AI 角色卡(main·referee·extractor,自存) / 多流路由 /
+工具触发 / 沉默激活 / 打断保护 / 转人工 / 收尾 / 重试·跟进 / 勿打 / 回调 / 统一保存条。**两套存储模式并存**:
+AI 角色 3 卡 + 垫词按 campaign-id 自存;其余 9 小节走统一 `buildPayload`（**omit role_configs/filler_sets/
+callback_configs** 防 children-replace 清空 + greeting 归一 + 422 标红）。**删** `CampaignEdit.vue` +
+`operations-campaign-edit` 路由 + 「高级配置」跳转（旧 `/operations/campaigns/:id/edit` 走 not-found）。
+**保留** 3 PromptTier 卡（弃 RoleConfigTab → persona/restructure 暂无配置入口,默认 N=1 用不到,后续补卡）。
+**清过期文案**:4-tier·原运营区 注释、`main_judge`→`main_referee`（placeholder+fixture）。**纯前端,无
+api/engine/schema 改动**。**部署**:`npm run build`（58 assets,删 CampaignEdit 后 chunk 减少）→
+`rsync -az --delete dist/` → `/var/www/isales-web/`（清旧 el-tabs chunk）→ `nginx -t` ok + reload。
+**验证**:`index HTTP 200` + `<title>iSales 智能外呼</title>`;web 全套 **56 tests passed** + vue-tsc + build +
+lint clean。**备份** `/opt/isales/backups/scene-onepage-20260608-160331/pre-web.tgz`。**回滚**:解 backup
+tgz 覆盖 + nginx reload（秒级）。commits:web `96e5a39` / meta tasks `84856a4`。**非 openspec 行为变更**（纯 UI/IA）。
+**待用户真人点测**（§7.4:开场景→改多项→保存→确认角色未被清；TTS 试听）。
+
+Prior: 2026-06-08 15:16 CST — **web「工具触发」客户向扁平编辑器 + §11.4 per-rule 结束语
 deployed**（web only）。配合已上线的 engine §11:**§11.4**（commit web `314b62b`）— `RoutingRulesTab`
 工具动作加 per-rule「结束语」输入框（`isHangupTool` 门控仅 hangup 显示，留空=直接挂断）+ `RouteToolAction.closing_phrase`
 类型。**Option 2 客户向扁平表**（commit web `9ddb155`）— 把 dev 向 2 层「工具」tab 重构成客户向「工具触发」

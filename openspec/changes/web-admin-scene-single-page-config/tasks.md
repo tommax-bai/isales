@@ -48,9 +48,12 @@
 
 ## 7. 部署与收尾
 
-- [ ] 7.1 `npm run build`（vue-tsc + vite）→ `rsync -az --delete dist/` → ECS `/var/www/isales-web/` → `nginx -t` + reload；smoke `index 200`
-- [ ] 7.2 备份旧 dist（`/opt/isales/backups/scene-onepage-<ts>/`）；回滚=rsync 回旧 + reload
-- [ ] 7.3 更新 `deploy/cloud/STATE.md`（web 场景单页 + 删高级编辑器 + 文案清理）
-- [ ] 7.4 手测：进度/启停/监控不回归；基本信息+TTS 试听；9 小节编辑+统一保存；422 标红；AI 角色/垫词即时存
-- [ ] 7.5 `openspec validate web-admin-scene-single-page-config --strict` 通过；tasks 回写 commit/PR
+<!-- 部署完成 2026-06-08 16:03：rsync dist(58 assets) → /var/www/isales-web → nginx reload；index 200。STATE.md 已更。 -->
+
+- [x] 7.1 `npm run build` → `rsync -az --delete dist/` → ECS `/var/www/isales-web/` → `nginx -t` + reload；smoke `index 200` ✅
+- [x] 7.2 备份旧 dist `/opt/isales/backups/scene-onepage-20260608-160331/pre-web.tgz`；回滚=rsync 回旧 + reload
+- [x] 7.3 更新 `deploy/cloud/STATE.md`（web 场景单页 + 删高级编辑器 + 文案清理）✅
+- [ ] 7.4 **待用户真人点测**：进度/启停/监控不回归；基本信息+TTS 试听；9 小节编辑+统一保存；422 标红；AI 角色/垫词即时存（保存不清空角色）
+- [x] 7.5 `openspec validate web-admin-scene-single-page-config --strict` 通过；tasks 回写 commit/PR
+- [ ] 7.6 archive 顺序与 `web-admin-one-role-ia-consolidation` 协调（建议其先 archive）
 - [ ] 7.6 archive 顺序与 `web-admin-one-role-ia-consolidation` 协调（建议其先 archive）
