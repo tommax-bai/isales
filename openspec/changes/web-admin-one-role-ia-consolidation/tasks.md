@@ -49,10 +49,13 @@
 
 ## 4. Batch 4 — 陈旧文案/组件清理（低风险，可并行/后置；engine-spec-terminology-purge 前端尾巴）
 
-- [ ] 4.1 删 `CampaignEditDialog` 等处「润色 / polish」9-tab 残留 banner 文案（润色 tier 已废）。
-- [ ] 4.2 `CampaignDetail.vue:160-187`「AI 外呼策略：4-tier 并行配置」块文案收口为现行 dual-LLM 表述（不动 campaign 配置内部结构——那属 DEFERRED）。
-- [ ] 4.3 `PipelineTracePanel` 单 referee 渲染 → N referee + restructure 模型（若涉及 referee 语义重构则与引擎重设计 change 协调，纯展示文案可先改）。
-- [ ] 4.4 `PromptTier*` 命名层评估重命名为 `RoleConfig*`（仅命名/术语，不改行为；如牵动 deferred 配置编辑则留给后续 change）。
+- [x] 4.1 删死组件 `components/Campaign/CampaignEditDialog.vue`（无 import；stale PR#3 banner 含润色/裁判/9-tab）。`types/call.ts:39` 的 "was judge_results/polish_*" 是合法历史迁移注释，保留。
+- [x] 4.2 `CampaignDetail.vue`「AI 外呼策略：4-tier 并行配置」注释收口为 dual-LLM（主对话/决策/抽取）；不动 campaign 配置内部结构（DEFERRED）。
+- [~] 4.3 **DEFERRED → 引擎后续 change**：`PipelineTracePanel` 单 referee(`referee_decision/goal_type/confidence`) → N referee 数组 + restructure。非纯术语——牵涉 pipeline_trace 数据契约 + referee 语义（引擎正在动）。
+- [~] 4.4 **DEFERRED → 引擎后续 change**：`PromptTier*` → `RoleConfig*` 重命名。`PromptTierEditor` 是 deferred 客户配置编辑器，引擎后续大概率整体重做/替换，现在改名是 churn。
+<!-- web 0301e80 (2026-06-08) — Batch 4 仅做死透术语（4.1 删死 dialog + 4.2 destale 注释）。
+     4.3/4.4 defer：均在引擎正在重塑的 referee/trace/配置编辑区，符合 design 风险注记 + 用户 referee deferral。 -->
+
 
 ## 5. 验收
 
