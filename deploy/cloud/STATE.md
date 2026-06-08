@@ -1,6 +1,20 @@
 # cloud deployment — current state snapshot
 
-**Last updated**: 2026-06-08 14:46 CST — **engine §11（per-keyword 挂断结束语 + 静音空话术直挂）
+**Last updated**: 2026-06-08 15:16 CST — **web「工具触发」客户向扁平编辑器 + §11.4 per-rule 结束语
+deployed**（web only）。配合已上线的 engine §11:**§11.4**（commit web `314b62b`）— `RoutingRulesTab`
+工具动作加 per-rule「结束语」输入框（`isHangupTool` 门控仅 hangup 显示，留空=直接挂断）+ `RouteToolAction.closing_phrase`
+类型。**Option 2 客户向扁平表**（commit web `9ddb155`）— 把 dev 向 2 层「工具」tab 重构成客户向「工具触发」
+扁平表:一行 `{关键词(裁判输出) → 挂断 → 结束语}`，底层**自动托管**共享 `hangup` 工具 + 写 tool:hangup `routing_rules`
+（then_state=END + per-rule closing_phrase），顶部「判定裁判」选择器（≤1 裁判时自动选中隐藏）；**非挂断规则
+（persona/transition）原样保留**、dev 仍在「多流路由」编辑;`CampaignEdit` tab「工具」→「工具触发」。**纯前端翻译，
+api/engine/schema 不动**。**部署**:`npm run build`（61 assets）→ `rsync -az --delete dist/` → `/var/www/isales-web/`
+→ `nginx -t` ok + `nginx -s reload`。**验证**:`index HTTP 200` + `<title>iSales 智能外呼</title>`;web 全套
+53 tests passed、vue-tsc+build+lint clean。**备份** `/opt/isales/backups/web-tooltrigger-20260608-151628/pre-web.tgz`。
+**回滚**:解 backup tgz 覆盖 `/var/www/isales-web/` + `nginx -s reload`。**非 openspec**(纯 UI 表现层，未改 spec 行为;
+如需正式化可补 web-admin-ui spec)。auto-gen `components.d.ts` 的 stale `CampaignEditDialog`/`ElPopconfirm` churn 已 revert
+（不入 commit，下次 web 团队有意 regen 时自纠）。
+
+Prior: 2026-06-08 14:46 CST — **engine §11（per-keyword 挂断结束语 + 静音空话术直挂）
 实装 + voxen-flat stack 并回 main + 部署**（common + engine）。**§11**：① `RouteToolAction` 加 per-rule
 `closing_phrase`（覆盖 `HangupToolConfig.closing_phrase`，使一个 hangup 工具被 OFFENSIVE/HANGUP 等不同
 关键字复用各带话术；皆空→直挂；common 5d72bc9，0.8.0→0.8.1 纯加性）；② engine decider 携带 +
