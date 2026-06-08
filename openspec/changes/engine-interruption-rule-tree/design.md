@@ -91,6 +91,19 @@ voxen `timeInterval` 是「自规则首次评估起 N 秒去抖」，且 voxen �
 
 **Why**：该分支因 `referee.py` 硬编码 `confidence=1.0` 恒不触发（已验证），删除对运行时行为**零影响**，纯去死代码 + 文档诚实化。`restructure_trigger` 字段本身保留（`interrupt_remaining` 等仍用），只去一个永不写入的取值。
 
+### D8. `primary_referee_label` 一并从 5 仓拔除（apply 期决策，用户拍板"拔干净"）
+
+apply 期发现：`campaign.primary_referee_label` 列的**唯一功能消费者**就是 D6 删掉的 low_confidence 死分支（其 model 注释自述 "NULL → no low-confidence restructure"），但它横跨 engine（runtime_config / run_loop / decider / prompt_builder）、common（model + schemas.campaign×2 + schemas.pipeline）、api（routing_validation / schemas / campaigns router / role_configs 的裁判删除保护）、web（types + RoutingRulesTab.vue + ToolsTab.vue）。删 low_confidence 后它纯属 vestigial。
+
+**决定（用户拍板）**：本 change **一并拔除** `primary_referee_label`，不留 vestigial 列——
+- common：alembic 同一支 migration `drop_column("campaign","primary_referee_label")`（与 `add interruption_rules` 合并）；model / schemas.campaign / schemas.pipeline 去字段。
+- engine：runtime_config / run_loop / decider（signature 去 param）/ prompt_builder 去 plumbing。
+- api：schemas / campaigns router 去字段；routing_validation 去 `primary_referee_unknown` 校验；role_configs 的"裁判被 primary_referee_label 引用则不可删"保护改为仅 routing_rules 引用判定。
+- web：types/campaign.ts + RoutingRulesTab.vue + ToolsTab.vue 去该字段 UI。
+- 各仓 test 同步去引用。
+
+**Why over 延后**：留一个"为已删行为服务、跨 5 仓还带 UI"的死列正是要避免的 vestigial 债；趁同一 change 上下文一次拔净（large-change momentum）。**Trade-off**：change 体量与 web 工作量增大；migration 含 drop_column（rollback 时需重建列，下方 Migration Plan 注明）。
+
 ### D7. 规则树校验放在 isales-api + common schema
 
 递归 Pydantic discriminated-union（按 `type` 判别）做结构校验；api 写入 endpoint 复用 schema 校验 + 加**深度/节点数上限**（防恶意超深树）+ regex 叶子的 pattern 长度上限（缓解 catastrophic backtracking，见风险）。engine 侧 `build_rule` 对非法 type 抛错并在装配期 fail-fast（坏配置不进运行时）。

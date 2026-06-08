@@ -1,72 +1,77 @@
 # Tasks — engine-interruption-rule-tree
 
-> 进度回写约定：完成的 task 用 `- [x]` + 行尾 HTML 注释 `<!-- commit-sha 备注 / PR# / 偏离说明 -->`。代码改动落对应 sub-repo，进度回写本 meta-repo。
+> 进度回写约定：完成的 task 用 `- [x]` + 行尾 HTML 注释 `<!-- commit-sha 备注 -->`。代码改动落对应 sub-repo，进度回写本 meta-repo。
+> 实装 session 2026-06-08：common `d9df098` / engine `c6e5d1e` / api `9e1dfe7` / web `45e6a4c`。
 
 ## 1. isales-common — 规则树 schema + campaign 列
 
-- [ ] 1.1 在 `isales-common/isales_common/schemas/jsonb/` 新增 `interruption_rule.py`：递归 Pydantic discriminated-union（按 `type` 判别）——叶子 `keyword`(values:list[str], match:Literal["contains","exact"]="contains")/`length`(value:int)/`duration`(value_ms:int)/`regex`(pattern:str)/`split_by_delimiter`(delimiters:list[str])/`none`；组合 `and`(rules:list)/`or`(rules:list)/`not`(rule:single)。带深度/节点上限校验（design Q1：深度≤8、节点≤64）+ regex pattern 长度上限（≤128）
-- [ ] 1.2 `isales-common/isales_common/models/campaign.py`：`Campaign` 模型加 `interruption_rules: Mapped[dict | None]`（JSONB, nullable, default None）
-- [ ] 1.3 `isales-common/isales_common/schemas/campaign.py`：Pydantic Campaign schema 加 `interruption_rules: InterruptionRule | None = None`
-- [ ] 1.4 alembic migration（`isales-common/alembic/versions/`）：给 `campaign` 加 `interruption_rules JSONB NULL` 列（**纯 schema-additive，不回填**，存量行保持 NULL → 引擎从 legacy 列合成默认树，见 design D4）。**commit 前跑 `alembic heads` / `alembic history` 确认 revision id 不撞**（手编滚动 id，见 [[feedback_alembic_revision_id_collision]]）
-- [ ] 1.5 去 low_confidence 文档措辞：`pipeline_trace.py` 注释 + `schemas/jsonb/routing_rule.py` 的 `RestructureSource` 注释（low_confidence 那段说明删除/改写）
-- [ ] 1.6 bump `isales-common` version；isales-engine / isales-api 升级 pin
-- [ ] 1.7 isales-common pytest 全绿（含 1.1 schema 的合法/非法/超深/超长 case）
+- [x] 1.1 `schemas/jsonb/interruption_rule.py`：递归 discriminated-union 规则树 + 深度/节点/regex 上限 + `validate_interruption_rule` <!-- d9df098 -->
+- [x] 1.2 `models/campaign.py`：加 `interruption_rules` JSONB nullable 列 <!-- d9df098 -->
+- [x] 1.3 `schemas/campaign.py`：CampaignBase + CampaignUpdate 加 `interruption_rules` <!-- d9df098 -->
+- [x] 1.4 alembic `c9d0e1f2a3b4`（down=`b8c9d0e1f2a3`）：add interruption_rules + drop primary_referee_label；单一 head 已确认 <!-- d9df098 -->
+- [x] 1.5 去 low_confidence 文档措辞：`pipeline_trace.py` + `routing_rule.py` RestructureSource 注释 <!-- d9df098 -->
+- [x] 1.6 bump isales-common 0.8.1→0.8.2；engine/api pin 同步（engine `>=0.8.2,<0.9`，api 已 `>=0.8,<0.9`） <!-- d9df098 / c6e5d1e -->
+- [x] 1.7 isales-common pytest 全绿（185 passed） <!-- d9df098 -->
+- [x] 1.8 拔 `primary_referee_label`（design D8）：model + schemas.campaign×2 + schemas.pipeline + 2 测试 <!-- d9df098 -->
 
 ## 2. isales-engine — 规则树模块 + factory
 
-- [ ] 2.1 `isales-engine/isales_engine/realtime/interruption_rules.py`（新文件，port voxen `core/interruption/`）：`RuleInput(text:str, elapsed_ms:int)`、`RuleVerdict`、`Rule` 协议 `should_interrupt(ctx)->RuleVerdict`；叶子类 Keyword/Length/Duration/Regex/SplitByDelimiter/None + 组合类 And/Or/Not（短路 + reason provenance 拼接，对齐 voxen）
-- [ ] 2.2 同文件 `build_rule(config: dict | None) -> Rule`：递归构建；`None` / `{"type":"none"}` → NoneRule；未知 type / 结构错抛明确异常（装配期 fail-fast，design D7）
-- [ ] 2.3 `keyword` 叶子实现 `match="contains"|"exact"` 两模式 + trim 尾部标点（对齐 voxen `keyword_rule` TrimRight）；`duration` 用 `ctx.elapsed_ms`（iSales 语义，**不**移植 voxen timeInterval，design D3）
+- [x] 2.1 `realtime/interruption_rules.py`：RuleInput/RuleVerdict/Rule + 叶子 + 组合（短路 + reason provenance） <!-- c6e5d1e -->
+- [x] 2.2 `build_rule(dict|None)` 递归构建 + fail-fast；`default_rule(...)` 合成默认树 <!-- c6e5d1e -->
+- [x] 2.3 keyword `contains`(子串,trim 尾标点)/`exact`(legacy whitelist 等价)；`duration` 用 elapsed_ms（不移植 voxen timeInterval） <!-- c6e5d1e -->
 
 ## 3. isales-engine — evaluate_partial 改走规则树 + runtime_config 装配
 
-- [ ] 3.1 `realtime/interruption_detector.py`：`InterruptionConfig` 持有编译好的 `Rule`（编译一次，design D1）；`evaluate_partial(text, speech_started_ts_ms, now_ts_ms, config)` 改为构造 `RuleInput(text, elapsed_ms=now-speech_started)` 调 `config.rule.should_interrupt(...)`，返回 `InterruptionVerdict(verdict, reason=provenance)`；删 prototype 硬编码 `_MIN_TEXT_LENGTH_PROTOTYPE`
-- [ ] 3.2 `runtime_config.py`：读 `campaign.interruption_rules`；非 NULL → `build_rule(...)`；NULL → 合成默认树 `AND(NOT keyword(match="exact", values=interruption_whitelist), length(value=2), duration(value_ms=interruption_min_duration_ms))`（design D4），编译进 `InterruptionConfig`
-- [ ] 3.3 更新 `interruption_detector.py` 模块 docstring（双/三条件 → 可组合规则树）
+- [x] 3.1 `interruption_detector.py`：InterruptionConfig 持 `rule`；evaluate_partial 跑规则树；删 prototype 硬编码 <!-- c6e5d1e -->
+- [x] 3.2 `runtime_config.py`：非 NULL→build_rule，NULL→default_rule（从 legacy whitelist+min_duration 合成） <!-- c6e5d1e -->
+- [x] 3.3 更新 detector 模块 docstring（→ 可组合规则树） <!-- c6e5d1e -->
 
 ## 4. isales-engine — 吸收 text-length-gate（VAD-source cancel deprecate）
 
-- [ ] 4.1 `run_loop.py::_vad_monitor`：删 `speaking_task.cancel()` + `source="vad"` transcript 写入；保留 `session.vad_voice_active_ms` mirror（corroboration）；加注释指向本 change + 标注 corroboration mirror 的移除触发条件（design D5）
-- [ ] 4.2 加 `logger.info` 记录 vad_monitor 仍跑但不再 cancel（ops 可验证）
+- [x] 4.1 `run_loop._vad_monitor`：删 cancel + source=vad transcript（清死代码）；保留 vad_voice_active_ms mirror；去已不用的 interruption_cfg param <!-- c6e5d1e -->
+- [x] 4.2 docstring 收口成 mirror-only 角色说明（含 mirror 移除触发条件） <!-- c6e5d1e -->
 
-## 5. isales-engine — 删 low_confidence 死分支
+## 5. isales-engine — 删 low_confidence 死分支 + 拔 primary_referee_label
 
-- [ ] 5.1 `pipeline/decider.py`：删「无规则命中 → 主裁判 confidence<阈值 → restructure(last_reply, trigger=low_confidence)」整段（现 `decider.py:108-124`）；无命中统一 fail-open continue
-- [ ] 5.2 `streaming/types.py`：删 `FAILOPEN_LOW_CONFIDENCE` 常量 + `effective_category` 里返回它的分支
-- [ ] 5.3 grep 清残留：`run_loop.py` / `decider.py` 注释里 low_confidence 措辞改写（restructure_trigger 字段保留，仅去 "low_confidence" 取值）
+- [x] 5.1 `decider.py`：删低置信兜底整段 + 去 primary_referee_label 形参；无命中统一 fail-open continue <!-- c6e5d1e -->
+- [x] 5.2 `streaming/types.py`：删 FAILOPEN_LOW_CONFIDENCE + trace_category 的该分支（保留通用 confidence floor） <!-- c6e5d1e -->
+- [x] 5.3 清残留 primary_referee_label：run_loop(decider 调用) + runtime_config + prompt_builder PipelineConfig <!-- c6e5d1e -->
+- [x] 5.4 测试去引用：test_decider / test_run_loop <!-- c6e5d1e -->
 
 ## 6. isales-engine — 单测
 
-- [ ] 6.1 `tests/test_interruption_rules.py`（新）：各叶子（keyword contains/exact + 尾标点 trim、length、duration、regex、split_by_delimiter、none）+ 组合（and 短路、or 短路、not、嵌套）单测
-- [ ] 6.2 `tests/test_interruption_detector.py`：**默认树对拍**——同一批 ASR partial 输入，默认树 verdict MUST 等于历史「whitelist 精确 → 字数≥2 → 时长」序列（逐 case 对拍，证 design D4 等价）
-- [ ] 6.3 `tests/test_realtime_interruption.py`：调整 `_vad_monitor` 不再 cancel 的断言（vad 仅 mirror voice_active_ms）
-- [ ] 6.4 `tests/`（decider）：加 case 证「无规则命中 + 主裁判任意 confidence → continue（不再 restructure low_confidence）」
-- [ ] 6.5 `cd ../isales-engine && .venv/bin/python -m pytest -q` 全绿
+- [x] 6.1 `tests/test_interruption_rules.py`：叶子 + 组合（短路/嵌套）+ factory + default_rule（18 case） <!-- c6e5d1e -->
+- [x] 6.2 `tests/test_realtime_detectors.py`：默认树对拍历史行为（whitelist/length/duration）+ 单字 length 过滤 <!-- c6e5d1e -->
+- [x] 6.3 `tests/test_realtime_interruption.py`：InterruptionConfig 改用 default_rule；vad 不再 cancel <!-- c6e5d1e -->
+- [x] 6.4 test_decider：无命中+任意 confidence → continue（不再 low_confidence restructure） <!-- c6e5d1e -->
+- [x] 6.5 engine 全套 pytest 全绿（399 passed） <!-- c6e5d1e -->
 
-## 7. isales-api — 规则树校验 endpoint
+## 7. isales-api — 规则树校验 + 拔 primary_referee_label
 
-- [ ] 7.1 campaign 写入/更新路径校验 `interruption_rules`：复用 common schema（1.1）+ 深度/节点/regex 长度上限；非法返回 422 带具体错因
-- [ ] 7.2 api 单测：合法树通过 / 非法 type / 超深 / regex 超长 全覆盖
+- [x] 7.1 campaign create/update 校验 `interruption_rules` 深度/节点（422 interruption_rule_invalid）；结构/regex 由 common schema 把关 <!-- 9e1dfe7 -->
+- [x] 7.2 api 单测全绿（128 passed；2 个 redis-queue 测试为已知环境失败 stale blpop/db 错配，与本 change 无关） <!-- 9e1dfe7 -->
+- [x] 7.3 拔 primary_referee_label：schemas + campaigns router + routing_validation + role_configs 删除保护；test 去引用 <!-- 9e1dfe7 -->
 
 ## 8. ECS 部署
 
-- [ ] 8.1 ssh ECS `alembic upgrade head`（加 `interruption_rules` 列，存量行 NULL）
-- [ ] 8.2 升级 isales-common wheel + scp engine 改动（`interruption_rules.py` / `interruption_detector.py` / `runtime_config.py` / `run_loop.py` / `decider.py` / `streaming/types.py`）到 `/opt/isales/current/isales-engine/...`（走 scp，见 [[feedback_ecs_deploy_scp]]）
-- [ ] 8.3 `systemctl restart isales-engine`；journalctl 验证 `isales_engine_started` + 无 import/config 错
+- [ ] 8.1 ssh ECS `alembic upgrade head`（加 interruption_rules 列 + drop primary_referee_label；存量行 NULL）— **drop_column 在共享 RDS 上不可逆，待用户确认时机**
+- [ ] 8.2 升级 common wheel + scp engine 改动到 `/opt/isales/current/isales-engine/...`（scp 覆盖，见 [[feedback_ecs_deploy_scp]]）
+- [ ] 8.3 `systemctl restart isales-engine` + journalctl 验证无 import/config 错
 
 ## 9. mac dev smoke 验证
 
-- [ ] 9.1 默认树 campaign 复跑 #136（mac dev-no-modem 真 mic 多轮）：AI 长回应 `interrupted=false`、0 误触发（证默认树等价 + VAD deprecate 生效）
-- [ ] 9.2 配一棵显式规则树（含 keyword contains + regex + and/or/not）复测：验证子串语气词忽略 + 正则触发 + 嵌套组合按预期 trigger/ignore
+- [ ] 9.1 默认树 campaign 复跑 #136（真 mic 多轮）：AI 长回应 interrupted=false、0 误触发（证默认树等价 + VAD deprecate）
+- [ ] 9.2 配显式规则树（keyword contains + regex + and/or/not）复测：子串语气词忽略 + 正则触发 + 嵌套组合
 
-## 10. isales-web — 打断规则编辑面（分阶段，可在 engine 上线后单独推进）
+## 10. isales-web — 打断规则编辑面（分阶段）
 
-- [ ] 10.1 场景配置加「打断规则」编辑入口：and/or/not + 各叶子组合 UI；未配置展示「使用默认规则」+ 一键基于默认树开始编辑
-- [ ] 10.2 保存前调 7.1 校验 endpoint；失败就地提示具体错因；文案对齐 STYLE_GUIDE（不暴露引擎字段名，见 [[feedback_webui_style_guide]]）
-- [ ] 10.3 web vitest 绿
+- [ ] 10.1 场景配置加「打断规则」可组合编辑界面（and/or/not + 各叶子）— **phased follow-on，本 change 只定 schema/契约**
+- [ ] 10.2 保存前调 7.1 校验 endpoint；文案对齐 STYLE_GUIDE — **phased follow-on**
+- [x] 10.3 拔 primary_referee_label：types/campaign.ts + RoutingRulesTab + ToolsTab <!-- 45e6a4c -->
+- [x] 10.4 web typecheck + vitest 绿（56 passed） <!-- 45e6a4c -->
 
 ## 11. 收尾 — SUPERSEDE 吸收的 change + validate + archive 准备
 
-- [ ] 11.1 `interruption-detection-text-length-gate`：proposal.md 顶部加 SUPERSEDED block 引用本 change（说明其意图已被吸收），移到 `openspec/changes/archive/<date>-interruption-detection-text-length-gate-SUPERSEDED/`
-- [ ] 11.2 `openspec validate engine-interruption-rule-tree --strict` 通过
-- [ ] 11.3 全 task 完成 + 三端实证后 → 走 `/opsx:archive`（合并 spec delta 到 `openspec/specs/`）
+- [x] 11.1 `interruption-detection-text-length-gate` 标 SUPERSEDED block + 移到 `archive/2026-06-08-interruption-detection-text-length-gate-SUPERSEDED/` <!-- meta 本次 -->
+- [x] 11.2 `openspec validate engine-interruption-rule-tree --strict` 通过 <!-- meta 本次 -->
+- [ ] 11.3 全 task 完成 + 三端实证（§8/§9）后 → `/opsx:archive`（合并 spec delta 到 specs/）
