@@ -1,6 +1,19 @@
 # cloud deployment — current state snapshot
 
-**Last updated**: 2026-06-08 16:03 CST — **web 场景配置「一页到底」deployed**（web only，change
+**Last updated**: 2026-06-08 17:31 CST — **场景保存 422 + 分号输入 修复 deployed**（web `8394429` +
+**isales-api 重启**）。场景单页保存报 422 两个真因:① `id/created_at/updated_at: Extra inputs` —
+`onRefresh` 的 `Object.assign(form, detail)` 把只读字段灌进 form、`buildPayload {...form}` 发出去被后端
+`extra=forbid` 拒;修法 buildPayload **只发 CampaignBase 白名单**(`Object.keys(CAMPAIGN_DEFAULTS)`)。
+② `routing_rules.0.action.tool.closing_phrase: Extra inputs` — **§11 部署时只重启 engine、漏重启 api**,
+api 内存里还是旧 common(不认 `RouteToolAction.closing_phrase`);本次 `systemctl restart isales-api` 拾起磁盘
+editable common（routing_rule.py 含 closing_phrase;pyproject 版本标签 cosmetic,共享 venv）。另修分号输入:
+转人工关键词/打断白名单/沉默激活兜底语 textarea 改为**失焦(@change)才解析**（原每键 split+filter+rejoin 把刚
+敲的分号吃掉）。部署:web build → rsync dist → nginx reload(index 200) + api restart(Application startup
+complete)。备份 `/opt/isales/backups/web-422fix-20260608-173101/`。**遗留 follow-up（已答用户）**:打断主门控
+现为 ASR 文字长度 ≥2（硬编码 prototype,未做成 `min_text_length` 可配/未暴露 UI）;silence section 的「无进展
+超时(s)」=独立 `max_no_progress_seconds`（与沉默挂断不同），UI 待理清（用户确认中）。
+
+Prior: 2026-06-08 16:03 CST — **web 场景配置「一页到底」deployed**（web only，change
 `web-admin-scene-single-page-config` §1-6 + 部署）。兑现 one-role-ia 的 D6 deferred:把场景的 13-tab
 高级编辑器 `CampaignEdit` 折进 `CampaignDetail`，全部 per-campaign 设置能力**纵向全展开、单页到底**（用户决定
 不折叠）——进度 / 基本信息(含 TTS 试听) / 可拨时段 / 3 个 AI 角色卡(main·referee·extractor,自存) / 多流路由 /
