@@ -1,6 +1,25 @@
 # cloud deployment — current state snapshot
 
-**Last updated**: 2026-06-08 11:55 CST — **web-admin-one-role-ia-consolidation §1–4
+**Last updated**: 2026-06-08 14:46 CST — **engine §11（per-keyword 挂断结束语 + 静音空话术直挂）
+实装 + voxen-flat stack 并回 main + 部署**（common + engine）。**§11**：① `RouteToolAction` 加 per-rule
+`closing_phrase`（覆盖 `HangupToolConfig.closing_phrase`，使一个 hangup 工具被 OFFENSIVE/HANGUP 等不同
+关键字复用各带话术；皆空→直挂；common 5d72bc9，0.8.0→0.8.1 纯加性）；② engine decider 携带 +
+run_loop `tool:hangup` 按 per-keyword 优先解析（命中规则→工具配置→直挂）；③ 静音超限挂断空话术直挂
+（删 run_loop `outcome.text or "再见。"` + runtime_config `or "稍后联系，再见。"` 两处兜底）。**§11.4 web
+DEFERRED**（web 大改版中，等其改完基于新版实装）。**并回 main**：`engine-flat-change-0-golden-net` FF
+merge 进 engine main（`ed87183→b3f79b1`，13 commit，整套 voxen-flat stack：two-lane EventBus / SelectRouter
+/ gate-first / 4 态 / tool routes 现在都在 main），381 测试全绿、ruff clean。**部署（rsync 整树覆盖 →
+`/opt/isales/current/{isales-common,isales-engine}/` + chown isales:isales + `systemctl restart isales-engine`）
+同时上线了 flat 分支在 deployed `67af3b6` 之后的另 2 个 workstream**：`cf59640`（engine-send-timeout-multi-edge：
+多 Edge gRPC 路由 + 发送超时）+ `8b01f38`（referee 改裸 token 输出，no JSON/confidence，核心门控行为变更）——
+rsync 按文件覆盖无法只挑 §11，用户确认整 HEAD 一起上。**无 alembic**（§11 是 JSONB 加性字段，那 2 个
+workstream engine-only）。**验证**：deployed run_loop 旧"再见"兜底=0 / 新守卫=1，decider+routing_rule
+closing_phrase 在，裸 token referee 在；重启 boot `cloud_edge_grpc_server_started` + `isales_engine_started`、
+无 error/traceback。**备份** `/opt/isales/backups/engine-hangup-s11-20260608-144500/{pre-engine,pre-common}.tgz`。
+**回滚**：解 backup tgz 覆盖 + restart（秒级），或 git revert。commits：common `5d72bc9` / engine `b3f79b1`(main)
+/ meta tasks `249c843`。**真机 §11 referee-hangup 拨号验收仍待**（gate-first §9.4 SIM7600 那批一起）。
+
+Prior: 2026-06-08 11:55 CST — **web-admin-one-role-ia-consolidation §1–4
 deployed** (web only). 单角色 IA 收口：运营/客户二分解散，统一成单一 TopNav（场景/线索/
 外呼/预约/数据看板 + 模型厂商圆钮 + 用户菜单「更多/设置」折叠区）。**§1**（纯加）场景卡删除入口 +
 数据看板升客户顶层 `/dashboard` + voice_id 升音色选择器；**§2**（折叠）「更多/设置」收转人工/节假日/
