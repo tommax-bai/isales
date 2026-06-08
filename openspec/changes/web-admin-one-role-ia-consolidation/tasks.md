@@ -36,12 +36,16 @@
 
 ## 3. Batch 3 — 删运营 dup + 空壳页（破坏性，放最后）
 
-- [ ] 3.1 删 `views/Campaigns/CampaignList.vue` + 路由 `operations-campaigns`（场景列表已覆盖 + 1.1 已补删除场景）。
-- [ ] 3.2 删 `views/Operations/OperationsIndex.vue` + 路由 `operations-index`；删 `TopNav.vue:108` `goOperations()` + 「运营管理」菜单项。
-- [ ] 3.3 删空壳页（无后端）：`views/SimCards/SimCardList.vue` + 路由 `operations-sim-cards`；`views/Callbacks/CallbackLogList.vue` + 路由 `operations-callback-logs`；`views/Callbacks/CallbackConfigList.vue` + 路由 `operations-callback-configs`（回调已收口为 campaign tab，§2.4）。
-- [ ] 3.4 `router/index.ts`：清理 `OPERATIONS_REDIRECTS` 中指向已删路径的 301 项；`/dashboard` 不再重定向（已是正式客户路由，§1.2）；保留仍存在目标的兼容项。
-- [ ] 3.5 收尾 inbound-ref 扫描：grep 全仓确认无残留指向已删路由名的 push/router-link；`check:routes` 绿。
-- [ ] 3.6 Batch 3 自测：typecheck + check:routes + vitest 全绿；手测每个旧运营路由不再 404 到死页（要么重定向、要么入口已移除）。
+- [x] 3.1 删 `views/Campaigns/CampaignList.vue` + 路由 `operations-campaigns`（场景列表已覆盖 + 1.1 已补删除场景）。
+- [x] 3.2 删 `views/Operations/OperationsIndex.vue` + 路由 `operations-index`；`TopNav.vue` `goOperations()` + 「运营管理」菜单项已在 §2.1 移除。
+- [x] 3.3 删空壳页（无后端）：`SimCardList.vue` + `operations-sim-cards`；`CallbackLogList.vue` + `operations-callback-logs`；`CallbackConfigList.vue` + `operations-callback-configs`（回调收口为 campaign tab）。
+- [x] 3.4 `router/index.ts`：移除整套 `OPERATIONS_REDIRECTS` + `/monitor` 特判重定向（运营区解散，旧 `/operations/*` 走 not-found，不留永久兜底 shim）。保留 view 路由从 `operations-*` 重命名到干净路径（monitor/handoff-tasks/holidays/devices/voice-models/callback-config-edit）。**CampaignEdit 按 D6 保留 `operations-campaign-edit`**（引擎 deferred）。
+- [x] 3.5 收尾 inbound-ref 扫描：grep 确认仅剩 `operations-campaign-edit`（D6 保留，router 定义 + CampaignDetail goAdvanced 2 处），其余运营路由名全清。
+- [x] 3.6 Batch 3 自测：typecheck + check:routes(23→17) + vitest(51) + eslint 全绿。
+<!-- web f1d15d2 (2026-06-08) — Batch 3 破坏性：删 5 view（净 ~600 行）+ 删 6 死路由 + 重命名 6
+     保留路由 + 移除 redirect 机制。唯一 operations- 残留是 D6 deferred CampaignEdit。手测旧链接
+     404/新链接可达留待 §5.3 统一回归或部署后。 -->
+
 
 ## 4. Batch 4 — 陈旧文案/组件清理（低风险，可并行/后置；engine-spec-terminology-purge 前端尾巴）
 
