@@ -193,6 +193,8 @@ Redis Queue SHALL 用于"必须送达，可异步处理"的工作派发；Redis 
 - **WHEN** `DialCommand` 中下发的 RTC token 接近过期
 - **THEN** 云端 engine MAY 通过 `Cloud2Edge.RtcCredentials` 主动下发新 token；边缘 SDK SHALL 用 `RefreshChannelToken()` 替换；A2 时点单通通话时长 ≤ token 默认有效期（典型 24 h），refresh 路径作为预留，A2 实施不强制完整测试
 
+## MODIFIED Requirements
+
 ### Requirement: 全局并发控制
 
 跨 engine 实例的全局并发 SHALL 用 Redis 原子计数器（INCR/DECR）；本地内存计数器 MUST NOT 替代。本要求在 v1.0 单 cloud instance 下退化为同进程计数器但接口保留。

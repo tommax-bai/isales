@@ -94,22 +94,22 @@ PostgreSQL 与 Redis SHALL 启用至少日级别的备份与持久化，避免�
 
 ### Requirement: 监控暴露契约
 
-各服务 SHALL 提供（或在 follow-up change 中提供）`/metrics` Prometheus 端点；本 change 提供监控配置模板，不强制所有服务即时实现 `/metrics`，但 SHALL 在 RUNBOOK 中列出 TODO 清单。
+各云端服务 SHALL 提供（或在 follow-up change 中提供）`/metrics` Prometheus 端点；本 change 提供监控配置模板，不强制所有服务即时实现 `/metrics`，但 SHALL 在 RUNBOOK 中列出 TODO 清单。
 
 #### Scenario: 监控配置模板内容
 
-- **WHEN** 运维部署 Prometheus
-- **THEN** `deploy/monitoring/prometheus.yml.example` SHALL 至少声明以下 scrape job：`isales-api` `isales-engine` `isales-scheduler` `isales-worker` `isales-telephony-api` `node_exporter` `postgres_exporter`；未实现 `/metrics` 的服务 target MUST 在 yaml 注释中标 `# TODO: pending /metrics implementation`
+- **WHEN** 运维部署 Prometheus（云端）
+- **THEN** `deploy/cloud/monitoring/prometheus.yml.example` SHALL 至少声明以下 scrape job：`isales-api` `isales-engine` `isales-scheduler` `isales-worker` `node_exporter` `postgres_exporter`；未实现 `/metrics` 的服务 target MUST 在 yaml 注释中标 `# TODO: pending /metrics implementation`；阿里云 RDS / Redis 通过阿里云监控（CloudMonitor）独立观测
 
 #### Scenario: 最小告警集
 
-- **WHEN** 加载 `deploy/monitoring/alert_rules.yml.example`
-- **THEN** 告警 SHALL 至少覆盖：`engine:dial` 队列深度持续 5 分钟超阈值、过去 1 小时 device flagged 比例骤升、callback 失败率 > 阈值、PG 连接数 > max_connections * 0.8
+- **WHEN** 加载 `deploy/cloud/monitoring/alert_rules.yml.example`
+- **THEN** 告警 SHALL 至少覆盖：`engine:dial` 队列深度持续 5 分钟超阈值、过去 1 小时 device flagged 比例骤升、callback 失败率 > 阈值、PG 连接数 > max_connections * 0.8、云-边 gRPC 断连边缘机数 > 阈值
 
 #### Scenario: Grafana overview dashboard
 
-- **WHEN** 导入 `deploy/monitoring/grafana/isales-overview.json`
-- **THEN** dashboard SHALL 至少展示 4 个 panel：当前在播通话数、`engine:dial` 队列深度趋势、过去 1 小时通话接通率、过去 1 小时各服务错误日志计数
+- **WHEN** 导入 `deploy/cloud/monitoring/grafana/isales-overview.json`
+- **THEN** dashboard SHALL 至少展示 5 个 panel：当前在播通话数、`engine:dial` 队列深度趋势、过去 1 小时通话接通率、过去 1 小时各服务错误日志计数、当前连接的边缘机数 / 心跳健康率
 
 ### Requirement: 部署脚本幂等与可回滚
 
@@ -410,4 +410,47 @@ isales-api / isales-engine / 其它后端服务的 bind / 监听 / 协议；ngin
   inbound；(d) `STATE.md` 同 commit 改回 "nginx deferred"
 - 回滚耗时 SHALL ≤ 5 分钟；isales-api / engine / 其它服务 SHALL 完全不
   受影响
+
+### Requirement: 阿里云基础设施清单
+
+云端部署 SHALL 使用阿里云作为云厂商；基础设施资源 MUST 通过阿里云控台或 Terraform / Pulumi 等 IaC 工具显式创建并记入 RUNBOOK；MUST NOT 隐含依赖未列出的服务。
+
+#### Scenario: 必备阿里云资源
+
+- **WHEN** v1.0 云端 provision
+- **THEN** SHALL 至少开通以下资源：
+  - **ECS**：1 台，4-8 核 / 16-32G RAM，Ubuntu 22.04 LTS，按量或包年付费，可访问公网
+  - **RDS PostgreSQL 16**：单实例，规格按数据规模（v1.0 100-1000 seats 建议 1C2G / 50G SSD 起步），打开自动备份与跨地域备份
+  - **Redis**（Tair 或标准版）：1G 起步，AOF + RDB 持久化
+  - **OSS bucket**：存储通话录音 + 远程诊断包 + 开场白预渲染（A3 用）；访问权限 ACL 私有，签名 URL 暂时下发
+  - **RTC 应用**：阿里实时音视频 RTC 控台创建应用，获得 `AppId` / `AppKey`；同 RTC 应用同时供云端 engine 与边缘 audio-bridge 入会使用
+  - **域名 + Let's Encrypt 证书**：用于 isales-web HTTPS + isales-api HTTPS + 云-边 gRPC TLS endpoint
+- 阿里云费用预算口径：纯音频 RTC ¥6 / 千分钟 / 参会者；100 seats 月度 RTC ≈ ¥1.6k；其余 ECS + RDS + Redis + OSS 量级数千 ¥ / 月
+
+#### Scenario: 阿里云资源命名
+
+- **WHEN** provision 阿里云资源
+- **THEN** 实例命名 MUST 含 `isales-prod-` / `isales-qa-` 等环境前缀，避免与其他业务混淆；OSS bucket 命名 MUST 全局唯一（建议 `isales-{env}-{purpose}` 形如 `isales-prod-recording`）
+
+### Requirement: 云-边网络与端口策略
+
+云端 SHALL 仅暴露必要端口给公网；边缘机 SHALL 不暴露任何公网端口，通过出向 TLS 连接云端。
+
+#### Scenario: 云端公网暴露端口
+
+- **WHEN** 配置阿里云安全组
+- **THEN** 入向规则 SHALL 仅允许：
+  - 80 / 443（nginx 反代 isales-web + isales-api）
+  - 云-边 gRPC TLS 端口（如 50051 或与 443 复用 SNI 路由，由 impl 决定）
+  - 22（SSH，限制源 IP 段）
+  MUST NOT 直接暴露 PG (5432) / Redis (6379) / 5 服务的本地监听端口给公网；服务间内部通过 ECS 内网 loopback / 阿里云 VPC 内网通信
+
+#### Scenario: 边缘网络要求
+
+- **WHEN** 边缘机部署
+- **THEN** 边缘机 SHALL 能出向访问：
+  - 云端 gRPC TLS endpoint（HTTP/2 over 443 或自定端口）
+  - 阿里 RTC 服务（动态 UDP 端口段 / 备用 TCP 兜底）
+  - OSS endpoint（远程诊断包上传 / 开场白预渲染下载，A2 范围内只为 A3 准备占位）
+  边缘机 MUST NOT 监听任何公网端口；本地 telephony-api MAY 监听 loopback 端口仅供本机查询
 

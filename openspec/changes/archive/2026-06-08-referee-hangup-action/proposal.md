@@ -1,3 +1,5 @@
+<!-- SUPERSEDED 2026-06-08 by `engine-tools-multidialogue-gating`（§0.1）。hangup 未按本提案的独立 DeciderAction 实现，而是被 gating 重构吸收为 `tool:hangup` 懒路由并已部署（engine b3f79b1）。本提案 spec delta 为废弃设计，归档 --skip-specs 不并入 specs/。 -->
+
 ## Why
 
 裁判（referee）目前无法让 AI 主动挂断通话。路由动作只有 `transition`（goal_achieved / transfer / customer_decline）和 `restructure`：其中 `customer_decline` 是「兜底恢复、继续挽留」而非终止，`goal_achieved` 是正向收尾。真实外呼场景里，客户骂人、明确说「别打了 / 别再打了」、或反复表达强烈拒绝时，正确的产品行为是**当场礼貌结束并挂断**，而不是继续兜底纠缠——这既是合规要求也是体验底线。当前 campaign 的路由配置无法表达「裁判判定某情况 → 主动挂断」。

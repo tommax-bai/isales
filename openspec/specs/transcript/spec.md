@@ -11,7 +11,7 @@
 - **WHEN** 通话结束 engine 落 DB
 - **THEN** 数据 SHALL 分别落到：
   - 通话事件流 → `call_record.transcript`（JSONB array）
-  - AI 三层管线候选 / 裁判 / 润色 trace → 独立表 `pipeline_trace`（按 call_record_id + turn_id）
+  - dual-LLM 管线（main LLM 流式 + N 路 referee 并行）trace → 独立表 `pipeline_trace`（按 call_record_id + turn_id）
   - 整通录音音频 → OSS（`call_record.recording_url` 引用）
 
 #### Scenario: trace 不污染 transcript
@@ -74,7 +74,7 @@ engine 在 call_session 内 SHALL 维护两个集合：`dialog_history`（喂角
 
 ### Requirement: pipeline_trace 表的字段约束
 
-`pipeline_trace` 表 SHALL 按 (call_record_id, turn_id) 主键存储每轮管线详情，用于调试与优化。字段集随本 change（engine-multi-referee-and-restructure）从「main + 单 referee 双 LLM trace」改为「main + N referee 数组 + restructure trace」。写入 MUST 保持「不因 trace 失败影响主路径」（try/except 包裹，失败仅 ERROR 日志）。
+`pipeline_trace` 表 SHALL 按 (call_record_id, turn_id) 主键存储每轮管线详情，用于调试与优化。字段集随本 change（engine-multi-referee-and-restructure）从「main + 单 referee 双 LLM trace」改为「main + N referee 数组 + restructure trace」；本 change（engine-tools-multidialogue-gating）追加门控选路字段 `selected_route_id` / `selected_route_kind` / `persona_candidates`。写入 MUST 保持「不因 trace 失败影响主路径」（try/except 包裹，失败仅 ERROR 日志）。
 
 #### Scenario: pipeline_trace 字段
 
@@ -88,6 +88,9 @@ engine 在 call_session 内 SHALL 维护两个集合：`dialog_history`（喂角
   - `main_fallback_used` (Bool, default false): 是否走了 streaming → chat() 非流式 fallback
   - `referee_results` (JSONB): N 个 referee 结果数组，每元素 `{label, category, confidence, duration_ms}`；`category` 含 `"timeout" / "invalid" / "low_confidence"` 三种 fail-open 标记 + 该 referee prompt 定义的正常枚举
   - `matched_rule` (JSONB, nullable): 路由规则引擎本轮命中的规则（无命中为 null）
+  - `selected_route_id` (Text, nullable): 本轮门控放行的 route id（如 `main` / `persona:<label>` / `closing` / `tool:hangup`）
+  - `selected_route_kind` (Text, nullable): `dialogue` / `tool` 之一
+  - `persona_candidates` (JSONB, nullable): 本轮 eager 推测的候选 route label 集（无推测时为 null 或单元素 `["main"]`）
   - `restructure_active` (Bool, default false): 本轮是否走了重组流
   - `restructure_trigger` (Text, nullable): `last_reply` / `interrupt_remaining` / `low_confidence` 之一
   - `restructure_source_text` (Text, nullable): 本轮 restructure 的 InterruptText
@@ -118,31 +121,39 @@ engine 在 call_session 内 SHALL 维护两个集合：`dialog_history`（喂角
 
 - **WHEN** 查询本 change archive 之前写入的 pipeline_trace 历史记录
 - **THEN** 旧单 referee 字段 `referee_decision` / `referee_goal_type` / `referee_confidence` / `referee_duration_ms` MUST 已被本 change 的 alembic migration 删除（v1 无真实数据，acceptable）
-- **AND** UI MUST NOT 试图读取这些旧字段；调试视图 MUST 仅展示新字段集（含 `referee_results` 数组 + restructure 字段）
+- **AND** UI MUST NOT 试图读取这些旧字段；调试视图 MUST 仅展示新字段集（含 `referee_results` 数组 + restructure 字段 + 门控选路字段）
 
 ### Requirement: 录音存储
 
-录音 SHALL 由 modem-controller 在通话建立后启动 PCM 录音，整通录成单个 stereo wav 文件（左声道=用户上行、右声道=AI 下行），落 edge 本地磁盘。录音 SHALL 纯本地保留最近 N 个（默认 N=10，按文件个数滚动删除最旧），不上传 OSS、不回写数据库、admin 后台不可见。
+录音 SHALL 由 edge 在通话建立后启动 PCM 录音，整通录成单个 stereo wav 文件（左声道=用户上行、右声道=AI 下行），落 edge 本地磁盘。录音的两条接线路径行为对等：modem 路径经 `AudioBridge` 在上行/下行 loop tap PCM；dev-no-modem 路径经 orchestrator 直采（用户上行=mac mic 推流帧，AI 下行=SDK 播放观察帧）。录音 SHALL 纯本地保留最近 N 个（默认 N=10，按文件个数滚动删除最旧），不上传 OSS、不回写数据库、admin 后台不可见。
 
 OSS 上传、`call_record.recording_url` 回写、前端用 transcript `ts` 字段跳转回放 MUST 列入 v1.x 范围外；`call_record.recording_url` 字段保留为 v1.x 预留，v1.0 不写入。
 
 #### Scenario: 录音落盘路径
 
 - **WHEN** 一通通话结束（挂断）
-- **THEN** modem-controller SHALL 在 `RECORDINGS_DIR` 下写入单个 stereo 16 kHz wav 文件，文件名以 `call_id` 标识
+- **THEN** edge SHALL 在 `RECORDINGS_DIR` 下写入单个 stereo 16 kHz wav 文件，文件名以 `call_id` 标识
 - **AND** 文件 MUST NOT 上传 OSS，`call_record.recording_url` MUST 保持为空
 
 #### Scenario: 按个数滚动保留
 
 - **WHEN** 录音文件写入完成后
-- **THEN** modem-controller SHALL 按文件 mtime 仅保留最近 `MAX_RECORDINGS`（默认 10）个 wav，删除更旧的文件
+- **THEN** edge SHALL 按文件 mtime 仅保留最近 `MAX_RECORDINGS`（默认 10）个 wav，删除更旧的文件
 - **AND** 当 `MAX_RECORDINGS` 设为 0 时 MUST 完全禁用录音（不创建文件）
 
 #### Scenario: 磁盘下限兜底
 
 - **WHEN** 通话建立时录音目录可用空间低于配置下限
-- **THEN** modem-controller SHALL 跳过本通话录音并记结构化 warning（含可用空间与阈值）
+- **THEN** edge SHALL 跳过本通话录音并记结构化 warning（含可用空间与阈值）
 - **AND** 通话本身 MUST NOT 受影响
+
+#### Scenario: dev-no-modem 路径录音对等
+
+- **WHEN** 在 `--dev-no-modem`（mac dev/QA）路径上建立一通通话且 `RECORDINGS_DIR` 已配置
+- **THEN** edge SHALL 把 mac mic 推流帧（16 kHz mono）写入左声道，把 SDK 播放观察帧（48 kHz stereo）降采为 16 kHz mono 后写入右声道
+- **AND** 挂断时写出的 wav MUST 与 modem 路径同格式（stereo 16 kHz、文件名 `call_id`、本地滚动保留、不上传 OSS）
+- **AND** 当 mic 采集被显式跳过时，左声道 MUST 以静音补齐而录音 MUST NOT 失败
+</content>
 
 ### Requirement: PII 脱敏 v1 不做
 

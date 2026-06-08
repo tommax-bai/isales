@@ -4,43 +4,45 @@
 ## Requirements
 ### Requirement: 自研控制层与单主机部署
 
-v1 SHALL 不引入任何开源 PBX；硬件控制 MUST 由自研 `modem-controller` 进程承担。该进程 SHALL 与 telephony-api 同仓库、不同 deployable，单主机部署。
+v1.0 SHALL 不引入任何开源 PBX；硬件控制 MUST 由自研 `modem-controller` 模块承担。modem-controller 与本 change 新增的 `audio-bridge` 模块 SHALL 同属 isales-telephony 仓库的**单一边缘进程**，作为 asyncio task 在边缘机（macOS Mac mini，A2 时点；Windows 由 D1 处理）部署。telephony-api HTTP 入口在云-边拆分后 SHALL 保留但角色降级为本地查询。
 
 #### Scenario: 不引入 PBX
 
-- **WHEN** v1 实施硬件控制
+- **WHEN** v1.0 实施硬件控制
 - **THEN** MUST NOT 安装 FreeSWITCH / Asterisk / chan_dongle / mod_gsmopen 等开源 PBX 组件
 
-#### Scenario: 仓库与进程关系
+#### Scenario: 边缘进程结构
 
-- **WHEN** 部署 v1
-- **THEN** isales-telephony 仓库 SHALL 提供两个 entry point：
-  - `telephony-api`（HTTP 服务，处理 device/SIM 管理与选 device）
-  - `modem-controller`（守护进程，处理 udev/AT 命令/PCM 音频）
+- **WHEN** 部署 v1.0
+- **THEN** isales-telephony 仓库 SHALL 提供单一边缘进程 entry point，进程内含以下 asyncio task：
+  - **modem-controller**：udev / pyserial polling + AT 命令通道 + PCM 设备 IO（macOS 平台用既有 macOS audio backend，Windows 由 D1 提供 audio backend）
+  - **audio-bridge**：阿里 ARTC SDK 客户端 + PCM 重采样 + 与 modem-controller 同进程环形 buffer 桥接
+  - **cloud-edge gRPC client**：与云端 engine 维护 bidi stream + 本地 SQLite 离线 buffer
+  - **telephony-api**（可选）：HTTP server 监听 loopback，提供本地设备查询接口（运维 / 本地 isales-web 使用，A2 后非云调用入口）
 
-#### Scenario: 单主机限制
+#### Scenario: 单边缘机 ≤ N 路并发
 
-- **WHEN** v1 规模规划
-- **THEN** 系统 MUST 设计为单主机 ≤ 8 路并发；多主机扩展 MUST 列入 v2
+- **WHEN** 边缘机规模规划
+- **THEN** 单边缘机 SHALL 按物理插槽数支持 ≤ N 路 USB GSM modem 并发（v1.0 典型 N=4-8）；MUST NOT 把多边缘机的 modem 跨主机虚拟成"逻辑大池"——多边缘机扩展是水平加机器而非池化
 
 ### Requirement: modem-controller 三大职责
 
-modem-controller SHALL 实现以下子系统：udev 监听器、AT 命令通道、PCM 音频管道。每个子系统都通过 IPC 暴露给 engine。
+modem-controller SHALL 实现以下子系统：USB watcher（macOS pyserial polling + 既有 udev 兼容路径）、AT 命令通道、PCM 音频管道。每个子系统都通过同进程 asyncio 接口暴露给 audio-bridge 与 cloud-edge gRPC client。
 
-#### Scenario: udev 监听器
+#### Scenario: USB watcher
 
 - **WHEN** modem-controller 启动
-- **THEN** SHALL 用 pyudev 持续监听 USB 设备 add / remove 事件，自动同步 device 表状态
+- **THEN** SHALL 用 macOS pyserial polling（已通过 `impl-deploy-macos` 验证）或 Linux pyudev 持续监听 USB 设备 add / remove 事件，自动同步本地设备状态缓存；变更 SHALL 经 cloud-edge gRPC 上报为 `CallEvent.device_state_changed` 或 `HardwareAlert`
 
 #### Scenario: AT 命令通道
 
-- **WHEN** engine 通过 IPC 请求拨号 / 挂断 / 状态查询
-- **THEN** modem-controller SHALL 通过 `/dev/ttyUSB*` 串口发送对应 AT 命令（ATD 拨号、ATH 挂断、AT+CSQ 信号、AT+CCID 卡号、AT+CGSN IMEI 等）
+- **WHEN** 云端 engine 经 `Cloud2Edge.DialCommand` 请求拨号 / 通过 `Cloud2Edge.CancelCommand` 请求挂断 / 通过 `ConfigUpdate` 请求设备查询
+- **THEN** modem-controller SHALL 通过 `/dev/cu.usbserial-*`（macOS）或 `/dev/ttyUSB*`（Linux）串口发送对应 AT 命令（ATD 拨号、ATH 挂断、AT+CSQ 信号、AT+CCID 卡号、AT+CGSN IMEI 等）；结果以 `Edge2Cloud.CallEvent` / `DialAck` 形式经 cloud-edge gRPC 回传
 
 #### Scenario: PCM 音频管道
 
-- **WHEN** 通话建立
-- **THEN** modem-controller SHALL 通过 ALSA（`/dev/snd/pcmC*D*c`）双向流转音频：上行 8kHz 16-bit linear PCM → 重采样 16kHz → engine；下行 engine TTS PCM → 重采样 8kHz → ALSA playback
+- **WHEN** 通话建立（modem 与对端通话信道接通）
+- **THEN** modem-controller SHALL 通过平台音频 backend（macOS 既有 backend；Windows 由 D1 提供）双向流转 PCM：上行 8 kHz 16-bit linear PCM → 重采样 16 kHz → **推到同进程的 audio-bridge 上行环形 buffer**；下行 audio-bridge 推过来的 PCM → 重采样 8 kHz → 平台音频 backend playback；**MUST NOT 跨进程 / 跨主机直接对接 engine**
 
 ### Requirement: device 状态机
 
@@ -105,100 +107,81 @@ modem-controller SHALL 在收到 udev 事件后自动维护 device 与 binding�
 
 ### Requirement: engine ↔ modem-controller IPC 协议
 
-通信通道 SHALL 为本地 Unix socket（单主机部署）+ JSON 消息。指令与事件方向严格区分。`session_id` SHALL 是 caller（engine）提供的相关 ID；事件帧 MUST 仅暴露 `session_id` 字段，不暴露 modem-controller 内部生成的 UUID。
+云-边拆分后 engine（云端）与 modem-controller（边缘）之间**不再有直接 IPC**。所有原走 Unix socket / 本地 WebSocket 的指令与事件 SHALL 改走两条链路：
 
-#### Scenario: engine → modem-controller 指令格式
+1. **控制指令**：通过 cloud-edge gRPC bidi stream（详见 service-communication spec § 云-边控制面）
+2. **音频 PCM**：通过阿里 RTC PaaS（详见 service-communication spec § 云-边媒体面），边缘侧由 modem-controller ↔ audio-bridge 同进程环形 buffer + audio-bridge ↔ 云端 RTC SDK 完成
 
-- **WHEN** engine 发起拨号 / 挂断 / 推送下行音频
-- **THEN** 消息格式 MUST 形如：
-  ```json
-  {"cmd": "dial",   "device_id": 3, "number": "13800138000", "session_id": "abc"}
-  {"cmd": "hangup", "session_id": "abc"}
-  {"cmd": "audio_downstream", "session_id": "abc", "pcm_chunk": "<base64>"}
-  ```
+边缘进程内 modem-controller 与 audio-bridge 之间的通信 SHALL 通过同进程 asyncio Queue / 环形 buffer，使用 Python 对象传递，**不需要序列化**。
 
-#### Scenario: modem-controller → engine 事件格式
+#### Scenario: cloud → edge 拨号 / 挂断指令
 
-- **WHEN** modem-controller 上报通话进展 / 音频 / 错误
-- **THEN** 消息格式 MUST 形如：
-  ```json
-  {"event": "call_progress", "session_id": "abc", "state": "ringing"}
-  {"event": "connected",     "session_id": "abc"}
-  {"event": "audio_upstream","session_id": "abc", "pcm_chunk": "<base64>"}
-  {"event": "remote_hangup", "session_id": "abc", "cause": "no_answer"}
-  {"event": "device_error",  "session_id": "abc", "code": "signal_lost"}
-  ```
+- **WHEN** 云端 engine 发起拨号 / 挂断
+- **THEN** 消息 MUST 形如 `Cloud2Edge.DialCommand{call_id, device_id, number, caller_id, rtc_channel, rtc_token, rtc_uid_edge, rtc_uid_engine}` 或 `Cloud2Edge.CancelCommand{call_id}`，经 gRPC bidi 下发；边缘 modem-controller 收到后 SHALL：
+  1. 通知 audio-bridge 用 `rtc_token` + `rtc_channel` + `rtc_uid_edge` 入会
+  2. 在 audio-bridge 入会确认后发 AT 命令 ATD/ATH 操作 modem
+  3. 将 modem 反馈（call_progress / connected / remote_hangup）经 `Edge2Cloud.CallEvent` 上报
 
-#### Scenario: 音频流 v1 走同一 IPC
+#### Scenario: edge → cloud 通话进展上报
 
-- **WHEN** v1 实施
-- **THEN** 音频流 SHALL 与控制消息走同一 Unix socket（v1 简化）；后期可改为独立流通道（pcm_upstream / pcm_downstream）减少 JSON 编解码开销
+- **WHEN** modem-controller 检测到通话状态变化或硬件事件
+- **THEN** SHALL 经 cloud-edge gRPC 发送 `Edge2Cloud.CallEvent{call_id, kind, payload}`，`kind` 可取 `ringing` / `connected` / `remote_hangup` / `device_error` 等；payload 含具体 cause（如 hangup_cause 已映射）
 
-#### Scenario: session_id 缺省时的回退
+#### Scenario: 音频流不走 gRPC
 
-- **WHEN** 调用方（如手工调试 / 旧客户端）省略 `session_id` 字段
-- **THEN** modem-controller MAY 用内部生成的 UUID 作为 session_id 回填到 ack 与所有后续事件帧；MUST NOT 把这个 UUID 以 `call_id` 字段单独暴露（事件帧只允许 `session_id` 一个对应字段）；engine 路径正常使用时 MUST 自带 session_id
+- **WHEN** 实施 v1.0
+- **THEN** PCM 音频流 MUST NOT 走 cloud-edge gRPC（带宽 + 时延 + 编解码 + 抖动控制都不胜任）；MUST NOT 通过 gRPC 推 base64 编码的音频 chunk；音频 PCM SHALL 仅通过阿里 RTC PaaS 这一条媒体面通道
 
-#### Scenario: 事件帧字段最小化
+#### Scenario: session_id / call_id 一致性
 
-- **WHEN** modem-controller 发送任何 event 帧
-- **THEN** 帧 MUST 仅包含 `event` + `session_id` + 该事件类型语义所需字段（如 `cause` / `code` / `pcm_chunk` / `state`）；MUST NOT 同时回 `call_id` 等内部值（删除 stage-2 留下的 backward-compat 字段）
+- **WHEN** 任一控制消息或事件
+- **THEN** MUST 携带 `call_id`（cloud-edge gRPC message 中字段命名为 `call_id`，与边缘 modem-controller 内部沿用原 `session_id` 概念对齐）；MUST NOT 同时携带 `call_id` 与 `session_id` 双字段（避免歧义）；边缘 modem-controller 内部 asyncio 上下文 MAY 仍用 `session_id` 局部变量名，但跨进程 / 跨主机消息中 SHALL 用 `call_id`
 
 ### Requirement: IPC 帧格式
 
-`engine` ↔ `modem-controller` 的 Unix socket 通信 SHALL 使用 newline-delimited JSON 帧格式：每条消息以 `\n` 结尾，单条消息内 MUST NOT 出现裸换行；接收方按行读取并 `json.loads()` 解析。本 Requirement 是 § engine ↔ modem-controller IPC 协议 的具体化。
+边缘进程内 modem-controller ↔ audio-bridge ↔ cloud-edge gRPC client 之间的通信 SHALL 通过 asyncio Queue / 环形 buffer 传递 Python 对象，无需序列化。云-边 gRPC 通信 SHALL 用 protobuf 序列化（详见 service-communication spec）。
 
-#### Scenario: 消息分帧
+#### Scenario: 边缘进程内对象传递
 
-- **WHEN** 任一端发送一条 IPC 消息
-- **THEN** SHALL 在 JSON 序列化结果末尾追加单个 `\n`；JSON 中嵌入的字符串字段若含换行 MUST 按 JSON 标准转义为 `\\n`（不影响分帧）
+- **WHEN** 边缘进程内任一 asyncio task 向另一 task 发送消息
+- **THEN** SHALL 直接传递 Python dataclass / namedtuple / dict；MUST NOT JSON 序列化（无收益且增加 CPU 与 GC 压力）；队列实现 SHALL 是 `asyncio.Queue` 或 `collections.deque`-based ring buffer
 
-#### Scenario: 不完整帧的处理
+#### Scenario: 音频环形 buffer 容量
 
-- **WHEN** 接收方读到 EOF 但当前缓冲区有未结束的数据（无 `\n`）
-- **THEN** SHALL 视为协议错误，关闭连接并日志告警；MUST NOT 尝试 partial parse
-
-#### Scenario: 单条消息大小上限
-
-- **WHEN** 任一端构造或接收单条消息
-- **THEN** SHALL 限制单条 ≤ 1 MiB（覆盖最大 PCM chunk + 控制元数据）；超限发送方 SHALL 拒绝发送、接收方 SHALL 关闭连接并告警
-
-#### Scenario: 双向独立流
-
-- **WHEN** engine 与 modem-controller 同时读写
-- **THEN** 双向独立异步 Stream（asyncio StreamReader/Writer），消息不互相阻塞；SHALL NOT 假设请求/响应严格配对（控制指令与音频流交错走同一 socket）
+- **WHEN** modem-controller 与 audio-bridge 之间传递 PCM 帧
+- **THEN** 上行（modem → audio-bridge → RTC）与下行（RTC → audio-bridge → modem）SHALL 各维护独立环形 buffer；buffer 容量 SHALL 至少容纳 200 ms 音频（按 16 kHz / 16-bit / mono 计算 ≈ 6.4 KB / 200 ms，含余量取 16 KB）；溢出 SHALL 丢弃最早一帧并打告警日志（音频丢帧而非整链路阻塞）
 
 ### Requirement: 选 device API
 
-`telephony-api` SHALL 暴露 `POST /devices/select` 给 scheduler 在拨号前调用。请求与响应 schema MUST 由 isales-common 集中提供（见 ADDED Requirement: 选号 API schema 出处）；调用方 MUST 引用同一份 Pydantic 模型。
+云-边拆分后 telephony-api 的 `POST /devices/select` HTTP 接口在云调用链中 SHALL 不再使用。云端 scheduler 选 device SHALL 直接基于云内 PG 中的 device 表（由边缘经 cloud-edge gRPC 上报的状态维护）；dial 指令通过云-边 gRPC `DialCommand` 下发，**不再有"选号 HTTP RPC"**。telephony-api 的选号端点 MAY 在边缘进程内保留（用于本地工具 / 调试），但 MUST 标注为 deprecated。
 
-#### Scenario: 选 device 入参与出参
+#### Scenario: 云端选 device 算法
 
-- **WHEN** scheduler 调用 `POST /devices/select`
-- **THEN** 请求体 = `{ campaign_id }`；响应体 = `{ device_id, phone_number }`
-
-#### Scenario: 选 device 算法
-
-- **WHEN** telephony-api 处理选号请求
-- **THEN** SHALL：
+- **WHEN** scheduler 派发新通话
+- **THEN** SHALL 在云内 PG 上查询：
   1. 取该 Campaign 关联的 device（通过 `campaign_device` 中间表）
   2. 过滤 `device.status=idle` 且 `device_sim_binding.is_active=true`
-  3. 选 `device.last_call_at` 最早的（保持负载均衡）；`last_call_at IS NULL`（从未拨打）SHALL 视为最早，优先选中
-  4. 没有空闲设备 → 返回 `503 no_idle_device`
+  3. 选 `device.last_call_at` 最早的（保持负载均衡）；`last_call_at IS NULL` SHALL 视为最早，优先选中
+  4. 没有空闲设备 → 暂停该 dial 并稍后重试（不再返回 503 RPC，因为在云内同进程调用）
 
 #### Scenario: 选号成功后回写 last_call_at
 
-- **WHEN** telephony-api 选中某 device 返回给 scheduler
-- **THEN** SHALL 在响应返回前更新 `device.last_call_at = now()`；MUST NOT 等待真实拨号成功后再写；SHALL 保证并发 `/devices/select` 调用不会选中同一台 idle device（实现 MAY 用事务 + `SELECT ... FOR UPDATE`、行级锁或乐观锁，由 impl-telephony 决定具体策略）
+- **WHEN** scheduler 选中某 device 派发 dial
+- **THEN** SHALL 在云内 PG 事务中更新 `device.last_call_at = now()` + 生成 `call_id` + 通过 cloud-edge gRPC 发送 `DialCommand`；SHALL 保证并发 dial 不会选中同一台 idle device（云内事务 + 行级锁；MAY 用乐观锁，由 impl 决定）
+
+#### Scenario: 边缘 telephony-api `/devices/select` 状态
+
+- **WHEN** 边缘 telephony-api 收到本地 HTTP `POST /devices/select` 调用
+- **THEN** MAY 仍按既有逻辑响应（基于边缘本地 SQLite 缓存的 device 状态），但响应 header MUST 包含 `Deprecation: 1`；该接口 v1.0 后续 change MAY 完全移除
 
 ### Requirement: GSM hangup_cause 映射
 
-modem-controller SHALL 把 GSM 原始 cause 映射为统一的 `hangup_cause` 字段供 retry-followup 决策使用。
+modem-controller SHALL 把 GSM 原始 cause 映射为统一的 `hangup_cause` 字段，通过 `Edge2Cloud.CallEvent{kind="remote_hangup", payload.hangup_cause}` 上报到云端，供 retry-followup 决策使用。
 
 #### Scenario: cause 映射表
 
 - **WHEN** modem-controller 上报 remote_hangup
-- **THEN** 映射如下：
+- **THEN** 映射如下（与 A1 `impl-real-at` 已 ship 的 canonical 集合一致）：
   - `no answer` / `no carrier` → `no_answer`（重试）
   - `busy` → `user_busy`（重试）
   - `network failure` / `signal lost` → `network_out_of_order`（重试）
@@ -207,32 +190,22 @@ modem-controller SHALL 把 GSM 原始 cause 映射为统一的 `hangup_cause` �
 
 ### Requirement: modem-controller 心跳与失联探测
 
-modem-controller SHALL 每 30s 向 telephony-api 发送一次心跳；isales-worker SHALL 每 30s 跑一次 watchdog，把超过 120s 没有心跳的 device 状态置为 `offline`。这把 § device 状态机 中"USB 拔出 → offline"的兜底链路从"udev 必到位"扩到"心跳兜底"，覆盖 modem-controller 进程崩溃 / 主机网络分区 / udev 漏报等场景。
+边缘 isales-telephony 进程 SHALL 通过 cloud-edge gRPC bidi stream 每 30 s 上报一次心跳 + 每个本地 device 的健康状态摘要；云端 worker SHALL 监听 cloud-edge stream 健康度 + 处理 `Edge2Cloud.HardwareAlert`，把超过 120 s 无心跳的边缘机所有 device 状态置 `offline`。这把 § device 状态机 中"USB 拔出 → offline"的兜底链路从"udev 必到位"扩到"cloud-edge 心跳兜底"，覆盖边缘进程崩溃 / 网络分区 / udev 漏报等场景。
 
-#### Scenario: modem-controller 心跳格式与频率
+#### Scenario: 边缘心跳
 
-- **WHEN** modem-controller 进程运行中（任意 device 状态）
-- **THEN** 进程 SHALL 每 30s 对每个已注册 device 发一次 `PATCH /devices/{id}/heartbeat`；请求体 `{signal_strength: <0-31, AT+CSQ 实测, optional>}`；MUST NOT 同时更新其他字段（status / last_call_at 等不在心跳路径中维护）
+- **WHEN** 边缘 isales-telephony 进程运行中
+- **THEN** 进程 SHALL 每 30 s 发送 `Edge2Cloud.Heartbeat{edge_device_id, timestamp, devices: [{device_id, status, signal_strength?, last_seen_at}]}`；MUST NOT 在心跳中携带其他业务事件（call_event / hardware_alert 独立 message）
 
-#### Scenario: 心跳端点不修改其他字段
+#### Scenario: 云端 watchdog 失联探测
 
-- **WHEN** telephony-api 收到 `PATCH /devices/{id}/heartbeat`
-- **THEN** 服务端 MUST 仅更新 `device.last_seen_at = now()`；MUST NOT 修改 `status` / `last_call_at` / `imei` / `signal_strength` 等字段（signal_strength 按 data-model spec 在 sim_card 表，v1 心跳路径暂不级联回写，留给 v2）；MUST 校验当前用户身份（admin JWT 或 service-account JWT 任一）
+- **WHEN** 云端 worker 监听 cloud-edge stream 健康度
+- **THEN** 工作 SHALL 把所有 `last_heartbeat IS NOT NULL AND last_heartbeat < now() - INTERVAL '120 seconds' AND status NOT IN ('offline')` 的 device 行 status 置为 `offline`（按云内 PG 写入）；同一行二次跑 MUST 幂等
 
-#### Scenario: watchdog 失联探测
+#### Scenario: 进程恢复
 
-- **WHEN** isales-worker 每 30s 运行 watchdog
-- **THEN** 工作 SHALL 把所有 `last_seen_at IS NOT NULL AND last_seen_at < now() - INTERVAL '120 seconds' AND status NOT IN ('offline')` 的 device 行 status 置为 `offline`；同一行二次跑 MUST 幂等（已是 offline 不再写）
-
-#### Scenario: 心跳与 udev 拔出竞态
-
-- **WHEN** USB 设备拔出（udev remove）与 watchdog 失联探测同时检测到同一 device
-- **THEN** udev 走 `PATCH /devices/{id}` 直接置 status=offline；watchdog UPDATE 用 `WHERE status != 'offline'` 守卫；DB 行级锁保证最多一次写入；任一路径完成后 status 等于 offline、不会重复触发
-
-#### Scenario: 心跳缺失到恢复
-
-- **WHEN** modem-controller 进程崩溃 → device.status 经 watchdog 置 offline → 进程恢复后第一次心跳到达
-- **THEN** 心跳本身 MUST 仅更 last_seen_at；恢复 status=idle 由独立的"udev 注册路径"或者运维显式 `PATCH /devices/{id} status=idle` 触发；MUST NOT 由心跳隐式翻转 status（避免半坏的进程心跳还在但实际不能拨打）
+- **WHEN** 边缘进程崩溃 → device.status 经 watchdog 置 offline → 进程恢复后第一次心跳到达
+- **THEN** 心跳本身 MUST 仅更 last_heartbeat；恢复 status=idle 由独立的 udev / pyserial 重新探测路径触发，经 `CallEvent.device_state_changed` 上报；MUST NOT 由心跳隐式翻转 status
 
 ### Requirement: v1 不做的硬件能力
 
@@ -250,22 +223,17 @@ v1 SHALL 不实现 SMS、多主机扩展、硬件级负载均衡、信道质量�
 
 ### Requirement: 选号 API schema 出处
 
-`POST /devices/select` 的请求与响应 Pydantic 模型 SHALL 集中定义在 `isales-common`；telephony-api（响应方）与 scheduler（请求方）MUST 引用同一份模型，MUST NOT 各自维护独立 schema。
+云-边拆分后云内 scheduler 选 device 走云内函数调用，不再有 HTTP RPC，原"选号 API schema"约束改为：选 device 的入参 / 出参数据形态 SHALL 由 isales-common 的 `DialCommand` protobuf message 与云内 `Device` SQLAlchemy 模型共同定义；scheduler 与 engine 跨服务调用 MUST 引用同一份 schema。
 
-#### Scenario: schema 在 isales-common 的位置
+#### Scenario: 跨服务模型出处
 
-- **WHEN** isales-common 落地阶段 2 增量
-- **THEN** SHALL 在 `isales_common/schemas/device.py` 增加 `DeviceSelectRequest`（字段：`campaign_id: int`）与 `DeviceSelectResponse`（字段：`device_id: int`、`phone_number: str`）
-
-#### Scenario: scheduler 引用而非复制
-
-- **WHEN** scheduler（impl 阶段 3）实现选号调用
-- **THEN** scheduler 代码 MUST 通过 `from isales_common.schemas.device import DeviceSelectRequest, DeviceSelectResponse` 引用；MUST NOT 在 scheduler 仓库内重新定义同名模型
+- **WHEN** scheduler 派发 dial / engine 接收 dial
+- **THEN** 双方 SHALL 通过 `from isales_common.proto.cloud_edge_pb2 import DialCommand` 引用同一份 protobuf 编译产物；MUST NOT 各自重新定义 dial 字段
 
 #### Scenario: schema 演进通过 isales-common bump
 
-- **WHEN** select API 的字段需要增减
-- **THEN** SHALL 走 isales-common 版本 bump 流程；调用方与响应方 MUST 同步升级；MUST NOT 一方先改造成 schema 不一致
+- **WHEN** dial 字段需要增减
+- **THEN** SHALL 走 isales-common 版本 bump 流程；scheduler / engine / 边缘 telephony 三方 MUST 同步升级；MUST NOT 一方先改造成 schema 不一致
 
 ### Requirement: ATClient 实现策略
 
@@ -513,6 +481,72 @@ macOS 边缘进程 SHALL 支持 **dev-no-modem 启动模式**：跳过真 GSM mo
 
 - **WHEN** `--dev-no-modem` flag 传入但 `sys.platform != "darwin"`
 - **THEN** 进程 SHALL fail-fast 退出，打印明确错误 "--dev-no-modem 仅 macOS 支持；Windows 商用走真 GSM modem + windows-artc-pybind11 真 Aliyun RTC 路径"
+
+### Requirement: audio-bridge 组件
+
+isales-telephony 仓库 SHALL 新增 `audio-bridge` 模块，作为边缘进程内 asyncio task 运行；职责限定于 PCM 重采样 + 阿里 ARTC SDK 客户端 + 与 modem-controller 同进程环形 buffer 桥接；MUST NOT 涉及 AT 命令 / 设备硬件管理 / AI 编排。
+
+#### Scenario: audio-bridge 模块职责
+
+- **WHEN** 一通通话激活
+- **THEN** audio-bridge SHALL：
+  1. 接收来自 cloud-edge gRPC client 转发的 `DialCommand{rtc_channel, rtc_token, rtc_uid_edge}` 入会参数
+  2. 调用 ARTC SDK `JoinChannel(token, channel, uid_edge, username, joinConfig)` 入会
+  3. 启用 `SetExternalAudioSource(enable=True, sampleRate=16000, channelsPerFrame=1)` 关掉默认麦克风
+  4. 从 modem-controller 上行环形 buffer 取 PCM 帧（已重采样至 16 kHz）→ `PushExternalAudioFrameRawData` 推到 RTC
+  5. 收 `OnSubscribeAudioFrame(uid=rtc_uid_engine, pcm)` → 推到 modem-controller 下行环形 buffer
+  6. 通话结束（remote_hangup / cancel）调 `LeaveChannel()` 离会
+
+#### Scenario: audio-bridge 重采样
+
+- **WHEN** modem 上行 8 kHz PCM 进入 audio-bridge
+- **THEN** SHALL 用平台原生重采样（如 macOS Audio Converter）或纯 Python 重采样（`scipy.signal.resample_poly` / `audioop.ratecv`）转换为 16 kHz / 16-bit mono；下行 RTC PCM 进入 audio-bridge 时反向重采样为 8 kHz；重采样质量 MUST 满足通话语音可懂度（impl 阶段实测）
+
+#### Scenario: audio-bridge 反压
+
+- **WHEN** ARTC SDK 触发 `OnPushAudioFrameBufferFull` 回调
+- **THEN** audio-bridge SHALL 暂停从 modem-controller 上行 buffer 取帧 → SDK 内部 buffer 排空后恢复；MUST NOT 简单丢弃帧（造成对端听到断续）；如反压持续 > 200 ms 视为媒体面异常，SHALL 上报 `Edge2Cloud.HardwareAlert{kind="audio_buffer_stalled"}` 并触发挂断流程
+
+#### Scenario: audio-bridge 与 modem-controller 接口
+
+- **WHEN** audio-bridge 与 modem-controller 同进程跨 task 通信
+- **THEN** SHALL 通过 asyncio Queue / 环形 buffer 传递 PCM 帧 + 入会 / 离会指令；MUST NOT 共享可变全局状态；MUST NOT 通过文件系统 / Unix socket / 本地 HTTP 通信（同进程无需）
+
+### Requirement: 云端 engine 的 ARTC SDK 接入
+
+云端 isales-engine SHALL 在 `transport/aliyun_rtc.py` 中包装阿里 ARTC SDK for Linux Python，作为 engine session 的 RTC 入会与音频 IO 实现；MUST 暴露 asyncio-friendly 接口供 `audio_pipe` 与 engine session 主循环调用。
+
+#### Scenario: SDK 接入封装
+
+- **WHEN** engine session 启动（响应 scheduler 派发的 dial）
+- **THEN** engine SHALL 调用 `aliyun_rtc.RtcSession(channel, token, uid_engine).join()` 入会；接口 SHALL 暴露 `async def on_audio_frame()` 异步迭代器供消费上行 PCM；SHALL 暴露 `async def push_audio(pcm: bytes, timestamp: int)` 推下行 PCM；通话结束 `await rtc_session.leave()`
+
+#### Scenario: audio_pipe RTC backend
+
+- **WHEN** engine `audio_pipe` 选 capture / playback backend
+- **THEN** v1.0 云端 SHALL 默认选 `AliyunRTCCapture` / `AliyunRTCPlayback`；接口 MUST 与既有 ALSA / macOS backend 兼容（实现 capture-backend / playback-backend 抽象基类），便于本地开发 / 测试时切回本地 backend
+
+#### Scenario: SDK vendor 路径
+
+- **WHEN** 云端 ECS 部署
+- **THEN** SDK 压缩包 SHALL 解压到 `/opt/isales/current/vendor/aliyun-artc-linux-python/`；engine 进程 `sys.path` 或 `pip install -e file://...` 引入；MUST NOT 提交 vendor 二进制到 git 仓库；SHALL 通过 `deploy/cloud/scripts/install.sh` 中专门的 `install-artc-sdk` 步骤从内部 artifact 仓 / OSS 拉取压缩包
+
+### Requirement: 边缘进程不直接读写云端 PG / Redis
+
+边缘 isales-telephony 进程 SHALL 不直接 TCP 连接云端阿里云 RDS / Redis；所有业务数据读 / 写 SHALL 通过 cloud-edge gRPC `Edge2Cloud.CallEvent` / `Edge2Cloud.HardwareAlert` 上报；边缘 SQLite 仅作离线 buffer + 本地设备元数据缓存。
+
+#### Scenario: 边缘 SQLite 用途
+
+- **WHEN** 边缘进程读写 SQLite
+- **THEN** SQLite SHALL 仅存储：
+  - 云-边 gRPC 离线期间产生的待补发事件
+  - 边缘本地缓存的 device / sim_card 元数据（用于离线期间 telephony-api 本地查询）
+- MUST NOT 作为权威数据源（云内 RDS 才是）；MUST NOT 存通话内容 / transcript / call_record（这些在云内 PG）
+
+#### Scenario: 边缘 SQLite schema 不与云内 PG schema 强耦合
+
+- **WHEN** isales-common alembic 迁移演进云内 PG schema
+- **THEN** 边缘 SQLite 表结构 MAY 落后云内 schema 一两个版本（在 backward-compatible 范围内）；MUST 由 isales-telephony 仓库自行维护边缘 SQLite 迁移脚本；MUST NOT 共用 isales-common alembic 的迁移（避免边缘进程崩在不识别的列上）
 
 ## Data Schema
 

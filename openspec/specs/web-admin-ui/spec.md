@@ -5,58 +5,34 @@ TBD - created by archiving change web-admin-ui-redesign. Update Purpose after ar
 ## Requirements
 ### Requirement: 客户面 view 清单
 
-`isales-web` SHALL 实现以下客户视角 view：
+`isales-web` SHALL 实现以下客户视角 view（系统单一角色，所有 view 同属「用户」工作台，无运营/客户分区）：
 
 | 入口 | 路由 | view 文件 |
 |---|---|---|
-| 场景管理 | `/campaigns` | `views/Campaigns/CampaignList.vue`（客户面，新增） |
-| 场景详情 | `/campaigns/:id` | `views/Campaigns/CampaignDetail.vue`（新增） |
+| 场景管理 | `/campaigns` | `views/Campaigns/CampaignWorkspace.vue` |
+| 场景详情 | `/campaigns/:id` | `views/Campaigns/CampaignDetail.vue` |
 | 线索管理 | `/leads` | `views/Leads/LeadList.vue` |
 | 外呼记录 | `/calls` | `views/Calls/CallList.vue` + `views/Calls/CallDetail.vue` |
 | 预约管理 | `/appointments` | `views/Appointments/AppointmentList.vue` |
+| 数据看板 | `/dashboard` | `views/DashboardView.vue`（由运营区升为客户顶级入口） |
 | 模型厂商 | `/config/model-providers` | `views/Config/ModelProviderConfig.vue` |
 
-`web-admin-ui-redesign` 引入的全局 `AICallConfig.vue` 的功能 SHALL 迁入
-campaign 详情 view（per-campaign）；`VoiceChannelConfig.vue` SHALL 拆分——
-ASR/TTS provider 配置降为全局配置、音色库管理并入运营面 voice-models view。
+低频但后端已实装的 view（通话监控 `MonitorView` / 转人工任务 `HandoffTaskList` / 节假日 `HolidayList` / 设备在线状态 edge-devices / 音色目录 `VoiceModelList`）SHALL 通过顶部导航的「更多/设置」折叠区访问，其功能 MUST 保持完整，仅入口位置改变。音色目录 SHALL 同时作为 campaign `voice_id` 选择/试听目录暴露。无对应后端的 view（SIM 卡 / 回调记录 / 回调配置独立页）SHALL 删除；回调能力 SHALL 仅以 per-campaign「回调」tab 形式存在。
 
 #### Scenario: 顶部入口的路由对应
 
 - **WHEN** 用户点击顶部导航中的某个入口
-- **THEN** 浏览器 URL SHALL 切换到上述路由表中对应的路径，view 内容 SHALL
-  仅渲染该 view 的组件
+- **THEN** 浏览器 URL SHALL 切换到上述路由表中对应的路径，view 内容 SHALL 仅渲染该 view 的组件
 
 #### Scenario: 场景详情的二级布局
 
 - **WHEN** 用户从场景列表进入某个 campaign 详情
-- **THEN** 主内容区 SHALL 显示带标题的 page header，下方分区加载基本信息与
-  per-campaign 配置组件
+- **THEN** 主内容区 SHALL 显示带标题的 page header，下方分区加载基本信息与 per-campaign 配置组件
 
-### Requirement: 运营面 view 收纳
+#### Scenario: 场景列表可删除场景
 
-非客户工作流的运营管理 view SHALL 通过顶部导航的 overflow 子菜单（或独立的
-`/operations` 子区索引页）访问。这些 view 包括数据看板 / 通话监控 / 回调
-配置 / 回调记录 / 转人工任务 / 节假日 / 设备 / SIM 卡 / 音色库 / campaign
-高级编辑，其功能 MUST 保持完整，仅入口位置改变。campaign 的客户向管理已移至
-客户面（见 Requirement「campaign 客户向管理 view」），运营面保留的是
-campaign 全字段高级编辑。
-
-#### Scenario: 收纳后的 view 仍可访问
-
-- **WHEN** 用户从顶部导航打开 overflow 菜单或访问 `/operations`
-- **THEN** SHALL 看到完整的运营 view 列表（Dashboard / Monitor / Callback
-  Configs / Callback Logs / Handoff Tasks / Holidays / Devices / SIM Cards /
-  Voice Models / Campaign 高级编辑），点击任一链接 SHALL 进入对应 view
-
-#### Scenario: 路由迁移
-
-- **WHEN** 用户访问旧的运营路由（`/dashboard`, `/devices`, `/sim-cards`,
-  `/holidays`, `/callback-configs`, `/callback-logs`, `/handoff-tasks`,
-  `/monitor/:id`）
-- **THEN** 服务 SHALL 永久重定向（301 等价的客户端 `router.beforeEach`
-  重定向）到 `/operations/<原路径>`，保留旧链接可用性
-- **AND** `/campaigns` SHALL NOT 再被重定向——它现为客户面 campaign 列表的
-  正式路由；campaign 的运营面高级编辑使用 `/operations/campaigns/:id/edit`
+- **WHEN** 用户在场景列表（`/campaigns`）的某张场景卡片上触发删除
+- **THEN** SHALL 弹出二次确认；确认后 SHALL 调用 `campaignsApi.delete` 删除该 campaign 并从列表移除；MUST NOT 需要进入任何运营区完成删除
 
 ### Requirement: 已 spec 能力的 UI 暴露
 
@@ -143,65 +119,28 @@ campaign 全字段高级编辑。
 - **WHEN** 添加 `lucide-vue-next` 依赖
 - **THEN** `isales-web/package.json` SHALL 新增该依赖；MUST NOT 同时移除 `@element-plus/icons-vue`（运营 view 仍在用）
 
-### Requirement: 顶级信息架构 — 客户工作流四入口 + 模型厂商配置
-
-`isales-web` 管理后台 SHALL 以**客户外呼工作流**组织顶层导航。顶部 sticky
-header SHALL 提供胶囊式分段控件，包含**四个主入口**（场景 / 线索 / 外呼 /
-预约）+ **一个圆形配置按钮**（模型厂商）。"场景"SHALL 位于主入口序列最左，
-作为客户工作流的起点（建场景 → 灌线索 → 外呼 → 收预约）。
-
-per-campaign 的外呼策略配置（AI 外呼配置 / 通路）不再是独立顶级入口，已
-并入 campaign 详情页（见 Requirement「per-campaign 外呼策略配置」）；仅
-"模型厂商"作为平台级全局凭据保留为圆形配置按钮。
-
-#### Scenario: 顶部导航的固定结构
-
-- **WHEN** 用户登录后进入任意 `/` 下的子路由
-- **THEN** 页面顶部 SHALL 显示固定（sticky）导航栏，左侧 logo + 标题，中间
-  胶囊容器中 SHALL 仅包含四个文本+图标按钮 `[场景｜线索｜外呼｜预约]`，
-  右侧 SHALL 仅包含一个圆形图标按钮（模型厂商）
-
-#### Scenario: 当前激活态视觉反馈
-
-- **WHEN** 用户切换到任一主入口或配置入口
-- **THEN** 被选中的按钮 SHALL 显示白色背景 + 主色文字 + 微阴影；其余按钮
-  SHALL 显示灰色文字、透明背景
-
-#### Scenario: 移动端折叠
-
-- **WHEN** 视口宽度 < 768px
-- **THEN** 中间业务导航 SHALL 隐藏，配置入口 SHALL 保留可见
-
 ### Requirement: campaign 客户向管理 view
 
-`isales-web` 客户面 SHALL 提供 campaign（外呼"场景"）的列表与详情 view，
-使客户无需进入运营子区即可创建、配置、启停 campaign。运营面
-`/operations/campaigns` 的全字段高级编辑（`CampaignEdit.vue`）SHALL 保留
-不变，供平台运营调整高级参数。
+`isales-web` SHALL 提供 campaign（外呼"场景"）的列表与详情 view，使用户无需进入任何独立分区即可创建、配置、启停、删除 campaign。campaign 全字段高级编辑（`CampaignEdit.vue`）作为**引擎重设计期的临时例外**保留，改由场景详情进入（不再属于已解散的运营区），待引擎定型后由后续 change 按客户面理念折叠重做。
 
 #### Scenario: 场景列表
 
 - **WHEN** 用户点击顶部导航"场景"入口（`/campaigns`）
-- **THEN** SHALL 显示 campaign 卡片列表，每卡 SHALL 显示场景名称、启停状态
-  徽标、归属线索数、外呼进度概览；列表顶部 SHALL 提供"新建场景"入口
+- **THEN** SHALL 显示 campaign 卡片列表，每卡 SHALL 显示场景名称、启停状态徽标、归属线索数、外呼进度概览；列表顶部 SHALL 提供"新建场景"入口，每卡 SHALL 提供删除入口
 
 #### Scenario: 场景详情
 
 - **WHEN** 用户点击某个 campaign 卡片（`/campaigns/:id`）
-- **THEN** SHALL 进入该 campaign 的详情 view，展示基本信息 + per-campaign
-  外呼策略配置区 + 启停控制 + 外呼进度
+- **THEN** SHALL 进入该 campaign 的详情 view，展示基本信息 + per-campaign 外呼策略配置区 + 启停控制 + 外呼进度
 
-#### Scenario: 客户面与运营面字段分层
+#### Scenario: 高级编辑从场景详情进入
 
-- **WHEN** 客户在客户面 campaign 详情 view 编辑场景
-- **THEN** 该 view SHALL 仅暴露工作流必需字段（名称、选用音色、4-tier
-  prompt、垫词、可拨时段、并发上限、启停）；数十个高级行为字段（静音 /
-  打断 / 转人工 / 重试等）SHALL NOT 出现在客户面，仅在运营面
-  `CampaignEdit.vue` 可编辑
+- **WHEN** 用户在 campaign 详情 view 需要编辑客户面未直出的高级行为字段（静音 / 打断 / 转人工 / 重试 等）
+- **THEN** SHALL 从场景详情进入保留的全字段高级编辑器；该入口 MUST NOT 经由任何 `/operations` 路由或「运营管理」菜单
 
 ### Requirement: per-campaign 外呼策略配置
 
-外呼策略配置 SHALL 绑定到具体 campaign 并持久化到后端，不再是全局配置。campaign 详情 view SHALL 承载以下 per-campaign 配置：**3-tier 串行 LLM（main / referee / extractor）**、可拨时段、选用音色、**filler_enabled toggle**。配置 SHALL 通过 admin API 持久化（`role_config` / `prompt_version` / `filler_set` / `filler_phrase` 按 campaign 写入；`campaign.time_windows` / `campaign.voice_id` / `campaign.filler_enabled` 通过 campaign PATCH 写入），MUST NOT 仅存于浏览器 localStorage。
+外呼策略配置 SHALL 绑定到具体 campaign 并持久化到后端，不再是全局配置。campaign 详情 view SHALL 承载以下 per-campaign 配置：**3-tier 串行 LLM（main / referee / extractor）**、可拨时段、选用音色、**filler_enabled toggle 与 filler_delay_ms 触发延迟**。配置 SHALL 通过 admin API 持久化（`role_config` / `prompt_version` / `filler_set` / `filler_phrase` 按 campaign 写入；`campaign.time_windows` / `campaign.voice_id` / `campaign.filler_enabled` / `campaign.filler_delay_ms` 通过 campaign PATCH 写入），MUST NOT 仅存于浏览器 localStorage。
 
 #### Scenario: 配置入口先选定 campaign
 
@@ -218,6 +157,11 @@ per-campaign 的外呼策略配置（AI 外呼配置 / 通路）不再是独立�
 - **WHEN** 用户在 campaign 详情 view 切换 filler 启用开关
 - **THEN** UI SHALL 调 campaign PATCH API 写入 `campaign.filler_enabled` 字段（bool, default false）；切到 false 时同 page 隐藏 filler_set / filler_phrase 编辑区
 - **AND** UI SHALL 在 filler 区上方显示提示"streaming 主链路首音频 ~500ms，filler 仅在用慢模型时建议启用"
+
+#### Scenario: filler_delay_ms 触发延迟
+
+- **WHEN** 用户在 campaign 详情 view 开启 filler 后编辑触发延迟
+- **THEN** UI SHALL 展示 `filler_delay_ms` 数值输入（仅 `filler_enabled=true` 时可见），调 campaign PATCH API 写入 `campaign.filler_delay_ms`（int，可空，留空表示 engine 默认 600ms）
 
 #### Scenario: 时段与音色
 
@@ -324,7 +268,7 @@ isales-api SHALL 提供一个无状态的开场白试听合成端点：入参为
 
 ### Requirement: campaign 多流路由配置界面
 
-campaign 配置页 SHALL 提供「多流路由」配置区，包含：① 主对话流（main，单条）；② 重组流（restructure，单条，可不配）；③ 裁判列表（N 个 referee，可增删）；④ 路由规则编辑器。每个裁判 SHALL 可编辑 label / model / prompt / 输出枚举语义说明。路由规则编辑器 SHALL 让用户按顺序增删规则，每条规则可选「绑定哪个裁判 → 匹配哪些 category → 执行什么 action」。
+campaign 配置页 SHALL 提供「多流路由」配置区，包含：① 主对话流（main，单条）；② 重组流（restructure，单条，可不配）；③ 裁判列表（N 个 referee，可增删）；④ 路由规则编辑器；⑤ **人设列表（N 个 persona，可增删，opt-in，cap ≤ 3）**；⑥ **工具配置（hangup / transfer，见 § "工具配置界面（ToolsTab）"）**。每个裁判 SHALL 可编辑 label / model / prompt / 输出枚举语义说明。路由规则编辑器 SHALL 让用户按顺序增删规则，每条规则可选「绑定哪个裁判 → 匹配哪些 category → 执行什么 action」；action SHALL 支持 路由到角色(persona) / 工具(挂断·转人工) / 状态转移 / 切重组流，并可选 `then_state` 目标。
 
 #### Scenario: 增删裁判
 
@@ -335,7 +279,13 @@ campaign 配置页 SHALL 提供「多流路由」配置区，包含：① 主对
 #### Scenario: 路由规则有序编辑
 
 - **WHEN** 用户编辑路由规则
-- **THEN** 界面 SHALL 以有序列表呈现规则、支持调整顺序（顺序即优先级），每条规则可选 referee（下拉其 label）+ 匹配 category（多选其枚举）+ action（状态转移 to+goal_type / 切重组流 source）
+- **THEN** 界面 SHALL 以有序列表呈现规则、支持调整顺序（顺序即优先级），每条规则可选 referee（下拉其 label）+ 匹配 category（多选其枚举）+ action
+- **AND** action 编辑器 SHALL 提供四类：① 状态转移（to + goal_type）② 切重组流（source）③ **路由到角色**（route → 下拉 persona label 或内置 closing/recovery/restructure）④ **工具**（tool → 下拉 hangup/transfer alias）；③④ 及①可选 `then_state` 下拉（LISTENING / WRAPPING_UP / ACTIVATING / TRANSFERRING / END）
+
+#### Scenario: 切换 action 目标清空陈旧字段（修 422）
+
+- **WHEN** 用户把某条规则的 action 目标从 `goal_achieved`（带 goal_type）切到其它目标（transfer / route / tool / restructure）
+- **THEN** 界面 MUST 清空不再适用的 `goal_type`（及其它陈旧分支字段），使提交载荷只含当前 action 类型的合法字段；MUST NOT 残留 `goal_type` 导致后端 `422` 保存失败（cherry-forward 自 superseded `referee-hangup-action` 的已知 bug 修复）
 
 #### Scenario: 配置重组流
 
@@ -346,4 +296,107 @@ campaign 配置页 SHALL 提供「多流路由」配置区，包含：① 主对
 
 - **WHEN** 打开一个仅含单 referee + 默认规则的存量 campaign
 - **THEN** 界面 SHALL 正常呈现该单裁判与等价默认规则，用户 MAY 在此基础上加裁判/规则，存量配置 MUST NOT 被破坏
+
+### Requirement: Campaign greeting 编辑入口
+
+isales-web MUST 在 campaign 编辑表单提供 greeting 字段编辑控件，让运营人员可输入 /
+修改 / 清空 campaign-level 固定开场白文案。保存后下次该 campaign 发起 dial 时 engine
+SHALL 通过 `load_runtime_config` 拿到新文案，MUST NOT 需要 engine 重启。控件位置（客
+户面 CampaignDetail.vue 或运营面 `/operations/campaigns/:id/edit`）由实施 task 阶段
+audit 决定。
+
+#### Scenario: 表单包含 greeting 输入控件
+
+- **WHEN** 运营人员打开 campaign 编辑表单
+- **THEN** 表单 MUST 含 "开场白文案" 字段；控件类型 SHALL 是 textarea（推荐 3 行
+  高度）；MUST 含 placeholder "留空则由 LLM 生成开场白" 提示留空行为；视觉风格
+  MUST 跟 `STYLE_GUIDE.md` 一致（label / textarea 间距 / token 同其他字段）
+
+#### Scenario: 保存空文案等价 NULL
+
+- **WHEN** 运营人员把 greeting 字段留空 / 删空后保存
+- **THEN** isales-web 在提交到 isales-api 前 SHOULD 把空字符串 normalize 为 NULL
+  （或者依赖后端 isales-api 把空串归为 NULL）；最终 PG `campaign.greeting` 字段
+  MUST 是 NULL 而非空串，让 engine 走 `generate_greeting` LLM 路径
+
+#### Scenario: 保存非空文案立即影响下次 dial
+
+- **WHEN** 运营人员保存 greeting 字段为非空文案
+- **THEN** PG `campaign.greeting` 字段 MUST 是该字面文本；isales-engine 下次该
+  campaign 的 dial 触发 `load_runtime_config` 时 MUST 直接读到新文案；engine MUST
+  跳过 LLM 直接 TTS 该文案；MUST NOT 需要 engine 重启或 cache invalidation
+
+#### Scenario: v1 不支持模板变量
+
+- **WHEN** 运营人员在 greeting 字段写 `${lead_name}` 等占位符字面
+- **THEN** isales-web SHALL NOT 警告或拒绝保存；isales-engine SHALL 把占位符字面
+  字符串直接送 TTS；v1 SHALL NOT 解析任何 `${var}` 模板变量。模板变量支持留待
+  future change
+
+#### Scenario: greeting 字段与 ai-pipeline 既有 Requirement 协同
+
+- **WHEN** Campaign 配置了非空 greeting
+- **THEN** engine 行为 MUST 跟 `ai-pipeline § Requirement: 开场白不走管线 §
+  Scenario: 固定模板开场白` 一致（直接 TTS 播放 greeting，不调任何 LLM）；本
+  Requirement MUST NOT 改变开场白入 dialog_history 的行为（仍按 `ai-pipeline §
+  Scenario: 开场白记入对话历史` 处理）
+
+### Requirement: 工具配置界面（ToolsTab）
+
+campaign 配置页 SHALL 提供工具配置入口（ToolsTab），让用户定义 `hangup` / `transfer` 工具及其 alias，供路由规则的 tool 动作引用。工具配置 SHALL 映射到 `campaign.tools` JSONB（schema 见 data-model spec）。
+
+#### Scenario: 配置挂断工具
+
+- **WHEN** 用户在 ToolsTab 添加一个 `hangup` 工具
+- **THEN** 界面 SHALL 提供可选 `closing_phrase`（挂断前单句话术）+ `interrupt` 选项，保存后落 `campaign.tools[<alias>] = {type: hangup, ...}`
+
+#### Scenario: 配置转人工工具
+
+- **WHEN** 用户在 ToolsTab 添加一个 `transfer` 工具
+- **THEN** 界面 SHALL 仅需 alias（衔接话术复用既有 `campaign.transfer_phrases` 单一来源，ToolsTab MUST NOT 提供第二套话术输入），保存后落 `campaign.tools[<alias>] = {type: transfer}`
+
+#### Scenario: 工具 alias 唯一性
+
+- **WHEN** 用户添加重复 alias 的工具
+- **THEN** 界面 SHALL 阻止保存并提示 alias 重复（对应后端 `422 tool_alias_duplicate`）
+
+### Requirement: persona 角色配置（role kind）
+
+角色配置界面 SHALL 支持 `kind=persona` 角色（label 必填），与 main / referee / restructure / extractor 并列。persona 用于 eager 多人设推测对话（见 ai-pipeline spec）。
+
+#### Scenario: 添加 persona 角色需填 label
+
+- **WHEN** 用户添加一个 persona 角色
+- **THEN** 界面 MUST 要求非空 label（同 campaign 内唯一），保存后落 `kind=persona` role_config；删除被路由规则引用的 persona 时 SHALL 提示先改规则（对应后端 delete-guard）
+
+#### Scenario: persona 数量提示 cap
+
+- **WHEN** 用户启用的对话路由总数（main + persona）超过 `persona_fanout_cap`（clamp [1,3]）
+- **THEN** 界面 SHALL 提示推测并发上限（含 main 至多 3 条）并阻止超额启用（vendor 对取消的 token 计费）
+
+### Requirement: 顶级信息架构 — 客户工作流五入口 + 模型厂商配置 + 更多折叠区
+
+`isales-web` 管理后台 SHALL 以**单一角色的外呼工作流**组织顶层导航，不再区分运营/客户。顶部 sticky header SHALL 提供胶囊式分段控件，包含**五个主入口**（场景 / 线索 / 外呼 / 预约 / 数据看板）+ **一个圆形配置按钮**（模型厂商）+ **一个「更多/设置」折叠入口**（承载低频 view）。"场景"SHALL 位于主入口序列最左，作为工作流的起点（建场景 → 灌线索 → 外呼 → 收预约 → 看板）。
+
+per-campaign 的外呼策略配置不再是独立顶级入口，已并入 campaign 详情页（见 Requirement「per-campaign 外呼策略配置」）；"模型厂商"作为平台级全局凭据保留为圆形配置按钮；低频运营 view 收入「更多/设置」折叠区。SHALL NOT 存在独立的「运营管理」顶级入口或 `/operations` 落地页。
+
+#### Scenario: 顶部导航的固定结构
+
+- **WHEN** 用户登录后进入任意 `/` 下的子路由
+- **THEN** 页面顶部 SHALL 显示固定（sticky）导航栏，左侧 logo + 标题，中间胶囊容器中 SHALL 包含五个文本+图标按钮 `[场景｜线索｜外呼｜预约｜数据看板]`，右侧 SHALL 包含一个圆形配置按钮（模型厂商）与一个「更多/设置」入口；MUST NOT 出现「运营管理」入口
+
+#### Scenario: 更多折叠区展开低频 view
+
+- **WHEN** 用户打开「更多/设置」入口
+- **THEN** SHALL 列出低频但可用的 view（通话监控 / 转人工任务 / 节假日 / 设备在线状态 / 音色目录），点击任一项 SHALL 进入对应 view；视觉语言 SHALL 沿用客户面设计 token（`--isales-*`），MUST NOT 新造独立视觉系统
+
+#### Scenario: 当前激活态视觉反馈
+
+- **WHEN** 用户切换到任一主入口或配置入口
+- **THEN** 被选中的按钮 SHALL 显示白色背景 + 主色文字 + 微阴影；其余按钮 SHALL 显示灰色文字、透明背景
+
+#### Scenario: 移动端折叠
+
+- **WHEN** 视口宽度 < 768px
+- **THEN** 中间业务导航 SHALL 隐藏，配置入口与「更多/设置」入口 SHALL 保留可见
 

@@ -1,9 +1,7 @@
 ## Purpose
 
 垫词在 AI 管线处理期间播放，用于覆盖 LLM/TTS 延迟。本规范定义触发场景、启动时机、选择策略、音频来源、失败兜底与数据模型。垫词配置 MUST 绑定在 Campaign 级（与音色一致），整通电话期间不切换归属。
-
 ## Requirements
-
 ### Requirement: 触发场景白名单
 
 垫词 SHALL 仅在常规对话 PROCESSING 状态下播放；其他状态 MUST NOT 播放。
@@ -77,36 +75,64 @@ Campaign 关联多个 `filler_set`（集合）。engine SHALL 按 `sort_order` �
 
 ### Requirement: 预生成 + 动态补充音频
 
-垫词音频 SHALL 在拨打前由 worker 预先用 Campaign 配置的音色 TTS 生成并存储到 OSS。运行时 MUST NOT 实时调用 TTS 生成垫词。
+v1.0 垫词音频 SHALL 在运行时由 engine 用 Campaign 配置的音色实时 TTS 合成 `filler_phrase.phrase` 文本，并 SHALL 经进程级缓存（同 `(text, voice_id)` 命中后零重复合成）降低延迟。垫词选取 MUST NOT 依赖 `filler_phrase.audio_url` 非空或 `generation_status == ready`——这两个字段属 stage-6 OSS 预录路径，v1.0 无 OSS / 无预生成 worker 时恒为空，若作为选取门槛会使垫词永不触发。
 
-#### Scenario: 新增垫词触发预生成
+stage-6（OSS + `regenerate_filler_audio` worker 落地后）SHALL 以独立 change 恢复「`audio_url` 就绪则直接推流、否则实时合成」的优先分支；在该 worker + OSS 就绪前 MUST NOT 提前引入该双分支（避免纯死代码与多层 fallback）。
 
-- **WHEN** 用户在 isales-web 新增或编辑 filler_phrase
-- **THEN** worker 后台任务 `regenerate_filler_audio` 入队，生成完成后写 `filler_phrase.audio_url` 并置 `generation_status=ready`
+#### Scenario: 运行时实时合成可用文本
 
-#### Scenario: Campaign 切换音色级联
+- **WHEN** 进入常规对话 PROCESSING 且垫词被时间门控触发
+- **THEN** engine SHALL 从可用 filler_phrase 中选 1（判据为 `phrase` 文本非空），用 Campaign 音色实时 TTS 合成并播放，MUST NOT 因 `audio_url` 为空或 `generation_status=pending` 而跳过
 
-- **WHEN** Campaign 切换 voice_model
-- **THEN** 该 Campaign 所属全部 filler_phrase MUST 重新触发预生成
+#### Scenario: 进程缓存命中零重复合成
+
+- **WHEN** 同一 `(垫词文本, voice_id)` 在本进程内再次被选中
+- **THEN** engine SHALL 复用缓存的 PCM，MUST NOT 重新调用 TTS
+
+#### Scenario: stage-6 OSS 预生成为可选优化
+
+- **WHEN** 未来 OSS + `regenerate_filler_audio` worker 落地
+- **THEN** 可由独立 change 恢复 `audio_url` 优先推流分支；在此之前运行时实时合成是唯一主路径
 
 ### Requirement: 失败兜底允许无声延迟
 
 任何垫词失败场景 SHALL 跳过垫词、直接等 reply；engine MUST NOT 引入"万能兜底垫词"。
 
-#### Scenario: 预生成未完成
+#### Scenario: 短语文本为空
 
-- **WHEN** 新建 Campaign 立即拨打且 filler_phrase 仍处于 `generation_status=pending`
-- **THEN** engine 跳过垫词，直接等待管线返回 reply
+- **WHEN** 某 filler_set 内短语 `phrase` 文本均为空
+- **THEN** engine 跳过该 set，尝试下一个；无可用文本则直接等待管线返回 reply
 
-#### Scenario: 音频文件下载失败
+#### Scenario: 实时合成异常
 
-- **WHEN** OSS 下载垫词音频失败
-- **THEN** engine 跳过垫词，直接等待 reply（允许"无声延迟"）
+- **WHEN** 垫词 TTS 实时合成或推流过程抛异常
+- **THEN** engine 记录日志并跳过本次垫词，直接等待 reply（允许"无声延迟"），MUST NOT 中断通话
 
-#### Scenario: 全部 filler_set 都没有可用音频
+#### Scenario: 全部 filler_set 都没有可用文本
 
-- **WHEN** 该 Campaign 下所有 filler_phrase 均未 ready
+- **WHEN** 该 Campaign 下所有 filler_phrase 文本均为空
 - **THEN** engine 跳过垫词，整通通话不再尝试垫词
+
+### Requirement: filler（垫词）时间门控播放
+
+filler MUST NOT 在每轮 PROCESSING 入口无条件立即播放。当 `filler_enabled` 为真时，engine SHALL 仅在**首音频迟迟未出**时才播垫词：进入 PROCESSING 后起一个 `filler_delay_ms`（默认 600，campaign 可调）的计时器，若到时主回复的第一句音频仍未开始播放，则播放一句垫词以遮住等待；一旦主回复第一句就绪，engine MUST 取消该计时器并停止任何在播垫词，无缝接上主回复。
+
+垫词音频 SHOULD 走 TTS 缓存（命中零合成），以使垫词本身不引入额外合成延迟——否则垫词起不到遮延迟的作用。
+
+#### Scenario: 快轮次不播垫词
+
+- **WHEN** 主回复第一句音频在 `filler_delay_ms` 内就绪
+- **THEN** engine MUST NOT 播放垫词（计时器被取消）；该轮干净，无垫词污染
+
+#### Scenario: 慢轮次播缓存垫词遮空档
+
+- **WHEN** 进入 PROCESSING 后 `filler_delay_ms` 到时、主回复第一句音频仍未出
+- **THEN** engine SHALL 播放一句垫词（音频走缓存、零合成）遮住等待；主回复第一句就绪时停垫词并接上
+
+#### Scenario: filler 关闭时无行为
+
+- **WHEN** `filler_enabled` 为假
+- **THEN** engine MUST NOT 起垫词计时器、MUST NOT 播垫词
 
 ## Data Schema
 

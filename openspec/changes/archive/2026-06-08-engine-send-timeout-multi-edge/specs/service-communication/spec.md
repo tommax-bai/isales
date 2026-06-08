@@ -1,4 +1,4 @@
-## MODIFIED Requirements
+## ADDED Requirements
 
 ### Requirement: 云-边控制面 — gRPC 出站超时保护
 
@@ -22,14 +22,12 @@
 
 ### Requirement: 通信故障的容错 — 半连接场景
 
-本 Requirement 扩展 `arch-cloud-edge-split` 已有的 "云-边 gRPC 中断" 容错场景，新增 "半连接" 故障模式。
+本 Requirement 扩展 `arch-cloud-edge-split` 已有的 "通信故障的容错" 场景，新增 "半连接" 故障模式：云端 engine SHALL 把「应用层不消费消息但物理 stream 仍在」的 Edge 视为断连处理，受影响的 call_session MUST 走既有 finalize 清理路径，MUST NOT 永久卡在 `init` 状态占满并发槽。
 
 #### Scenario: Edge 半连接等同于断连
 
 - **WHEN** Edge 的 gRPC bidi stream 物理层存在但应用层不消费消息（如 Edge 进程卡死、事件循环阻塞、消费速率远低于推送速率）
 - **THEN** 云端 engine SHALL 在 send 超时后把该 Edge 视为断连（`EdgeNotConnected`）；受影响的 call_session MUST 走既有 finalize 清理路径；MUST NOT 让 session 永久卡在 `init` 状态占满并发槽
-
-## ADDED Requirements
 
 ### Requirement: 多 Edge 动态路由
 

@@ -1,3 +1,5 @@
+<!-- SUPERSEDED 2026-06-08 by `engine-rtc-dingrtc-migration`（§7）。本提案补全的是 ARTC binding 的 join-config 接口，但整个 ARTC binding 已被 DingRTC 替换删除（engine 5e1ab5f），需求作废。spec delta 为废弃设计，归档 --skip-specs 不并入 specs/。 -->
+
 ## Why
 
 `windows-artc-pybind11` spec § "必绑定的最小 SDK 接口集" 明列 binding

@@ -1,9 +1,7 @@
 ## Purpose
 
 定义 SPEAKING 状态下用户说话是否构成"打断"的判定逻辑。误判为打断会让 AI 反应过度（被「嗯嗯」中断），漏判则用户感觉被 AI 强行覆盖。本规范覆盖判定算法、不可撤销策略、连续打断保护、ASR Provider 接入边界。
-
 ## Requirements
-
 ### Requirement: 双条件打断判定
 
 SPEAKING 状态下 engine SHALL 根据两个独立条件判定用户说话是否构成"打断"。**任一条件满足时 engine MUST 视为非打断**：白名单短语命中 OR 时长 < 阈值。
@@ -77,7 +75,7 @@ SPEAKING 状态下 engine SHALL 根据两个独立条件判定用户说话是否
 #### Scenario: WRAPPING_UP 期间被打断
 
 - **WHEN** WRAPPING_UP 状态触发"打断"判定
-- **THEN** 判定逻辑不变；进入 PROCESSING 后走简化管线（单角色 LLM + 润色，不 PK 不裁判）
+- **THEN** 判定逻辑不变；进入 PROCESSING 后走简化管线（仅 main LLM 流式，跳过 referee）
 
 ## Configuration
 

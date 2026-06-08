@@ -1,3 +1,5 @@
+<!-- SUPERSEDED 2026-06-08 by `engine-rtc-dingrtc-migration`（§7）。RTC vendor 从 Aliyun ARTC 整体迁到 DingRTC 3.x，ARTC binding + vendor 目录已物理删除（engine 5e1ab5f），本 ARTC pybind 框架作废。spec delta 为废弃设计，归档 --skip-specs 不并入 specs/。 -->
+
 ## Why
 
 D1 `windows-client-core` 在 spec 与 tasks.md 中**字面假设阿里云为 Windows 提供官方 ARTC SDK Python wrapper**（同 Linux SDK 形态），把它列为 vendor 依赖（`deployment-topology` L30 / L97 / L108、windows-client-core tasks §1.4 / §7.1）。2026-05-16 PoC 周硬件 bring-up 时下载 Aliyun ARTC SDK for Windows v7.6.0 实测，发现：

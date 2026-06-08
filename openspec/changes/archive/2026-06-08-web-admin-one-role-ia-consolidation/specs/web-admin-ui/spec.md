@@ -1,3 +1,8 @@
+## RENAMED Requirements
+
+- FROM: `### Requirement: 顶级信息架构 — 客户工作流四入口 + 模型厂商配置`
+- TO: `### Requirement: 顶级信息架构 — 客户工作流五入口 + 模型厂商配置 + 更多折叠区`
+
 ## REMOVED Requirements
 
 ### Requirement: 运营面 view 收纳

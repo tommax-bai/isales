@@ -20,8 +20,6 @@
 
 每张表 SHALL 标记其主要业务归属——归属决定 schema 演进与 PR 主导权，多个服务可读写但归属仅一个；具体读写权由 `service-communication` spec 的"数据库直连"与"跨服务读 vs 写"两条 Requirement 约束。当某张关联表的 lifecycle 跟随归属 A 而非归属 B（例如 `campaign_device` 跟随 campaign 的启停而非 device 的插拔），归属 SHALL 设为 A。
 
-本 change 修改 3 张表的字段集：`role_config.kind` 枚举值改为 `{main, referee, extractor}`；`pipeline_trace` 字段集大幅简化；`call_record` 增加 `extract_status` + `extract_error` 字段。
-
 #### Scenario: 表清单完整性
 
 - **WHEN** 清点系统所有持久化表
@@ -29,16 +27,16 @@
 
 | 表 | 关键字段 | 归属服务 | 详细规范 |
 |---|---|---|---|
-| `campaign` | name, voice_id, default_replies(JSONB), concurrency, time_windows(JSONB), extraction_fields(JSONB), max_silence_activations, silence_threshold_ms, silence_phrases(JSONB), silence_hangup_phrase, max_no_progress_seconds, wrap_up_max_rounds, wrap_up_max_seconds, wrap_up_closing_phrases(JSONB), interruption_whitelist(JSONB), interruption_min_duration_ms, max_continuous_interruptions, continuous_interruption_strategy, transfer_keyword_enabled, transfer_keywords(JSONB), transfer_intent_enabled, transfer_intent_threshold, transfer_round_enabled, transfer_round_threshold, transfer_llm_enabled, transfer_llm_prompt_version_id, transfer_phrases(JSONB), retry_intervals(JSONB), retry_max_count, follow_up_interval_days, follow_up_max_count, do_not_call_keywords(JSONB), do_not_call_llm_enabled, do_not_call_llm_prompt_version_id, respect_holidays, **filler_enabled** | api | 各 capability |
+| `campaign` | name, voice_id, default_replies(JSONB), concurrency, time_windows(JSONB), extraction_fields(JSONB), max_silence_activations, silence_threshold_ms, silence_phrases(JSONB), silence_hangup_phrase, max_no_progress_seconds, wrap_up_max_rounds, wrap_up_max_seconds, wrap_up_closing_phrases(JSONB), interruption_whitelist(JSONB), interruption_min_duration_ms, max_continuous_interruptions, continuous_interruption_strategy, transfer_keyword_enabled, transfer_keywords(JSONB), transfer_intent_enabled, transfer_intent_threshold, transfer_round_enabled, transfer_round_threshold, transfer_llm_enabled, transfer_llm_prompt_version_id, transfer_phrases(JSONB), retry_intervals(JSONB), retry_max_count, follow_up_interval_days, follow_up_max_count, do_not_call_keywords(JSONB), do_not_call_llm_enabled, do_not_call_llm_prompt_version_id, respect_holidays, **greeting(Text, nullable — campaign-level 固定开场白文案；NULL 时 engine 走 LLM 生成开场白路径，详见 ai-pipeline § "开场白不走管线")** | api | 各 capability |
 | `holiday` | date, name, region | api | time-window |
 | `agent` | name, login_user, status (online/offline) | telephony | human-handoff |
 | `handoff_task` | call_record_id, agent_id (nullable), trigger_type, trigger_detail, status, created_at, picked_up_at, completed_at | api（worker 创建，api 提供查询/状态变更） | human-handoff |
-| `role_config` | campaign_id, **kind (main/referee/extractor)**, model, current_prompt_version_id, temperature, top_p, ext_params(JSONB), enabled | api | role-prompt, ai-pipeline |
-| `prompt_version` | **scope_type (main/referee/extractor)**, scope_id, content, created_at, created_by, is_active | api | role-prompt |
-| `pipeline_trace` | call_record_id, turn_id, ts_start, ts_end, user_input, **main_reply_text(TEXT), main_duration_ms(INT), main_tokens_in(INT), main_tokens_out(INT), main_fallback_used(BOOL), referee_decision(TEXT), referee_goal_type(TEXT), referee_confidence(REAL), referee_duration_ms(INT), first_audio_ms(INT)**, error(TEXT) | engine | transcript, ai-pipeline |
+| `role_config` | campaign_id, kind (role/judge/polish), model, current_prompt_version_id, temperature, top_p, ext_params(JSONB), enabled | api | role-prompt, ai-pipeline |
+| `prompt_version` | scope_type, scope_id, content, created_at, created_by, is_active | api | role-prompt |
+| `pipeline_trace` | call_record_id, turn_id, ts_start, ts_end, user_input, role_candidates(JSONB), judge_results(JSONB), polish_input(JSONB), polish_output, polish_duration_ms, polish_role_config_id, polish_prompt_version_id, final_selected_candidate_index | engine | transcript |
 | `lead` | name, phone, source, custom_data(JSONB), status, retry_count, follow_up_count, next_call_at, last_hangup_cause | api | retry-followup |
-| `call_record` | lead_id, campaign_id, caller_id, status, started_at, ended_at, duration, transcript(JSONB), recording_url, transfer_status, transfer_reason, wrap_up_started_at, prompt_versions(JSONB), **extracted(JSONB), extract_status(VARCHAR), extract_error(TEXT)** | engine | transcript, ai-pipeline |
-| `call_summary` | call_record_id, summary_text, goal_achieved, goal_type | worker | goal-achievement |
+| `call_record` | lead_id, campaign_id, caller_id, status, started_at, ended_at, duration, transcript(JSONB), recording_url, transfer_status, transfer_reason, wrap_up_started_at, prompt_versions(JSONB) | engine | transcript |
+| `call_summary` | call_record_id, summary_text, extracted_fields(JSONB), goal_achieved, goal_type | worker | goal-achievement |
 | `appointment` | lead_id, created_from_call_id (nullable), appointment_time, status (pending/confirmed/completed/cancelled), store_address, directions, notes | api | appointment |
 | `voice_model` | name, provider, voice_id, sample_url | api | (无独立 capability) |
 | `filler_set` | campaign_id, name, sort_order | api | filler |
@@ -50,36 +48,6 @@
 | `device_sim_binding` | device_id, sim_card_id, is_active, bind_at, unbind_at | telephony | device-hardware |
 | `campaign_device` | campaign_id, device_id | api | device-hardware |
 | `provider_credential` | provider_id (VARCHAR(32)), field_name (VARCHAR(32)), cipher_text (Text, urlsafe base64 Fernet), updated_by (VARCHAR(64), JWT sub claim, no FK), updated_at；UNIQUE(provider_id, field_name) | api | provider-credential |
-
-#### Scenario: role_config.kind 枚举改 main/referee/extractor
-
-- **WHEN** 创建或查询 role_config 记录
-- **THEN** `kind` 字段 SHALL ∈ `{"main", "referee", "extractor"}`；alembic migration MUST 在升级时 DELETE 现有 `kind IN ('role', 'judge', 'polish')` 行（v1 还没真实生产数据，acceptable）
-- **AND** Campaign 启动前 MUST 含恰好 1 个 `main` + 1 个 `referee` + 1 个 `extractor` 三行 role_config（缺则 scheduler 拒绝分派）
-
-#### Scenario: pipeline_trace 字段语义
-
-- **WHEN** engine 在 PROCESSING 完成时写一条 pipeline_trace
-- **THEN** 字段含义 SHALL 是：
-  - `main_reply_text`: main LLM 流式聚合后的完整 reply 文本（或 default_reply 兜底时的兜底文本）
-  - `main_duration_ms`: main LLM 从 chat_stream 启动到 last token 总时长
-  - `main_tokens_in` / `main_tokens_out`: token 计费
-  - `main_fallback_used`: 是否走了 streaming → chat() 非流式 fallback
-  - `referee_decision`: referee 输出的 decision 字段（含 `"timeout" / "invalid" / "low_confidence"` 三种 fail-open 标记）
-  - `referee_goal_type`: referee 输出的 goal_type（goal_achieved 时非空）
-  - `referee_confidence`: referee 输出的 confidence（fail-open 时为 null）
-  - `referee_duration_ms`: referee LLM 调用时长
-  - `first_audio_ms`: 从 PROCESSING 入口到首 PCM chunk 推到 RTC 的时间差（监控用）
-  - `error`: 任意失败原因（兜底场景 / extractor 不在此字段）
-
-#### Scenario: call_record.extract_status 字段语义
-
-- **WHEN** 查询 call_record 的 extractor 状态
-- **THEN** `extract_status` SHALL ∈ `{null, 'pending', 'done', 'failed'}`；含义：
-  - `null`: 老数据（本 change 之前的 call_record） / 本通话未触发 extractor（如 dial_fail）
-  - `pending`: engine 已 LPUSH `isales:extract`，worker 未处理 / 处理中
-  - `done`: worker 成功 UPDATE `extracted` 字段
-  - `failed`: worker 失败，`extract_error` 字段记录原因；ops 可手工触发重跑
 
 ### Requirement: 数据库统一为 PostgreSQL
 
@@ -187,6 +155,169 @@ JSONB 字段 SHALL 用于半结构化的配置或事件流；任何新引入的 
 
 - **WHEN** 设置 campaign 的音色
 - **THEN** 系统 MUST NOT 要求该 speaker 预先存在于 `voice_model` 表；`campaign.voice_id` MUST NOT 对 `voice_model` 施加外键约束
+
+### Requirement: campaign.asr_eos_silence_ms 端点静默阈值
+
+`campaign` 表 SHALL 含 `asr_eos_silence_ms`（INT，nullable）字段，表示 ASR 判定用户说完（EOS）所需的稳定静默时长（毫秒）。NULL MUST 走系统默认（400ms）。engine `load_runtime_config` SHALL 读出该值透传给 ASR provider 构造，覆盖写死的端点阈值。
+
+取值是 latency 与"误把停顿当说完打断用户"的权衡：越小开口越快、越易误打断犹豫的客户；campaign MUST 能按话术 / 客群停顿习惯独立调整。
+
+#### Scenario: NULL 走默认
+
+- **WHEN** campaign `asr_eos_silence_ms IS NULL`
+- **THEN** engine SHALL 用系统默认 400ms 作为 ASR 端点静默阈值
+
+#### Scenario: campaign 覆盖
+
+- **WHEN** campaign `asr_eos_silence_ms = 250`
+- **THEN** engine SHALL 用 250ms；该 campaign 的通话 EOS 判定更激进
+
+#### Scenario: 透传到 ASR provider
+
+- **WHEN** `load_runtime_config` 组装 RuntimeConfig
+- **THEN** `asr_eos_silence_ms`（或默认）MUST 透传到 ASR provider 的端点检测参数，替换写死常量
+
+### Requirement: RoleKind.PERSONA 与 persona 角色配置
+
+`isales_common.enums.RoleKind` SHALL 新增成员 `PERSONA`，`PromptScopeType` SHALL 新增对应 `PERSONA`。`kind=persona` 的 `role_config` 表示一个**可推测并行**的对话人设，其 `label` MUST 非空且在同一 campaign 内唯一（与 referee label 命名空间隔离，互不冲突）。persona 复用 main 对话的 model / prompt 结构，参与 eager 多人设门控（见 ai-pipeline spec）。
+
+#### Scenario: persona role_config 落库
+
+- **WHEN** 管理员为 campaign 添加一个 `kind=persona` 角色并填 label
+- **THEN** 系统 MUST 以 `RoleKind.PERSONA` 持久化该 role_config，label 非空唯一；MUST NOT 允许空 label 或与同 campaign 内既有 persona label 重复
+
+#### Scenario: persona label 与 referee label 命名空间隔离
+
+- **WHEN** 同一 campaign 同时存在 `kind=referee` 与 `kind=persona` 且 label 文本相同
+- **THEN** 系统 MUST 视为两个独立标识（按 kind + label 寻址），MUST NOT 因 label 文本相同而冲突或互相覆盖
+
+### Requirement: HangupCause.REFEREE_HANGUP 枚举值
+
+`isales_common.enums.HangupCause` SHALL 新增**应用层**值 `REFEREE_HANGUP`，表示「AI 依门控裁决主动挂断」的终态。该值 MUST 登记进 `HangupCause` 单一权威枚举（见 call-state-machine § "hangup_cause 单一来源"），下游 `CallEnded` 消息按枚举校验消费方（worker）MUST 先于 engine 部署该枚举（部署序 common → worker → engine）。
+
+#### Scenario: REFEREE_HANGUP 登记进权威枚举
+
+- **WHEN** engine / worker / retry-followup 记录或匹配该挂断原因
+- **THEN** 字符串值 MUST 为 `HangupCause.REFEREE_HANGUP` 成员；MUST NOT 在任何映射表引入未登记的平行值
+
+#### Scenario: CallEnded 枚举校验依赖部署序
+
+- **WHEN** engine 发出 `CallEnded(hangup_cause=referee_hangup)`
+- **THEN** 消费方 worker MUST 已持有 `REFEREE_HANGUP` 枚举（pin `isales-common>=0.8`）才能通过校验；若 worker 早于 common/engine 升级 MUST NOT 让该 CallEnded 进 DLQ
+
+### Requirement: campaign.tools 工具配置 schema
+
+`campaign` SHALL 新增 `tools` JSONB 列，持有工具 alias → 工具配置的映射。工具配置 SHALL 为 `HangupToolConfig` / `TransferToolConfig` 的判别联合（`schemas/jsonb/tool_config.py` 新增）：
+
+- `HangupToolConfig{type: "hangup", closing_phrase?: str, interrupt?: bool}`
+- `TransferToolConfig{type: "transfer"}`（**不携带话术字段**——转人工复用既有 `_perform_handoff` + 单一来源 `campaign.transfer_phrases`，MUST NOT 引入第二套衔接话术配置；见 ai-pipeline § "挂断 / 转人工 lazy tool route"）
+
+工具由路由规则的 `{type: tool, tool: <alias>}` 动作引用（见 § "routing_rules action 扩展"）。
+
+#### Scenario: tools JSONB 存取
+
+- **WHEN** 创建 / 更新 campaign 时提供 `tools` 映射
+- **THEN** 系统 MUST 按判别联合校验每个工具配置（`type ∈ {hangup, transfer}`）并原样持久化；读取时原样返回供 engine 与 api 校验消费
+
+#### Scenario: 未配置 tools 向后兼容
+
+- **WHEN** 存量 campaign 无 `tools` 列值（NULL / 空对象）
+- **THEN** 系统 MUST 视为无工具，路由规则 MUST NOT 引用任何 tool alias；行为与现行一致
+
+### Requirement: routing_rules action 扩展：route / tool / then_state
+
+`campaign.routing_rules` 的 `action` 联合 SHALL 新增两个成员，并保持 iSales 既有 `category in match[]` first-match-wins 语义不变：
+
+- `RoutePersonaAction{type: "route", to: <persona-label | closing | recovery | restructure>, then_state?: ThenState}`
+- `RouteToolAction{type: "tool", tool: <alias>, then_state?: ThenState, closing_phrase?: str}`
+
+`RouteToolAction.closing_phrase` 为可选**单句**，仅对 `tool: hangup` 有意义：命中规则携带它时 SHALL **覆盖** `HangupToolConfig.closing_phrase`，使多条不同关键字（referee category）的规则复用**同一个** hangup 工具、各带不同结束语；省略时回落到工具配置的 `closing_phrase`，**两者皆空 / 缺省时直接挂断、不播话术**。
+
+`ThenState` SHALL 为 Literal `{LISTENING, WRAPPING_UP, ACTIVATING, TRANSFERRING, END}`。legacy `{type: transition}` / `{type: restructure}` 成员 SHALL 经 **removal-tracked shim** 保留（removal trigger = 后续全量迁移后的清理 change），MUST NOT 在本 change 删除以免破坏存量。
+
+#### Scenario: route 动作引用 persona / 内置对话路由
+
+- **WHEN** 路由规则 action 为 `{type: route, to: "<persona-label>", then_state: "LISTENING"}`
+- **THEN** 系统 MUST 校验 `to` 指向同 campaign 已定义的 persona label 或内置 `closing/recovery/restructure`；未定义的 persona label MUST 在保存时以 `422 routing_rule_unknown_persona` 拒绝；engine 选中后按 `then_state` 投影（见 ai-pipeline / call-state-machine spec）
+
+#### Scenario: tool 动作引用工具 alias
+
+- **WHEN** 路由规则 action 为 `{type: tool, tool: "hangup", then_state: "END"}`
+- **THEN** 系统 MUST 校验 `tool` 指向 campaign `tools` 已定义 alias；未定义 MUST 在保存时拒绝（api `422 routing_rule_unknown_tool`）
+
+#### Scenario: 同一 hangup 工具按关键字携带不同结束语
+
+- **WHEN** 同一 referee 下两条规则分别为 `{match: ["OFFENSIVE"], action: {type: "tool", tool: "hangup", closing_phrase: "不打扰了，再见"}}` 与 `{match: ["HANGUP"], action: {type: "tool", tool: "hangup", closing_phrase: "那再见"}}`
+- **THEN** 两条规则 MUST 校验通过、复用同一个 hangup 工具 alias；engine 选中时 SHALL 取**命中规则**的 `closing_phrase`（覆盖工具配置）；`closing_phrase` 若提供 MUST 为单句字符串，省略或空串表示直接挂断
+
+#### Scenario: legacy action 经 shim 向后兼容
+
+- **WHEN** 存量 campaign 的规则仍为 `{type: transition, ...}` / `{type: restructure, ...}`
+- **THEN** 系统 MUST 经 shim 原样接受并按既有语义执行；决策结果 MUST NOT 因本 change 改变
+
+### Requirement: campaign 门控与多人设配置列
+
+`campaign` SHALL 新增三列控制门控与推测并行：
+
+- `persona_fanout_cap` (int, 默认 1, clamp ∈ [1,3])：**每轮并行推测的对话路由总数（含 main）**；`1` = 仅 main、无推测（opt-in 默认关）；`3` = main + 至多 2 个 persona
+- `referee_timeout_ms` (int, 默认 ~600)：开口前门控 referee 超时
+- `referee_fail_open_route` (str, 默认 `"main"`)：门控 fail-open 的目标路由
+
+#### Scenario: 门控配置被引擎消费
+
+- **WHEN** engine 起一轮门控
+- **THEN** engine MUST 用 `campaign.referee_timeout_ms` 作为门控超时、`referee_fail_open_route` 作为 fail-open 目标、`persona_fanout_cap`（clamp [1,3]）作为本轮并行推测对话路由总数（含 main）的上限
+
+#### Scenario: 列默认值向后兼容
+
+- **WHEN** 存量 campaign 无这三列值
+- **THEN** 系统 MUST 用默认（`persona_fanout_cap=1` 仅 main 无推测 / `referee_timeout_ms≈600` / `referee_fail_open_route="main"`）；行为等价于仅 main 对话 + fail-open-to-main
+
+### Requirement: pipeline_trace 路由与人设字段
+
+`pipeline_trace` SHALL 新增字段记录门控选路：`selected_route_id` (str)、`selected_route_kind` (str ∈ {dialogue, tool})、`persona_candidates` (JSONB array，本轮推测的候选 label 集)。既有 referee / restructure 字段 MUST 不变。
+
+#### Scenario: 门控选路写入 trace
+
+- **WHEN** 某轮门控裁决放行一条 route
+- **THEN** pipeline_trace MUST 记 `selected_route_id`（如 `main` / `persona:<label>` / `tool:hangup`）+ `selected_route_kind` + `persona_candidates`；MUST NOT 改动既有 referee_* / restructure_* 字段语义
+
+### Requirement: dial 消息 persona_llms[]
+
+`schemas/messages/dial.py` 的 DialRequest SHALL 新增 `persona_llms[]` 字段，承载 scheduler 快照的 `kind=persona` 角色 prompt 版本（结构镜像既有 `referee_llms[]`，含 label + model + prompt_version_id）。engine MUST 从该字段读人设配置，MUST NOT 直接查 DB。
+
+#### Scenario: scheduler 打包 persona prompt 版本
+
+- **WHEN** scheduler 派发配置了 persona 的 campaign 通话
+- **THEN** dial 消息 `persona_llms[]` MUST 含每个 enabled persona 的 label + model + prompt_version_id；engine 直接消费
+
+### Requirement: isales-common 0.8.0 加性迁移
+
+本 change 的全部 schema 变更（PERSONA / REFEREE_HANGUP / tools / route&tool action / 门控列 / pipeline_trace 字段 / persona_llms）SHALL 由**一条加性 alembic 迁移**承载（down_rev `a7b8c9d0e1f2`），isales-common 版本 SHALL 由 0.7.0 升至 **0.8.0**。下游 api / scheduler / worker pin SHALL 同步到 `>=0.8,<0.9`。`CallStatus` 枚举 SHALL 由 11 值**收缩为 4 值** `{init, in_call, transferring, end}`（见 call-state-machine spec § 状态集合——原 8 个细粒度阶段降级为引擎内部概念）；`call_record.status` 为 `String(16)` 列（非 PG enum），收缩**无需 DB 迁移**（与上述加性迁移正交），收缩前历史行旧值为可接受孤儿（v1 无生产数据）。
+
+#### Scenario: 加性迁移可回滚
+
+- **WHEN** 部署 0.8.0 迁移后需回滚
+- **THEN** 迁移 MUST 为纯加性（新增列 / 新增枚举值），回滚 SHALL 不依赖 down-migration（存量行新列取默认）；MUST NOT 删除或改名既有列
+
+#### Scenario: 下游 pin 同步
+
+- **WHEN** isales-common 升 0.8.0
+- **THEN** api / scheduler / worker 的 `isales-common` pin MUST 升到 `>=0.8,<0.9`；worker 现有 stale pin `>=0.5,<0.6` MUST 一并修正（否则 REFEREE_HANGUP 枚举不可用、CallEnded 进 DLQ）
+
+### Requirement: campaign.filler_delay_ms 垫词门控阈值
+
+`campaign` 表 SHALL 含 `filler_delay_ms`（INT，nullable）字段，表示进入 PROCESSING 后多久（毫秒）首音频仍未出就播垫词。NULL MUST 走系统默认（600ms）。engine `load_runtime_config` SHALL 读出该值透传给 `_play_streaming` 的垫词门控计时器。
+
+#### Scenario: NULL 走默认
+
+- **WHEN** campaign `filler_delay_ms IS NULL`
+- **THEN** engine SHALL 用系统默认 600ms 作为垫词门控阈值
+
+#### Scenario: campaign 覆盖
+
+- **WHEN** campaign `filler_delay_ms = 400`
+- **THEN** engine SHALL 在首音频超过 400ms 未出时播垫词
 
 ## Cross-Reference
 

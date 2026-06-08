@@ -192,6 +192,8 @@ MUST NOT 在 v1.0 引入容器编排（Docker / K8s）。
   - OSS endpoint（远程诊断包上传 / 开场白预渲染下载，A2 范围内只为 A3 准备占位）
   边缘机 MUST NOT 监听任何公网端口；本地 telephony-api MAY 监听 loopback 端口仅供本机查询
 
+## MODIFIED Requirements
+
 ### Requirement: 监控暴露契约
 
 各云端服务 SHALL 提供（或在 follow-up change 中提供）`/metrics` Prometheus 端点；本 change 提供监控配置模板，不强制所有服务即时实现 `/metrics`，但 SHALL 在 RUNBOOK 中列出 TODO 清单。
