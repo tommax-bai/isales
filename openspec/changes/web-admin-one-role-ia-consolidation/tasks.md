@@ -5,17 +5,22 @@
 
 ## 0. 前置盘点（开工前核实）
 
-- [ ] 0.1 复核全量 `operations-*` 路由 + `OPERATIONS_REDIRECTS` 当前清单（`src/router/index.ts`），确认本 change 删除/保留集与 design D2 一致。
-- [ ] 0.2 复核每个被删/迁 view 的后端：`analytics`/`ws`/`handoff_tasks`/`holidays`/`voice_models`/`edge_devices` 有后端→迁/折叠；`sim_cards`/独立 callback admin 无后端→删（对照 `../isales-api/isales_api/routers/`）。
-- [ ] 0.3 grep 全量 inbound refs 到将删路由名，建立「删前必改」清单（`TopNav.vue:108`、`OperationsIndex.vue` 卡片、`CampaignList.vue:97`、`CampaignDetail.vue:358`、`CallbackConfigEdit.vue:30`、`CallbacksTab.vue:66,73`）。
+- [x] 0.1 复核全量 `operations-*` 路由 + `OPERATIONS_REDIRECTS` 当前清单（`src/router/index.ts`），确认本 change 删除/保留集与 design D2 一致。
+- [x] 0.2 复核每个被删/迁 view 的后端：`analytics`/`ws`/`handoff_tasks`/`holidays`/`voice_models`/`edge_devices` 有后端→迁/折叠；`sim_cards`/独立 callback admin 无后端→删（对照 `../isales-api/isales_api/routers/`）。
+- [x] 0.3 grep 全量 inbound refs 到将删路由名，建立「删前必改」清单（`TopNav.vue:108`、`OperationsIndex.vue` 卡片、`CampaignList.vue:97`、`CampaignDetail.vue:358`、`CallbackConfigEdit.vue:30`、`CallbacksTab.vue:66,73`）。
+<!-- §0 ground-truthed via workflow wf_e212534a + 直接 grep isales-api/routers (2026-06-08，propose 前已做)。 -->
+
 
 ## 1. Batch 1 — 纯新增，零删除（先让客户面够用，回滚成本最低）
 
-- [ ] 1.1 `CampaignWorkspace.vue`：场景卡片加「删除场景」动作 + 二次确认弹窗，调 `campaignsApi.delete`，成功后从列表移除。（满足 spec「场景列表可删除场景」Scenario；是 §3 删 CampaignList 的硬前置。）
-- [ ] 1.2 `router/index.ts`：新增客户顶级路由 `/dashboard`（name `dashboard`），复用 `views/DashboardView.vue` 组件（不动组件本身）。
-- [ ] 1.3 `TopNav.vue`：主 pills 增加「数据看板」第五入口（场景/线索/外呼/预约/数据看板），`isActive()` 覆盖 `dashboard`。
-- [ ] 1.4 campaign `voice_id` 输入接 `VoiceModelList` 的列表 API 做下拉/试听选择器（`CampaignDetail.vue` 基本信息区 voice_id 字段；组件可复用 voice api client）。保留手填兜底。
-- [ ] 1.5 Batch 1 自测：`npm run typecheck` + `npm run check:routes` + `npm run test` 全绿；手测 /dashboard 可达、删除场景生效、voice 选择器拉到列表。
+- [x] 1.1 `CampaignWorkspace.vue`：场景卡片加「删除场景」动作 + 二次确认弹窗，调 `campaignsApi.remove`，成功后从列表移除。（满足 spec「场景列表可删除场景」Scenario；是 §3 删 CampaignList 的硬前置。）
+- [x] 1.2 `router/index.ts`：新增客户顶级路由 `/dashboard`（name `dashboard`），复用 `views/DashboardView.vue` 组件（不动组件本身）；摘掉 `OPERATIONS_REDIRECTS` 里 `/dashboard` 重定向。
+- [x] 1.3 `TopNav.vue`：主 pills 增加「数据看板」第五入口（场景/线索/外呼/预约/数据看板），`LayoutDashboard` 图标；`isActive()` 由 `current === name` 覆盖 `dashboard`。
+- [x] 1.4 campaign `voice_id` 输入接 `voiceApi.list()` 做 filterable + allow-create 选择器（`CampaignDetail.vue` 基本信息区）；allow-create 保留手填 vendor voice id 兜底。
+- [x] 1.5 Batch 1 自测：`npm run typecheck` + `check:routes`(23 路由) + `vitest`(51) + eslint 全绿。
+<!-- web 7c60a00 (2026-06-08) — Batch 1 全部落地，纯新增零删除。campaignsApi.remove(id) 即删除方法；
+     voiceApi.list() 返回 {id,name,voice_id}[]。手测留待 §5.3 统一回归（或部署后）。 -->
+
 
 ## 2. Batch 2 — 折叠区落地 + 低频项迁入 + 回调收口（仍不删主能力）
 
