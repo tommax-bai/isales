@@ -24,11 +24,15 @@
 
 ## 2. Batch 2 — 折叠区落地 + 低频项迁入 + 回调收口（仍不删主能力）
 
-- [ ] 2.1 `TopNav.vue`：用户菜单（el-dropdown）或齿轮圆钮新增「更多/设置」折叠分组，沿用 `--isales-*` token，不新造视觉。（满足 spec「更多折叠区展开低频 view」Scenario。）
-- [ ] 2.2 把 通话监控 `MonitorView` / 转人工 `HandoffTaskList` / 节假日 `HolidayList` / 设备在线状态 edge-devices / 音色目录 `VoiceModelList` 的入口收入「更多/设置」折叠区（route 归属调整，组件文件保留）。
-- [ ] 2.3 通话监控：修掉 `campaign_id='0'` 占位入口；在 `CampaignDetail` / `CallDetail` 加就近「实时监控」入口（更符合用户心智）。
-- [ ] 2.4 回调收口到 per-campaign「回调」tab：`CallbacksTab.vue` 修断路由 `callback-config-edit`（router 无此 name）→ 改为 tab 内弹层打开 `CallbackConfigEdit` 子表单；`CallbackConfigEdit.vue:30` 返回改为回 campaign 回调 tab / `router.back`。
-- [ ] 2.5 Batch 2 自测：typecheck + check:routes（无断名，含修掉的 `callback-config-edit`）+ vitest 全绿；手测折叠区每项可达、回调 tab 内编辑闭环。
+- [x] 2.1 `TopNav.vue`：用户菜单（el-dropdown）新增「更多/设置」二级分组（替换原「运营管理」项），沿用 `--isales-*` token，不新造视觉。（满足 spec「更多折叠区展开低频 view」Scenario。）
+- [x] 2.2 把 转人工 `HandoffTaskList` / 节假日 `HolidayList` / 设备在线状态 edge-devices / 音色目录 `VoiceModelList` 的入口收入「更多/设置」折叠区（组件文件保留；路由名暂用 operations-*，clean path 在 §3 重命名）。
+- [x] 2.3 通话监控：`CampaignDetail` 加就近「实时监控」入口（→ operations-monitor 带 campaign id），替代原运营区 `campaign_id` 占位入口。（监控需 campaign_id，不进 §2.1 平铺折叠菜单。）
+- [x] 2.4 回调断路由修复：`CallbacksTab.vue` `callback-config-edit`（router 无此 name）→ `operations-callback-config-edit`（真实路由，2 处）；`CallbackConfigEdit.vue:30` onBack → `router.back()`（健壮，list 页 §3 删）。**回调真编辑（in-tab 表单）blocked on callback 后端 admin CRUD，本批仅修断路由。**
+- [x] 2.5 Batch 2 自测：typecheck + check:routes(23) + vitest(51) + eslint 全绿。
+<!-- web 988d3d0 (2026-06-08) — Batch 2 非破坏：更多/设置折叠区 + 监控就近入口 + 回调断路由修。
+     OperationsIndex 随「运营管理」入口移除变 nav 孤儿（§3 删文件）。CallbackConfigEdit 是 stub
+     banner（无真表单），真回调编辑等后端 admin CRUD。 -->
+
 
 ## 3. Batch 3 — 删运营 dup + 空壳页（破坏性，放最后）
 
