@@ -160,7 +160,7 @@
 - [x] 11.1 isales-common `schemas/jsonb/routing_rule.py`: `RouteToolAction` 增加可选 `closing_phrase?: str`（per-rule，命中时覆盖 `HangupToolConfig.closing_phrase`）。<!-- isales-common 5d72bc9 (0.8.0→0.8.1, additive optional). api routing_validation 单句校验留待 api 侧实装。 -->
 - [x] 11.2 engine SelectRouter `tool:hangup`: 结束语按 per-keyword 优先解析（命中规则 `closing_phrase` → 工具配置 → 皆空则直挂）；同一 hangup 工具被不同关键字复用、各带话术。<!-- isales-engine b3f79b1 (flat branch engine-flat-change-0-golden-net): decider.py DeciderAction.closing_phrase + run_loop _GatedSelection.closing_phrase + 解析 sel.closing_phrase or tool_config or "". -->
 - [x] 11.3 engine 静音超限挂断: `silence_hangup_phrase` 为空时直接挂断、删除 `outcome.text or "再见。"` 兜底（cause=`silence_max_reached`）。<!-- isales-engine b3f79b1: run_loop:535 `if outcome.text:` 才播 + runtime_config:309 `or ""`（不再 coerce 到默认话术）。 -->
-- [ ] 11.4 web `RoutingRulesTab.vue`: 「挂断」动作每条规则可填单句结束语（留空标注"=直接挂断"）；支持同一 hangup 工具多关键字复用。<!-- DEFERRED 2026-06-08: web 正在做大改版，等其改完基于新版实装（用户指定）。 -->
+- [x] 11.4 web `RoutingRulesTab.vue`: 「挂断」动作每条规则可填单句结束语（留空标注"=直接挂断"）；支持同一 hangup 工具多关键字复用。<!-- isales-web 314b62b（main，web 大改版 one-role-ia §1-4 已落后实装）：types `RouteToolAction.closing_phrase` + tool 动作加结束语输入框（`isHangupTool` 门控仅 hangup 显示）+ test（routing 7 passed）。vue-tsc+build+lint clean。注：保留现有 2 层编辑器（rules+ToolsTab），客户向「拍平成 {key,type,value} 表单」是另起的 UX 客户化，未在本 task 内。 -->
 - [x] 11.5 单测: OFFENSIVE/HANGUP 各取对应结束语 + 命中规则与工具配置皆空时直挂 + 静音空话术直挂。<!-- isales-engine b3f79b1: test_decider (carries closing_phrase ×2) + test_gating (per-rule override played / empty direct hangup) + test_run_loop (silence empty direct). engine 全套 381→384 passed, ruff clean. -->
 
 > 11.1–11.3 + 11.5 实装完成 2026-06-08（common 5d72bc9 / engine b3f79b1@flat）。11.4 web 待大改版后实装。engine 改动在 flat 分支，未并回 main（同整套 voxen-flat stack）。
