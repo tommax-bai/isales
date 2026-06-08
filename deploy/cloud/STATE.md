@@ -1,6 +1,22 @@
 # cloud deployment — current state snapshot
 
-**Last updated**: 2026-06-07 19:33 CST — **engine-tools-multidialogue-gating
+**Last updated**: 2026-06-08 10:25 CST — **engine-tools-multidialogue-gating
+webui scenario-config gap-fill deployed** (api + web). Weekend 改动的 web 任务 §5.x
+全标 [x] 但 webui 没真跟完（tasks.md 跑在实物前）。跨 common/api/web 审计修三摊：① **api
+§3.4 偏离**：handler `campaigns.py:356` 读 `payload.tools` 但 `CampaignNestedUpdate` 漏声明
+4 个 weekend 字段 → **每个 PATCH /campaigns/{id} 都 AttributeError→500**（box 上 6月7 版正在崩）；
+补 `tools`/`persona_fanout_cap`/`referee_timeout_ms`/`referee_fail_open_route`（4 红→10 绿）。
+② **web §5.7 新增**：RoutingRulesTab 加 3 个孤儿 gating 标量控件（原只在 campaign.ts 有类型无控件）。
+③ **web §5.4 升级**：persona 超额 hint→硬阻断。④ **web §5.8**：修 CampaignList 坏路由名
+`campaign-edit`→`operations-campaign-edit` + CampaignDetail 客户面加「高级配置」入口。
+**部署**：api scp 单文件 `schemas.py`→`/opt/isales/current/isales-api/isales_api/` + chown
+isales:isales + `systemctl restart isales-api`（`Application startup complete`，openapi 含 3 字段）；
+web `npm run build`→`rsync -az --delete dist/`→`/var/www/isales-web/`（71 assets）+ `nginx -s reload`
+（SPA 200）。**无 alembic**（schema 纯 additive，无新列）。**无秒级回滚但 trivial**（scp 回旧 schemas.py +
+git checkout web dist）。commits: api `81173da` / web `a9c0af7` / meta tasks `bda9d61`. 2 个既有
+`test_campaign_start_pause` 红测与本次无关（gate-first HEAD `6147403` 遗留，待单独修）。
+
+Prior: 2026-06-07 19:33 CST — **engine-tools-multidialogue-gating
 (gate-first) deployed** (common + worker + api + scheduler + engine + web). 引擎从
 「先说后判 / 11 态 FSM-as-controller」改为 **gate-first 先判后说 + CallStatus 11→4
 (init/in_call/transferring/end) + eager 多 persona 投机 + lazy hangup/transfer tool +
