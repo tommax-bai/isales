@@ -1,6 +1,24 @@
 # cloud deployment — current state snapshot
 
-**Last updated**: 2026-06-08 10:25 CST — **engine-tools-multidialogue-gating
+**Last updated**: 2026-06-08 11:55 CST — **web-admin-one-role-ia-consolidation §1–4
+deployed** (web only). 单角色 IA 收口：运营/客户二分解散，统一成单一 TopNav（场景/线索/
+外呼/预约/数据看板 + 模型厂商圆钮 + 用户菜单「更多/设置」折叠区）。**§1**（纯加）场景卡删除入口 +
+数据看板升客户顶层 `/dashboard` + voice_id 升音色选择器；**§2**（折叠）「更多/设置」收转人工/节假日/
+设备/音色 + 场景详情就近「实时监控」+ 修回调断路由（`callback-config-edit` 原 router 无此 name）；
+**§3**（破坏）删 5 view（运营版 CampaignList / OperationsIndex / SimCardList / CallbackLogList /
+CallbackConfigList，净 ~600 行）+ 删 6 死路由 + 6 保留 view 重命名到干净路径 + 移除整套
+OPERATIONS_REDIRECTS（旧 `/operations/*` 链接走 not-found，不留兜底 shim）；**§4** 删死组件
+CampaignEditDialog + destale「4-tier」注释。**路由 23→17**，唯一 operations- 残留是 D6 deferred
+`operations-campaign-edit`（CampaignEdit 高级编辑器，从场景详情「高级配置」进，引擎定型后另起 change
+按客户理念折叠重做）。**部署**：`npm run build`（60 assets，删页后 chunk 减少）→ `rsync -az --delete
+dist/` → `/var/www/isales-web/` → `nginx -s reload`，SPA 200。**无 api/后端改动**（迁移/折叠的 view
+后端 analytics/ws/handoff_tasks/holidays/voice_models/edge_devices 契约不变；删的 sim/callback-logs/
+独立 callback admin 本就无后端）。commits: web `7c60a00`(§1)/`988d3d0`(§2)/`f1d15d2`(§3)/`0301e80`(§4)
++ meta proposal `a15edf9`。**DEFERRED**（引擎重设计中）：campaign 配置内部 referee/routing/label 客户化
++ §4.3 PipelineTrace 多 referee 渲染 + §4.4 PromptTier 改名 + callback 后端 admin CRUD。验收 §5 见
+change tasks。openspec validate --strict ok。
+
+Prior: 2026-06-08 10:25 CST — **engine-tools-multidialogue-gating
 webui scenario-config gap-fill deployed** (api + web). Weekend 改动的 web 任务 §5.x
 全标 [x] 但 webui 没真跟完（tasks.md 跑在实物前）。跨 common/api/web 审计修三摊：① **api
 §3.4 偏离**：handler `campaigns.py:356` 读 `payload.tools` 但 `CampaignNestedUpdate` 漏声明

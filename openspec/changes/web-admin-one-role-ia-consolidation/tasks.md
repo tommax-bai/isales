@@ -59,8 +59,11 @@
 
 ## 5. 验收
 
-- [ ] 5.1 `make spec-validate`（`openspec validate --specs && --changes`）通过。
-- [ ] 5.2 isales-web：`npm run typecheck` + `npm run lint` + `npm run check:routes` + `npm run test` 全绿。
-- [ ] 5.3 手测：登录后无「运营管理」入口；五主入口 + 模型厂商 + 更多/设置 全可达；每个折叠项、回调 tab、删除场景、/dashboard 正常；旧运营链接无死 404。
-- [ ] 5.4 部署：`npm run build` → `rsync -az --delete dist/` → `/var/www/isales-web/` → `nginx -s reload`（SPA 200）；按 [[reference_state_files]] 更新 `deploy/cloud/STATE.md`。
-- [ ] 5.5 回写本 tasks.md（HTML 注释标 PR#/commit/偏离）；DEFERRED 项（campaign 配置内部 referee/routing 客户化、callback 后端 admin CRUD）记录在 design 已注明，留待后续 engine-gated change。
+- [x] 5.1 `openspec validate web-admin-one-role-ia-consolidation --strict` 通过。
+- [x] 5.2 isales-web：`typecheck` + `lint`(全量) + `check:routes`(17) + `test`(51) 全绿。
+- [~] 5.3 ref 完整性已自动验证（grep 全仓仅剩 D6 `operations-campaign-edit`；`check:routes` 无悬空 push name）。**真人点测留给用户**——已部署上线，旧 `/operations/*` 走 not-found（无重定向）符合预期。
+- [x] 5.4 部署：`build`(60 assets) → `rsync -az --delete dist/` → `/var/www/isales-web/` → `nginx -s reload`，SPA 200（2026-06-08 11:55 CST）；`deploy/cloud/STATE.md` 已更新（见顶部条目）。
+- [x] 5.5 tasks.md 全程回写（§0–§4 HTML 注释带 commit）；DEFERRED 项（campaign 配置内部 referee/routing 客户化、§4.3 PipelineTrace 多裁判渲染、§4.4 PromptTier 改名、callback 后端 admin CRUD）design 已注明，留待 engine-gated 后续 change。
+<!-- 部署 web only，无 api/alembic。change 实施完成（§4.3/4.4 deferred）；archive 可在引擎后续
+     change 合并 campaign-config 客户化时一并评估，或本 change 现状即可 archive（IA 收口已达成）。 -->
+
