@@ -17,6 +17,24 @@ lint clean。**备份** `/opt/isales/backups/scene-onepage-20260608-160331/pre-w
 tgz 覆盖 + nginx reload（秒级）。commits:web `96e5a39` / meta tasks `84856a4`。**非 openspec 行为变更**（纯 UI/IA）。
 **待用户真人点测**（§7.4:开场景→改多项→保存→确认角色未被清；TTS 试听）。
 
+Prior: 2026-06-08 16:03 CST — **openspec 文档清账：active change 22 → 5（归档 17 个，非部署变化）**。
+对全部 22 个 active change 逐个 ground-truth（git log / 本 STATE.md / spec 交叉验证，不信 tasks.md 勾选）后归档 17 个：
+**5 个被取代**（`archive --skip-specs`，废弃设计不并入 specs/）：`asr-speaking-ear-close-timeout` / `macos-local-audio-dev` /
+`referee-hangup-action`（→ tools-gating 吸收为 `tool:hangup`）/ `windows-artc-pybind11` ×2（→ dingrtc-migration §7）；
+**12 个已完成/已部署**（spec 正常合并）：`cloud-edge-grpc-keepalive` `edge-recording-dev-no-modem`
+`web-admin-one-role-ia-consolidation` `asr-vendor-packet-cadence` `campaign-fixed-greeting` `engine-spec-terminology-purge`
+`filler-realtime-unblock-and-detail-toggle` `pipeline-latency-tail` `tts-cache-and-gated-filler` `arch-cloud-edge-split`
+`engine-send-timeout-multi-edge` `engine-tools-multidialogue-gating`（各自部署细节见下方对应 Prior 条目）。**踩坑**：
+`openspec archive` 失败时 abort 但**返回 exit 0**（silent failure）→ 批量归档必须用「目录是否从 changes/ 移到 archive/」
+验证，不能信退出码；3 个 change 因 delta 标签错配 silent-abort，已修（web 四→五入口加 `## RENAMED`、tts-cache filler
+门控从 ai-pipeline 移到 filler capability、arch 全局并发控制/监控暴露契约 `ADDED→MODIFIED`）。**specs 全量校验
+22 passed / 0 failed，无 Requirement 丢失**。**剩 5 个 active 为真在途**（代码未完或卡硬件/真机验收）：
+`engine-rtc-dingrtc-migration` / `edge-modem-audio-out-recovery` / `interruption-detection-text-length-gate` /
+`joint-mvp-gate-13301035545` / `pipeline-stream-realmachine-acceptance`（详见下方 §"Active OpenSpec changes" 表）；
+`web-admin-scene-single-page-config` 当日新建并已 §1-6 部署（见上条 16:03 web 场景配置）。**非部署变化**：纯 meta-repo
+openspec 目录清理，**ECS / alembic / 服务 / 端口均未动**。commit meta `f5a060b`；gotcha 记入 memory
+`feedback_openspec_archive_silent_failure`。
+
 Prior: 2026-06-08 15:16 CST — **web「工具触发」客户向扁平编辑器 + §11.4 per-rule 结束语
 deployed**（web only）。配合已上线的 engine §11:**§11.4**（commit web `314b62b`）— `RoutingRulesTab`
 工具动作加 per-rule「结束语」输入框（`isHangupTool` 门控仅 hangup 显示，留空=直接挂断）+ `RouteToolAction.closing_phrase`
@@ -950,14 +968,23 @@ PCM). v1.0 worker code doesn't yet exercise `ISALES_OSS_*` envvars, so
 this is a no-op decision today; if/when recording upload lands, switch
 to either OSS or a larger ECS disk.
 
-## Active OpenSpec changes touching the cloud (status 2026-05-17)
+## Active OpenSpec changes touching the cloud (status 2026-06-08)
 
-| Change | Status | Cloud impact |
+> 2026-06-08 清账：active change 22 → 5（+1 当日新建并已部署）。归档 17 个见顶部 16:03 "openspec 文档清账" 条目。
+> **下表只列剩余 active**；已归档的（含 `arch-cloud-edge-split` A2 数据面奠基、`windows-artc-pybind11` ×2）见
+> `openspec/changes/archive/2026-06-08-*`。
+
+| Change | Status（真实，非 tasks.md 勾选） | Cloud impact |
 |---|---|---|
-| `arch-cloud-edge-split` (A2) | 52/64 tasks (checkboxes); reality: all deploy phases done except §12 e2e MVP gate | This whole snapshot IS A2's data plane |
-| `windows-artc-pybind11` | 39/51 tasks; §9.1 + §9.2 ticked 2026-05-17 commit `ed8732e` | Edge-side only |
-| `windows-client-core` (D1) | **ARCHIVED 2026-05-17** to `openspec/changes/archive/2026-05-17-windows-client-core/` | Edge-side only |
-| `impl-real-at` (A1) | **ARCHIVED 2026-05-17** | Edge-side only |
+| `engine-rtc-dingrtc-migration` | 75/90；cloud+mac 段已部署运行，Windows binding §7 未起 | 云端 engine 已跑 DingRTC（**已部署**）；归档卡 Windows 真机 |
+| `interruption-detection-text-length-gate` | 0/35；打断门控原型硬编码**已在生产**，config 化/测试/schema 未做 | 云端 engine 打断检测路径（原型在跑，正式化待补） |
+| `joint-mvp-gate-13301035545` | 15/47；CLI/脚本就绪，等 dingrtc Windows 才能真拨 | 联合 MVP 验收门，依赖云+边都就绪 |
+| `pipeline-stream-realmachine-acceptance` | 0/9；纯验收，卡 bug2（远端挂断 loop 冻死）+ Windows 硬件 | 验收已部署的 gate-first 双 LLM 管线 |
+| `edge-modem-audio-out-recovery` | 13/32；上行+发现已做，soft-reset 核心未写 | Edge-side（Windows modem 仍需手动重插 USB） |
+| `web-admin-scene-single-page-config` | §1-6 **已部署**（2026-06-08，见顶部 16:03 条目）；tasks.md 仍 0/34 | web admin（场景单页配置，承接单角色 IA 的 D6 deferred） |
+
+历史（已归档）：`windows-client-core`(D1) + `impl-real-at`(A1) 2026-05-17 归档；`arch-cloud-edge-split`(A2，本快照 IS
+其数据面) + `windows-artc-pybind11` ×2 于 2026-06-08 清账时归档。
 
 ## Deviations from spec to record at archive time
 

@@ -109,6 +109,7 @@ mismatch that drove the swap.
 - **Global concurrency**: cross-engine concurrency caps MUST use Redis `INCR/DECR`. Local in-process counters are explicitly forbidden by spec.
 - **JWT**: `isales-api` is the sole issuer; `telephony-api` only verifies. Shared HMAC secret travels via env files. `isales-web` connects to `telephony-api` directly, not through `isales-api`.
 - **Spec language**: requirements use RFC 2119 keywords (MUST / SHALL / SHOULD / MAY). When proposing changes, mirror that vocabulary.
+- **Doc sync — touching a doc means reconciling the meta-repo root docs**: authoritative detail lives in sub-repos / `deploy/` (a service README, `deploy/cloud/STATE.md`, the edge `STATE.md`, a runbook); the meta-repo root (`README.md`, `DESIGN.md`, `IMPLEMENTATION_PLAN.md`, this `CLAUDE.md`, `openspec/specs/`) only summarizes / indexes them. Whenever you update a sub-repo or `deploy/` doc, check the root docs that point at or summarize it and fix any drift in the **same commit** — the root docs are what a new session reads first, so a stale summary there recreates the exact "stale doc lies" problem the STATE.md ground-truth discipline exists to prevent.
 
 ## Design principles
 
