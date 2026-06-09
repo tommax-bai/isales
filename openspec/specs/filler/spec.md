@@ -45,34 +45,6 @@
 - **WHEN** 垫词 TTS 播放中 ASR 中间结果触发"打断"判定
 - **THEN** engine MUST 立即停止垫词、丢弃当前 PROCESSING 中的 AI 管线，把用户输入作为新一轮处理
 
-### Requirement: 多 filler_set 轮询
-
-Campaign 关联多个 `filler_set`（集合）。engine SHALL 按 `sort_order` 字段升序依次使用，到末尾后从头循环。每通电话开始时从 `sort_order` 最小的 set 起步。
-
-#### Scenario: 三个集合的轮询顺序
-
-- **WHEN** Campaign 配 3 个 filler_set 且本通电话进入第 4 轮 PROCESSING
-- **THEN** 第 1 轮用 set#1、第 2 轮 set#2、第 3 轮 set#3、第 4 轮重新回 set#1
-
-#### Scenario: 多 filler_set 不区分语义类型
-
-- **WHEN** 配置垫词集合
-- **THEN** 系统 MUST NOT 引入 thinking/confirming/casual 等场景标签；多 set 仅作为分组与轮询单元
-
-### Requirement: 集合内随机不重复
-
-每通电话 SHALL 在 call_session 内存态维护已用短语集合；同一通电话 MUST NOT 重复使用同一短语，直至该 set 内全部短语用完后清空记录。
-
-#### Scenario: 第 4 轮命中 set#1 时避免重复
-
-- **WHEN** 第 1 轮使用了 set#1 中的「让我看一下」，第 4 轮再次轮到 set#1
-- **THEN** 第 4 轮 SHALL 从 set#1 中除「让我看一下」之外的短语随机抽 1
-
-#### Scenario: 集内全部用过后重置
-
-- **WHEN** 某 set 内全部短语在本通电话中都已使用过
-- **THEN** engine SHALL 清空该 set 的已用记录，下一轮命中该 set 时从全部短语中重新抽取
-
 ### Requirement: 预生成 + 动态补充音频
 
 v1.0 垫词音频 SHALL 在运行时由 engine 用 Campaign 配置的音色实时 TTS 合成 `filler_phrase.phrase` 文本，并 SHALL 经进程级缓存（同 `(text, voice_id)` 命中后零重复合成）降低延迟。垫词选取 MUST NOT 依赖 `filler_phrase.audio_url` 非空或 `generation_status == ready`——这两个字段属 stage-6 OSS 预录路径，v1.0 无 OSS / 无预生成 worker 时恒为空，若作为选取门槛会使垫词永不触发。
@@ -100,17 +72,17 @@ stage-6（OSS + `regenerate_filler_audio` worker 落地后）SHALL 以独立 cha
 
 #### Scenario: 短语文本为空
 
-- **WHEN** 某 filler_set 内短语 `phrase` 文本均为空
-- **THEN** engine 跳过该 set，尝试下一个；无可用文本则直接等待管线返回 reply
+- **WHEN** campaign 垫词池内某短语 `phrase` 文本为空
+- **THEN** engine 跳过该短语，从池中其余非空短语随机抽；池中无任何非空文本短语则直接等待管线返回 reply
 
 #### Scenario: 实时合成异常
 
 - **WHEN** 垫词 TTS 实时合成或推流过程抛异常
 - **THEN** engine 记录日志并跳过本次垫词，直接等待 reply（允许"无声延迟"），MUST NOT 中断通话
 
-#### Scenario: 全部 filler_set 都没有可用文本
+#### Scenario: 垫词池无可用文本
 
-- **WHEN** 该 Campaign 下所有 filler_phrase 文本均为空
+- **WHEN** 该 campaign 下所有 filler_phrase 文本均为空
 - **THEN** engine 跳过垫词，整通通话不再尝试垫词
 
 ### Requirement: filler（垫词）时间门控播放
@@ -134,22 +106,29 @@ filler MUST NOT 在每轮 PROCESSING 入口无条件立即播放。当 `filler_e
 - **WHEN** `filler_enabled` 为假
 - **THEN** engine MUST NOT 起垫词计时器、MUST NOT 播垫词
 
+### Requirement: 垫词池随机不重复
+
+每通电话 SHALL 在 call_session 内存态维护单个已用短语 id 集合（`used_filler_phrase_ids`）；同一通电话 MUST NOT 重复使用同一 `filler_phrase`，直至该 campaign 垫词池内全部短语用完后清空记录、重新可选。垫词池 = 该 campaign 下全部 `filler_phrase`，无分组、无顺序。
+
+#### Scenario: 同一通电话不重复
+
+- **WHEN** 第 1 轮 PROCESSING 使用了池中的「让我看一下」，后续轮次再次触发垫词
+- **THEN** engine SHALL 从池中除已用短语之外随机抽 1；池中无未用短语时清空已用记录再随机抽
+
+#### Scenario: 池内全部用过后重置
+
+- **WHEN** 本通电话已用尽 campaign 垫词池内全部短语
+- **THEN** engine SHALL 清空该通电话的已用记录，下一轮从全部短语中重新随机抽取
+
 ## Data Schema
 
 ```
 campaign
-  └─ (无 filler_set_id；改由 filler_set.campaign_id 反向关联，1:n)
-
-filler_set
-  ├─ id
-  ├─ campaign_id
-  ├─ name
-  ├─ sort_order               ← 轮询顺序
-  └─ created_at / updated_at
+  └─ (无 filler 外键；改由 filler_phrase.campaign_id 反向关联，1:n)
 
 filler_phrase
   ├─ id
-  ├─ filler_set_id
+  ├─ campaign_id              ← 直挂 campaign（单池，无分组 / 无轮询）
   ├─ phrase                   ← 文本
   ├─ audio_url                ← OSS 路径（可空，待预生成）
   ├─ generation_status        ← pending / ready / failed

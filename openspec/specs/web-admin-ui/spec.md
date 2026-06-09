@@ -140,7 +140,7 @@ TBD - created by archiving change web-admin-ui-redesign. Update Purpose after ar
 
 ### Requirement: per-campaign 外呼策略配置
 
-外呼策略配置 SHALL 绑定到具体 campaign 并持久化到后端，不再是全局配置。campaign 详情 view SHALL 承载以下 per-campaign 配置：**3-tier 串行 LLM（main / referee / extractor）**、可拨时段、选用音色、**filler_enabled toggle 与 filler_delay_ms 触发延迟**。配置 SHALL 通过 admin API 持久化（`role_config` / `prompt_version` / `filler_set` / `filler_phrase` 按 campaign 写入；`campaign.time_windows` / `campaign.voice_id` / `campaign.filler_enabled` / `campaign.filler_delay_ms` 通过 campaign PATCH 写入），MUST NOT 仅存于浏览器 localStorage。
+外呼策略配置 SHALL 绑定到具体 campaign 并持久化到后端，不再是全局配置。campaign 详情 view SHALL 承载以下 per-campaign 配置：**3-tier 串行 LLM（main / referee / extractor）**、可拨时段、选用音色、**filler_enabled toggle 与 filler_delay_ms 触发延迟**。配置 SHALL 通过 admin API 持久化（`role_config` / `prompt_version` / `filler_phrase` 按 campaign 写入；`campaign.time_windows` / `campaign.voice_id` / `campaign.filler_enabled` / `campaign.filler_delay_ms` 通过 campaign PATCH 写入），MUST NOT 仅存于浏览器 localStorage。
 
 #### Scenario: 配置入口先选定 campaign
 
@@ -155,13 +155,18 @@ TBD - created by archiving change web-admin-ui-redesign. Update Purpose after ar
 #### Scenario: filler_enabled toggle
 
 - **WHEN** 用户在 campaign 详情 view 切换 filler 启用开关
-- **THEN** UI SHALL 调 campaign PATCH API 写入 `campaign.filler_enabled` 字段（bool, default false）；切到 false 时同 page 隐藏 filler_set / filler_phrase 编辑区
+- **THEN** UI SHALL 调 campaign PATCH API 写入 `campaign.filler_enabled` 字段（bool, default false）；切到 false 时同 page 隐藏 filler_phrase 编辑区
 - **AND** UI SHALL 在 filler 区上方显示提示"streaming 主链路首音频 ~500ms，filler 仅在用慢模型时建议启用"
 
 #### Scenario: filler_delay_ms 触发延迟
 
 - **WHEN** 用户在 campaign 详情 view 开启 filler 后编辑触发延迟
 - **THEN** UI SHALL 展示 `filler_delay_ms` 数值输入（仅 `filler_enabled=true` 时可见），调 campaign PATCH API 写入 `campaign.filler_delay_ms`（int，可空，留空表示 engine 默认 600ms）
+
+#### Scenario: 垫词列表编辑（per-campaign 单池）
+
+- **WHEN** 用户在 campaign 详情 view 启用 filler 后增删改垫词
+- **THEN** UI SHALL 展示该 campaign 的单一扁平垫词列表（无「组」概念），每句 SHALL 通过 `/filler-phrases` 端点按 `campaign_id` 即时增删改
 
 #### Scenario: 时段与音色
 
