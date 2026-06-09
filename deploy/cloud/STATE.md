@@ -1,6 +1,16 @@
 # cloud deployment — current state snapshot
 
-**Last updated**: 2026-06-09 13:54 CST — **场景详情 extractor 单条 + 统一裸齿轮图标 + 每卡彩色左色条 deployed**（web only）。
+**Last updated**: 2026-06-09 14:33 CST — **配置 Tab 说明 intro 降噪 deployed**（web only，纯表现层）。
+门控路由/工具触发 顶部 intro el-alert 的 `title` 与外层 card_title 完全重复 → 删 title;并把整条说明从蓝色 info 框
+降级为低调轻提示:新自定义 `.tab-intro`（无背景、12px 灰字、13px 蓝色 lucide `Info` 图标、`align-items:flex-start`）。
+`RoutingRulesTab`/`ToolsTab` el-alert(intro)→`<p class="tab-intro">`（描述原文保留;ToolsTab 留 `.intro` 给「尚无旁路监管」
+warning 空状态间距,warning 本身不动）;`CallbacksTab` 同类无 title info 说明顺带统一成 `.tab-intro`。三 tab 各加 `Info`
+import。**无 api/后端/DB 改动**。**部署**:web build → rsync `--delete` dist → nginx reload,公网+本地 SPA 200,entry
+`index-CkpK87dS.js`→`index-BQX78MS4.js`。备份 `/opt/isales/backups/web-tab-intros-20260609-143316`。commit web `d3a502d`。
+测试:typecheck+eslint+vitest 17 文件/67 tests 绿+prod build。**非 openspec 行为变更**。**回滚**:rsync 回
+`web-tab-intros-20260609-143316` + nginx reload。
+
+Prior: 2026-06-09 13:54 CST — **场景详情 extractor 单条 + 统一裸齿轮图标 + 每卡彩色左色条 deployed**（web only）。
 **把上条 AD3aWvdo「部署了但没提交」的 in-flight 编辑器精修正式实现并 commit（解决第 12 行 ⚠️ 工作树漂移）。**
 ①`PromptTierEditor` 加 `singleton` prop（extractor 启用）:隐藏 新增/「X条」/配置名称/删除,load 后无配置自动补一条空白可编辑行（首存即建）。②`PromptTierEditor` 加 `plainIcon` prop（裸 lucide 图标无彩色底框,对齐 form 卡 `<Settings>`）:旁路监管(referee)/话后信息提取(extractor) `Target`/`Sparkles`→`Settings`+plain-icon;`FillerEditor`(垫词) `Music` 彩框→裸 `Settings`(留黄左条);主对话(main) 保留彩色图标框（唯一 hero）。③彩色左色条扩散到全部 panel:`.card` 加 `border-left-width:4px`+6 个 `.card--<color>` modifier,13 张 form 卡各取不同色（相邻不撞）;tier/filler 卡本就有（main 蓝/referee 紫/extractor 绿/垫词 黄）。同时上条提到的 基本信息 voice_id 退回纯输入 + hint 单行 nowrap 也已随 `9d2e5a7` 落地。删 unused `Target`/`Sparkles`/`Music` import。**无 api/后端/DB 改动**。**部署**:web build → rsync `--delete` dist → nginx reload,公网+本地 SPA 200,entry `index-AD3aWvdo.js`→`index-CkpK87dS.js`。备份 `/opt/isales/backups/web-card-accents-20260609-135404`。commit web `15f7f0f`。测试:typecheck+eslint+vitest 17 文件/67 tests 绿+prod build。**非 openspec 行为变更**(纯 UI/表现层)。**回滚**:rsync 回 `web-card-accents-20260609-135404` + nginx reload。
 
