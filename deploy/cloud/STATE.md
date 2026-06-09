@@ -1,6 +1,14 @@
 # cloud deployment — current state snapshot
 
-**Last updated**: 2026-06-09 14:33 CST — **配置 Tab 说明 intro 降噪 deployed**（web only，纯表现层）。
+**Last updated**: 2026-06-09 14:44 CST — **基本信息 hint/试听 回落到字段下方 deployed**（web only，CSS-only）。
+根因:早前为 hint 单行去掉表单 `max-width` 后内容区变宽,`el-form-item__content` 的 `flex-wrap` 把 `.cd__hint` /
+`.cd__preview-row`（试听按钮）挤到了 360/520px 输入框**右侧**而非下方。修法:给 `.cd__hint` + `.cd__preview-row` 加
+`flex-basis:100%` 强制独占整行 → 音色 ID 说明回到音色输入下方、试听按钮+开场白说明回到 textarea 下方。**无 api/后端/DB
+改动**。**部署**:web build → rsync `--delete` dist → nginx reload,公网+本地 SPA 200,entry `index-BQX78MS4.js`→
+`index-Dfk838-1.js`。备份 `/opt/isales/backups/web-hint-layout-20260609-144418`。commit web `80f425a`。测试:
+typecheck+eslint+vitest+build 绿。**非 openspec 行为变更**。**回滚**:rsync 回 `web-hint-layout-20260609-144418` + nginx reload。
+
+Prior: 2026-06-09 14:33 CST — **配置 Tab 说明 intro 降噪 deployed**（web only，纯表现层）。
 门控路由/工具触发 顶部 intro el-alert 的 `title` 与外层 card_title 完全重复 → 删 title;并把整条说明从蓝色 info 框
 降级为低调轻提示:新自定义 `.tab-intro`（无背景、12px 灰字、13px 蓝色 lucide `Info` 图标、`align-items:flex-start`）。
 `RoutingRulesTab`/`ToolsTab` el-alert(intro)→`<p class="tab-intro">`（描述原文保留;ToolsTab 留 `.intro` 给「尚无旁路监管」
