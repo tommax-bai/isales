@@ -1,6 +1,18 @@
 # cloud deployment — current state snapshot
 
-**Last updated**: 2026-06-09 11:37 CST — **referee/extractor 角色改名 deployed**（web only，纯显示串）。
+**Last updated**: 2026-06-09 13:24 CST — **多流路由→门控路由 改名 deployed**（web only，纯显示串）。
+该卡是**两个对等半区**:开口前门控(gating: persona_fanout_cap/referee_timeout_ms/referee_fail_open_route/
+max_continuous_restructure)+ 路由规则引擎(decider: 旁路监管类别→动作,动作 4 类 route/tool/transition/restructure)。
+旧名「多流路由」只点了路由一半、「多流」偏黑话;「门控」是被藏掉的另一半。**故意不叫「门控工具路由」**:tool 只是 4 种
+动作之一,且隔壁「工具触发」卡本就是本卡 tool 动作规则的简化子集视图(`ToolsTab` 直接 splice 进 routing_rules),加"工具"
+会撞概念。改 live 串:`CampaignDetail.vue` 卡头+旁路监管描述引用、`RoutingRulesTab.vue` intro 标题;`campaignDetail.test.ts`
+断言同步;两处 live 代码注释顺带改。**死代码** `RoleConfigTab` 仍引用「多流路由」(含一条报错串),不动。**无 api/后端/DB
+改动**。**部署**:web build → rsync `--delete` dist → nginx reload,公网+本地 SPA 200,entry `index-B0Gx2K52.js`→
+`index-DXSa3uOn.js`。备份 `/opt/isales/backups/web-routing-rename-20260609-132409`。commit web `dc99c73`。测试:
+typecheck+eslint+vitest 16 tests 绿。**非 openspec 行为变更**(纯术语)。**回滚**:rsync 回 `web-routing-rename-20260609-132409`
++ nginx reload。
+
+Prior: 2026-06-09 11:37 CST — **referee/extractor 角色改名 deployed**（web only，纯显示串）。
 referee→**旁路监管**、extractor→**话后信息提取**,后端 `kind="referee"/"extractor"` 枚举契约**不动**。动因:multi-referee+
 routing-restructure 迁移后 referee 只在旁路打类别标签,真正决策动作的是「多流路由」,旧名「决策」越范围且 live UI 本就割裂
 (tier 卡叫决策、路由/工具卡叫裁判)。全 live 面统一成「旁路监管」(贴合引擎"旁路小模型"措辞):`CampaignDetail.vue` 两张
