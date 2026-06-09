@@ -1,3 +1,11 @@
+<!-- SUPERSEDED 2026-06-08 by `engine-interruption-rule-tree`.
+     该 change 的两个意图——(1) 把 prototype 的 min_text_length 提升成配置、
+     (2) 废掉 _vad_monitor 的 VAD-source cancel（VAD 仅留 corroboration mirror）——
+     已被 `engine-interruption-rule-tree` 整体吸收：min_text_length 成为可组合规则树
+     里的 `length` 叶子，VAD-source cancel deprecate 作为该 change 的一条 spec
+     Requirement 落地。本 change 未单独 apply，直接随 `engine-interruption-rule-tree`
+     一起 archive，标 SUPERSEDED。 -->
+
 ## Why
 
 iSales 当前 barge-in 设计有**双信号源**: (1) `partial_monitor` 看 ASR vendor partial text + VAD corroboration (550902d), (2) `_vad_monitor` 看 audio energy + voice_active_ms 阈值**独立触发 cancel speaking task**（fa413b1）。**VAD-source cancel 的本质问题是用了错的信号** — VAD energy 不抗噪 (噪音也有 energy), 真 mic ambient noise burst 容易过 voice_active_ms (200ms) + RMS 阈值 (~1500), 误触发打断 AI 长回应。
