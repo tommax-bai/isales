@@ -11,7 +11,7 @@
 | Capability | 文件 | 简介 |
 |---|---|---|
 | 状态机 | [`call-state-machine`](openspec/specs/call-state-machine/spec.md) | 通话生命周期状态集合与转换规则 |
-| AI 管线 | [`ai-pipeline`](openspec/specs/ai-pipeline/spec.md) | 双 LLM 流式：main 流式回复 + referee 旁路决策 + post-call extractor |
+| AI 管线 | [`ai-pipeline`](openspec/specs/ai-pipeline/spec.md) | 双 LLM 流式：main 流式回复 + referee 门控决策 + post-call extractor |
 | 角色 Prompt | [`role-prompt`](openspec/specs/role-prompt/spec.md) | Prompt 组装结构、JSON Mode、版本管理 |
 | 目标达成 | [`goal-achievement`](openspec/specs/goal-achievement/spec.md) | 实时判定 + WRAPPING_UP 收尾 |
 | 打断判定 | [`interruption-detection`](openspec/specs/interruption-detection/spec.md) | 白名单 + 时长双条件，不可撤销 |

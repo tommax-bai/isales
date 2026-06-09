@@ -198,9 +198,9 @@
 | `engine/state_machine.py` | CallStatus 4 态机（init / in_call / transferring / end）；GREETING/SPEAKING/LISTENING 等 8 个旧 phase 降级为引擎内部 flag/event，不再是通话状态 |
 | `engine/call_session.py` | 单通电话的会话对象，持有所有 timer / state / context |
 | `engine/session_manager.py` | 全局会话注册表 + Redis 并发计数器 |
-| `engine/pipeline/orchestrator.py` | gate-first 双 LLM 编排（先裁判后放音：referee gate 通过才释放主 LLM 流式回复音频） |
+| `engine/pipeline/orchestrator.py` | gate-first 双 LLM 编排（先门控后放音：referee gate 通过才释放主 LLM 流式回复音频） |
 | `engine/pipeline/main_llm.py` | 单路主 LLM 流式生成回复 |
-| `engine/pipeline/referee_llm.py` | N 路并行裁判 LLM（category + confidence），放音前 gate |
+| `engine/pipeline/referee_llm.py` | N 路并行门控监管 LLM（category + confidence），放音前 gate |
 | `engine/pipeline/extractor.py` | 离线字段提取（不在实时回复路径上） |
 | `engine/realtime/filler_manager.py` | 垫词选择和播放控制（可被打断） |
 | `engine/realtime/interruption_detector.py` | 白名单 + 时长双条件判定 |
@@ -217,7 +217,7 @@
   - 触发打断，状态机正确流转
   - 触发沉默激活 2 次后挂断
   - 触发转人工，状态机进入 TRANSFERRING
-  - 裁判 gate 全部否决（放音前拦截），回复用默认话术
+  - 门控监管 gate 全部否决（放音前拦截），回复用默认话术
   - 主 LLM 流式生成异常，降级到默认话术
 - 并发跑 10 通 mock 电话，全局计数器准确
 
@@ -266,7 +266,7 @@
 **目标：** 全部管理面 UI 可用。
 
 **产出（按页面）：**
-- 任务管理（Campaign CRUD + 角色/裁判/垫词嵌套配置）
+- 任务管理（Campaign CRUD + 角色/门控监管/垫词嵌套配置）
 - 线索管理（CSV 导入 / 状态查询 / 跟进时间）
 - 音色管理（列表 + 试听）
 - 设备管理（device / SIM 卡 / 绑定历史）
@@ -340,7 +340,7 @@
 ### isales-engine（建议 ~11 PR，最复杂）
 1. 仓库骨架 + CallStatus 4 态机 stub（init/in_call/transferring/end；收尾等为内部 flag/event）+ 单元测试
 2. session_manager + 全局并发计数器
-3. orchestrator + Mock Provider 双 LLM gate-first 管线（主 LLM 流式 + N 路裁判）+ JSON 输出解析
+3. orchestrator + Mock Provider 双 LLM gate-first 管线（主 LLM 流式 + N 路门控监管）+ JSON 输出解析
 4. filler_manager（含被打断逻辑）
 5. interruption_detector
 6. silence_detector
@@ -383,6 +383,6 @@
 最小可上线标准：
 1. 单 engine 实例支持 50 路并发 8 小时不崩
 2. 端到端：导入 100 条线索 → 自动外呼 → 至少 80% 通话能完成 3 轮以上对话
-3. 至少 1 个 Campaign 完整跑通（音色 / 角色 / 裁判 gate / 转人工 / 回调）
+3. 至少 1 个 Campaign 完整跑通（音色 / 角色 / 门控监管 gate / 转人工 / 回调）
 4. 后台 UI 能完成全部管理操作，不需要直接改 DB
 5. 通话录音、transcript、提取字段、回调日志四类数据完整可查
