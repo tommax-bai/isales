@@ -1,6 +1,18 @@
 # cloud deployment — current state snapshot
 
-**Last updated**: 2026-06-09 10:10 CST — **web-admin-interruption-rule-editor deployed**（web only）。补上
+**Last updated**: 2026-06-09 10:19 CST — **场景详情模块布局重排 deployed**（web only，纯 UI/IA）。
+`CampaignDetail.vue` 按外呼运行链路重排 16 个配置小节:外呼进度→基本信息→可拨时段→主对话(main)→多流路由→
+工具触发→决策(referee)→信息抽取(extractor)→垫词→打断保护→沉默激活→转人工→收尾→重试/跟进→勿打→回调。
+拆掉 `.cd__tiers` 分组容器(其 flex-column+gap 与父 `.cd` 一致,三角色卡+垫词改为直接散在主流里,referee/extractor
+紧跟工具触发,垫词随后)+删无用 `.cd__tiers` CSS;沉默/打断顺序调正(打断保护在沉默激活之前)。即时保存(AI 角色/垫词)
+vs 保存条(form 小节)行为不变,小节独立故交错无功能影响。**无 api/后端/DB 改动**。**部署**:web build → rsync
+`--delete` dist → `/var/www/isales-web/` + nginx reload,公网+本地 SPA 200,title「iSales 智能外呼」,entry
+`index-2N9a3n2p.js`→`index-BDkoJjWd.js`,CampaignDetail chunk `CampaignDetail-DGerN_EW.js`。备份
+`/opt/isales/backups/web-module-reorder-20260609-101918`。commit web `d70c586`。测试:web typecheck + eslint +
+`campaignDetail.test.ts` 3 tests 绿。**非 openspec 行为变更**(纯表现层排序)。**回滚**:rsync 回
+`web-module-reorder-20260609-101918` + nginx reload。
+
+Prior: 2026-06-09 10:10 CST — **web-admin-interruption-rule-editor deployed**（web only）。补上
 `engine-interruption-rule-tree` 里 deferred 的可组合打断规则编辑器:场景「打断保护」tab 新增「高级:可组合打断规则」区
 —— 递归 `InterruptionRuleEditor.vue`（且/或/非 + 关键词/长度/时长/正则/分隔符/无,可任意嵌套,类型切换重建·不可变更新）;
 `interruption_rules==NULL` 显示「使用默认规则」+「基于默认规则开始编辑」(用当前白名单+最小时长按引擎 default_rule 公式 seed),
