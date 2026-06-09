@@ -1,6 +1,21 @@
 # cloud deployment — current state snapshot
 
-**Last updated**: 2026-06-09 13:24 CST — **多流路由→门控路由 改名 deployed**（web only，纯显示串）。
+**Last updated**: 2026-06-09 13:50 CST — **场景配置编辑器 polish deployed**（web only，5 项纯前端微调）。
+① 垫词开关+触发延迟从「基本信息」挪进「垫词」卡（`FillerEditor` 改 v-model 收 form，开关/延迟走保存条、垫词组仍即时存）;
+② `asr_eos_silence_ms` 从「打断保护」抽出独立成「用户断句判定」面板（新 `EndpointingTab.vue`）+ 改名 ASR 端点静默→静默时长;
+③ 新复用组件 `ExpandingTextarea.vue`（折叠 3 行→聚焦展开贴合内容·封顶 800px·失焦收回；直接管原生 `textarea.style.height`,
+因 el-input `autosize=false` 收不回它算出的 inline 高）铺满全编辑器 8 处 textarea; ④ `silence_threshold_ms` web 默认 3000→4000;
+⑤ 加 hint（短回复/仅倾听、转人工轮次触发、挂断兜底语触发条件）。**无 api/后端/DB 改动**。**部署**:web build → rsync
+`--delete` dist → `/var/www/isales-web/` + nginx reload,公网+本地 SPA 200,title「iSales 智能外呼」,entry
+`index-DXSa3uOn.js`→`index-AD3aWvdo.js`。备份 `/opt/isales/backups/web-config-polish-20260609-134928.tgz`。commit web
+`9d2e5a7`。测试:typecheck + eslint + vitest 67 tests + prod build 全绿。**非 openspec 行为变更**(表现层/默认值/文案;
+字段级面板内部 web-admin-ui spec 不 pin,无 drift)。**⚠️ 构建自工作树**:AD3aWvdo 还含若干**未提交**的 in-flight 编辑器精修
+(卡片强调色 `card--green/yellow/red`、基本信息 voice_id 退回纯输入、referee/extractor tier 裸 `Settings` 图标 `plain-icon`、
+extractor `singleton` 单条),故 checkout web `9d2e5a7` 重 build **不会复现** AD3aWvdo(差这些未提交项)。**⑥「打断字数限制」
+仍未做**(跨 3 仓建列+alembic,留后；详见 [[project_session_2026_06_09_interruption_rule_tree]])。**回滚**:解
+`web-config-polish-20260609-134928.tgz` 覆盖 `/var/www/isales-web/` + nginx reload。
+
+Prior: 2026-06-09 13:24 CST — **多流路由→门控路由 改名 deployed**（web only，纯显示串）。
 该卡是**两个对等半区**:开口前门控(gating: persona_fanout_cap/referee_timeout_ms/referee_fail_open_route/
 max_continuous_restructure)+ 路由规则引擎(decider: 旁路监管类别→动作,动作 4 类 route/tool/transition/restructure)。
 旧名「多流路由」只点了路由一半、「多流」偏黑话;「门控」是被藏掉的另一半。**故意不叫「门控工具路由」**:tool 只是 4 种
