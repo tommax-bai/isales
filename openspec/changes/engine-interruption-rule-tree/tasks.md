@@ -52,11 +52,12 @@
 - [x] 7.2 api 单测全绿（128 passed；2 个 redis-queue 测试为已知环境失败 stale blpop/db 错配，与本 change 无关） <!-- 9e1dfe7 -->
 - [x] 7.3 拔 primary_referee_label：schemas + campaigns router + routing_validation + role_configs 删除保护；test 去引用 <!-- 9e1dfe7 -->
 
-## 8. ECS 部署
+## 8. ECS 部署（2026-06-09 09:30 CST，用户确认全队列部署）
 
-- [ ] 8.1 ssh ECS `alembic upgrade head`（加 interruption_rules 列 + drop primary_referee_label；存量行 NULL）— **drop_column 在共享 RDS 上不可逆，待用户确认时机**
-- [ ] 8.2 升级 common wheel + scp engine 改动到 `/opt/isales/current/isales-engine/...`（scp 覆盖，见 [[feedback_ecs_deploy_scp]]）
-- [ ] 8.3 `systemctl restart isales-engine` + journalctl 验证无 import/config 错
+- [x] 8.1 ssh ECS `alembic upgrade b8c9d0e1f2a3 → c9d0e1f2a3b4`（加 interruption_rules + drop primary_referee_label）；DB=ECS 本机 PG，存量行 interruption_rules=NULL <!-- STATE.md 2026-06-09 -->
+- [x] 8.2 scp editable 源码 common(7)+engine(7)+api(4) → `/opt/isales/current/{isales-common,isales-engine,isales-api}/` + chown（[[feedback_ecs_deploy_scp]]） <!-- STATE.md 2026-06-09 -->
+- [x] 8.3 **全队列重启** engine+api+scheduler+worker（drop_column 需全队列拾起新 model）+ journalctl 验证：四服务 active 0 error，engine started + grpc started，api startup complete <!-- STATE.md 2026-06-09 -->
+- [x] 8.4 功能校验：campaign 1/2 interruption_rules=NULL 走默认树；openapi 含 interruption_rules、无 primary_referee_label <!-- STATE.md 2026-06-09 -->
 
 ## 9. mac dev smoke 验证
 
