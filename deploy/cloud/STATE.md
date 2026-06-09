@@ -1,6 +1,19 @@
 # cloud deployment — current state snapshot
 
-**Last updated**: 2026-06-09 10:19 CST — **场景详情模块布局重排 deployed**（web only，纯 UI/IA）。
+**Last updated**: 2026-06-09 11:37 CST — **referee/extractor 角色改名 deployed**（web only，纯显示串）。
+referee→**旁路监管**、extractor→**话后信息提取**,后端 `kind="referee"/"extractor"` 枚举契约**不动**。动因:multi-referee+
+routing-restructure 迁移后 referee 只在旁路打类别标签,真正决策动作的是「多流路由」,旧名「决策」越范围且 live UI 本就割裂
+(tier 卡叫决策、路由/工具卡叫裁判)。全 live 面统一成「旁路监管」(贴合引擎"旁路小模型"措辞):`CampaignDetail.vue` 两张
+tier 卡标题+描述、`RoutingRulesTab.vue` 7 处(顺带修 `kind=裁判`→`kind=referee` 旧 bug)、`ToolsTab.vue` 6 处、
+`PipelineTracePanel.vue` 标题;`routingRulesTab.test.ts` 1 断言同步。**死代码** `RoleConfigDialog/RoleConfigTab`（无 prod
+import）仍「裁判/抽取」,故意不动。**无 api/后端/DB 改动**。**部署**:web build → rsync `--delete` dist →
+`/var/www/isales-web/` + nginx reload,公网+本地 SPA 200,entry `index-BDkoJjWd.js`→`index-B0Gx2K52.js`。备份
+`/opt/isales/backups/web-referee-rename-20260609-113725`。commit web `9f23c93`。测试:typecheck+eslint+vitest 5 套
+23 tests 绿。**非 openspec 行为变更**(纯术语/表现层)。**已知遗留(未顺手改,超范围)**:①路由/工具空状态文案仍指已删的
+「AI 配置」tab;②`PipelineTracePanel` 仍绑 multi-referee 迁移删掉的 `referee_*` 标量字段(deferred trace 重做)。
+**回滚**:rsync 回 `web-referee-rename-20260609-113725` + nginx reload。
+
+Prior: 2026-06-09 10:19 CST — **场景详情模块布局重排 deployed**（web only，纯 UI/IA）。
 `CampaignDetail.vue` 按外呼运行链路重排 16 个配置小节:外呼进度→基本信息→可拨时段→主对话(main)→多流路由→
 工具触发→决策(referee)→信息抽取(extractor)→垫词→打断保护→沉默激活→转人工→收尾→重试/跟进→勿打→回调。
 拆掉 `.cd__tiers` 分组容器(其 flex-column+gap 与父 `.cd` 一致,三角色卡+垫词改为直接散在主流里,referee/extractor
