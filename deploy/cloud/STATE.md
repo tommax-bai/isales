@@ -1,7 +1,7 @@
 # cloud deployment — current state snapshot
 
-**Last updated**: 2026-06-09 09:30 CST — **engine-interruption-rule-tree deployed**（common + engine + api
-全队列）。barge-in 决策从写死的 whitelist→length→duration 序列升级为 **voxen 式可组合规则树**
+**Last updated**: 2026-06-09 09:32 CST — **engine-interruption-rule-tree deployed**（common + engine + api
+全队列 + web）。barge-in 决策从写死的 whitelist→length→duration 序列升级为 **voxen 式可组合规则树**
 （叶子 keyword[contains/exact]/length/duration/regex/split_by_delimiter/none + and/or/not，存 `campaign.
 interruption_rules` JSONB；NULL → engine 从 legacy whitelist+min_duration 合成**等价默认树**，存量零行为变化）。
 同时**吸收** `interruption-detection-text-length-gate`（prototype `min_text_length` 成为 `length` 叶子；
@@ -15,11 +15,13 @@ Campaign model 的服务查库报错，故全队列同步重启）。**验证**�
 `isales_engine_started`+`cloud_edge_grpc_server_started`；api `Application startup complete`；
 `campaign.interruption_rules` 在 / `primary_referee_label` 已 drop；campaign 1/2 `interruption_rules=NULL`
 （走默认树）；openapi 含 `interruption_rules`、无 `primary_referee_label`。commits：common `d9df098` /
-engine `c6e5d1e` / api `9e1dfe7` / web `45e6a4c`（web `primary_referee_label` UI 拔除，**未上线 web**，仅去 UI
-无 alembic）/ meta `3dd2fe5`+。**回滚**：alembic downgrade `c9d0e1f2a3b4 → b8c9d0e1f2a3`（重建空
-primary_referee_label 列 + 删 interruption_rules）+ scp 旧源码 + 全队列重启。**待办**：§9 真机 smoke（默认树等价
-+ 显式规则树）/ §10.1-2 web 可组合规则编辑器（phased follow-on）/ §11.3 archive。web SPA **本次未重 build 上线**
-（仅去 UI 字段，下次 web 部署时一并）。
+engine `c6e5d1e` / api `9e1dfe7` / web `45e6a4c` / meta `ef3bff4`+。**web 也已上线**（build + rsync dist →
+`/var/www/isales-web/` + nginx reload，SPA 200，entry `index-dyfJbVdT.js`；备份 `/opt/isales/backups/
+web-interruption-rule-tree-20260609-093217`）——必须随后端一起上，否则旧 web 存场景/路由规则会把已删的
+`primary_referee_label` 发进 PATCH/PUT body 触发新 api `extra=forbid` 422。本次 web 仅拔 primary_referee_label
+UI，**未含**可组合规则编辑器（§10.1-2 phased follow-on）。**回滚**：alembic downgrade `c9d0e1f2a3b4 →
+b8c9d0e1f2a3`（重建空 primary_referee_label 列 + 删 interruption_rules）+ scp 旧源码 + 全队列重启 + web 回
+backup dir。**待办**：§9 真机 smoke（默认树等价 + 显式规则树）/ §10.1-2 web 可组合规则编辑器（phased）/ §11.3 archive。
 
 Prior: 2026-06-08 17:31 CST — **场景保存 422 + 分号输入 修复 deployed**（web `8394429` +
 **isales-api 重启**）。场景单页保存报 422 两个真因:① `id/created_at/updated_at: Extra inputs` —
