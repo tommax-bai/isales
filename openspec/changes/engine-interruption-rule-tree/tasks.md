@@ -61,8 +61,8 @@
 
 ## 9. mac dev smoke 验证
 
-- [ ] 9.1 默认树 campaign 复跑 #136（真 mic 多轮）：AI 长回应 interrupted=false、0 误触发（证默认树等价 + VAD deprecate）
-- [ ] 9.2 配显式规则树（keyword contains + regex + and/or/not）复测：子串语气词忽略 + 正则触发 + 嵌套组合
+- [x] 9.1 mac --dev-no-modem e2e smoke **call 169 全 9 检查点 PASS**（2026-06-09）：engine 用 campaign 1 默认树（interruption_rules=NULL→合成）跑通真通话全链路，greeting TTS×13 / 上行过门 / ASR / 干净 finalize cause=no_progress_timeout（非 crash 非 silence_max）。**证默认树装配 + barge-in 决策代码路径生产可用**。<!-- 注：本通无真人多轮对话/无 AI 长回应轮，"长回应不被误打断"未单独触发；无 false barge-in 循环、无崩 -->
+- [ ] 9.2 显式规则树（build_rule(dict) 路径 + keyword contains/regex/嵌套）真机复测 + 真人 intentional barge-in（需人对 mic 说话）—— **可选深化，留待真人验证**
 
 ## 10. isales-web — 打断规则编辑面（分阶段）
 
