@@ -1,6 +1,10 @@
 # cloud deployment — current state snapshot
 
-**Last updated**: 2026-06-09 13:50 CST — **场景配置编辑器 polish deployed**（web only，5 项纯前端微调）。
+**Last updated**: 2026-06-09 13:54 CST — **场景详情 extractor 单条 + 统一裸齿轮图标 + 每卡彩色左色条 deployed**（web only）。
+**把上条 AD3aWvdo「部署了但没提交」的 in-flight 编辑器精修正式实现并 commit（解决第 12 行 ⚠️ 工作树漂移）。**
+①`PromptTierEditor` 加 `singleton` prop（extractor 启用）:隐藏 新增/「X条」/配置名称/删除,load 后无配置自动补一条空白可编辑行（首存即建）。②`PromptTierEditor` 加 `plainIcon` prop（裸 lucide 图标无彩色底框,对齐 form 卡 `<Settings>`）:旁路监管(referee)/话后信息提取(extractor) `Target`/`Sparkles`→`Settings`+plain-icon;`FillerEditor`(垫词) `Music` 彩框→裸 `Settings`(留黄左条);主对话(main) 保留彩色图标框（唯一 hero）。③彩色左色条扩散到全部 panel:`.card` 加 `border-left-width:4px`+6 个 `.card--<color>` modifier,13 张 form 卡各取不同色（相邻不撞）;tier/filler 卡本就有（main 蓝/referee 紫/extractor 绿/垫词 黄）。同时上条提到的 基本信息 voice_id 退回纯输入 + hint 单行 nowrap 也已随 `9d2e5a7` 落地。删 unused `Target`/`Sparkles`/`Music` import。**无 api/后端/DB 改动**。**部署**:web build → rsync `--delete` dist → nginx reload,公网+本地 SPA 200,entry `index-AD3aWvdo.js`→`index-CkpK87dS.js`。备份 `/opt/isales/backups/web-card-accents-20260609-135404`。commit web `15f7f0f`。测试:typecheck+eslint+vitest 17 文件/67 tests 绿+prod build。**非 openspec 行为变更**(纯 UI/表现层)。**回滚**:rsync 回 `web-card-accents-20260609-135404` + nginx reload。
+
+Prior: 2026-06-09 13:50 CST — **场景配置编辑器 polish deployed**（web only，5 项纯前端微调）。
 ① 垫词开关+触发延迟从「基本信息」挪进「垫词」卡（`FillerEditor` 改 v-model 收 form，开关/延迟走保存条、垫词组仍即时存）;
 ② `asr_eos_silence_ms` 从「打断保护」抽出独立成「用户断句判定」面板（新 `EndpointingTab.vue`）+ 改名 ASR 端点静默→静默时长;
 ③ 新复用组件 `ExpandingTextarea.vue`（折叠 3 行→聚焦展开贴合内容·封顶 800px·失焦收回；直接管原生 `textarea.style.height`,
