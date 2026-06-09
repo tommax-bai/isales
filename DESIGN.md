@@ -35,7 +35,6 @@
 |---|---|---|
 | 重试与跟进 | [`retry-followup`](openspec/specs/retry-followup/spec.md) | 指数退避重试 + 固定间隔跟进 + 勿打识别 |
 | 时间窗口 | [`time-window`](openspec/specs/time-window/spec.md) | Campaign 多窗口 + 节假日 + 窗外推迟 |
-| 预约 | [`appointment`](openspec/specs/appointment/spec.md) | Appointment 数据模型 + 状态机 + 与 Lead 状态联动 |
 
 ## 基础设施
 
