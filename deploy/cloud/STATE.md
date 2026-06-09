@@ -1,6 +1,17 @@
 # cloud deployment — current state snapshot
 
-**Last updated**: 2026-06-09 09:32 CST — **engine-interruption-rule-tree deployed**（common + engine + api
+**Last updated**: 2026-06-09 10:10 CST — **web-admin-interruption-rule-editor deployed**（web only）。补上
+`engine-interruption-rule-tree` 里 deferred 的可组合打断规则编辑器:场景「打断保护」tab 新增「高级:可组合打断规则」区
+—— 递归 `InterruptionRuleEditor.vue`（且/或/非 + 关键词/长度/时长/正则/分隔符/无,可任意嵌套,类型切换重建·不可变更新）;
+`interruption_rules==NULL` 显示「使用默认规则」+「基于默认规则开始编辑」(用当前白名单+最小时长按引擎 default_rule 公式 seed),
+已配可「恢复为默认」(清回 NULL)。保存随既有 campaign PATCH(`interruption_rules` 进 CAMPAIGN_DEFAULTS),422
+`interruption_rule_invalid` 就地提示。**纯 web,无后端/DB 改动**(api 校验 + 字段 engine-interruption-rule-tree §7 已上)。
+**部署**:web build + tar dist → `/var/www/isales-web/` + nginx reload,SPA 200,entry `index-2N9a3n2p.js`,
+备份 `/opt/isales/backups/web-rule-editor-20260609-100936`。commit web `3fda155` / meta（propose `04a19cc` +
+apply 本次）。测试:web typecheck + vitest 17 files/66 tests(+10 新)绿。**待办**:§6.2 浏览器人工点验(建树/嵌套/422)
+→ 然后 `/opsx:archive web-admin-interruption-rule-editor`。**回滚**:rsync 回 `web-rule-editor-20260609-100936` + nginx reload。
+
+Prior: 2026-06-09 09:32 CST — **engine-interruption-rule-tree deployed**（common + engine + api
 全队列 + web）。barge-in 决策从写死的 whitelist→length→duration 序列升级为 **voxen 式可组合规则树**
 （叶子 keyword[contains/exact]/length/duration/regex/split_by_delimiter/none + and/or/not，存 `campaign.
 interruption_rules` JSONB；NULL → engine 从 legacy whitelist+min_duration 合成**等价默认树**，存量零行为变化）。
