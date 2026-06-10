@@ -69,11 +69,6 @@
 - **WHEN** 开口前门控选中 `tool:hangup`
 - **THEN** engine 抑制本轮对话回复（可选先播 `closing_phrase`）→ END (reason=`referee_hangup`)
 
-#### Scenario: 长时间无进展挂断
-
-- **WHEN** 无效内容持续超过 `campaign.max_no_progress_seconds`
-- **THEN** engine 主动挂断 → END (reason=`no_progress_timeout`)
-
 #### Scenario: 用户挂机
 
 - **WHEN** modem-controller 上报远端挂断
@@ -136,8 +131,8 @@ call-state-machine 现有 § "拨号成功进入开场白" / § "用户挂机" s
 
 #### Scenario: 本端主动挂断的 cause 值
 
-- **WHEN** engine 主动调 `SerialATClient.hangup(call_id)`（如 goal 达成进入 WRAPPING_UP 后 TTS 播完，或 max_no_progress_seconds 超时）
-- **THEN** 事件流将 yield `ATEvent("remote_hangup", call_id, cause="manual_hangup")`；engine 收到该事件时状态已经在 `END` 或 `WRAPPING_UP` → `END` 路径中；`manual_hangup` cause SHALL NOT 被状态机用作 `END.reason`（END reason 由触发 hangup 的业务理由决定，如 `wrap_up_completed` / `no_progress_timeout` / `marked_for_handoff`）
+- **WHEN** engine 主动调 `SerialATClient.hangup(call_id)`（如 goal 达成进入 WRAPPING_UP 后 TTS 播完）
+- **THEN** 事件流将 yield `ATEvent("remote_hangup", call_id, cause="manual_hangup")`；engine 收到该事件时状态已经在 `END` 或 `WRAPPING_UP` → `END` 路径中；`manual_hangup` cause SHALL NOT 被状态机用作 `END.reason`（END reason 由触发 hangup 的业务理由决定，如 `wrap_up_completed` / `marked_for_handoff` / `referee_hangup`）
 
 ### Requirement: hangup_cause 单一来源
 

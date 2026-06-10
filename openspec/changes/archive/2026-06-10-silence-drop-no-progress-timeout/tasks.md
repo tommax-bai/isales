@@ -42,8 +42,8 @@
 ## 6. 部署 + 收口
 
 - [x] 6.1 commit + push 4 sub-repo（已推 origin）+ meta
-- [ ] 6.2 ECS 部署：scp common+engine+api editable 源码 → `alembic upgrade head` → 重启全队列
-- [ ] 6.3 web build → rsync dist → nginx reload
-- [ ] 6.4 smoke
-- [ ] 6.5 更新 `deploy/cloud/STATE.md`
-- [ ] 6.6 `openspec archive silence-drop-no-progress-timeout`
+- [x] 6.2 ECS 部署：scp common+engine+api editable 源码 → 先重启全队列 → `alembic upgrade head`（仅 d5e6f7a8b9c0）。ECS head `c4d5e6f7a8b9 → d5e6f7a8b9c0`
+- [x] 6.3 web build → rsync dist → nginx reload（entry `index-DgcL657t.js`）
+- [x] 6.4 smoke：列已 drop / openapi 无该字段 / 4 服务 active+clean / `/health` 200 / 公网 SPA 200
+- [x] 6.5 更新 `deploy/cloud/STATE.md`
+- [x] 6.6 `openspec archive silence-drop-no-progress-timeout`
