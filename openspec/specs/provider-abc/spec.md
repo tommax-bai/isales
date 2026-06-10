@@ -48,7 +48,7 @@ TTSProvider SHALL 暴露异步流式合成接口：输入文本与音色，输�
 #### Scenario: 音色由 voice_id 选择
 
 - **WHEN** 调用合成
-- **THEN** 调用方 SHALL 传入 `voice_model.voice_id`（来自 `data-model` spec 的 voice_model 表）；ABC 不关心 voice_id 的内部映射
+- **THEN** 调用方 SHALL 传入 `campaign.voice_id`——一个不透明的 vendor speaker 标识字符串（如 `zh_female_xiaohe_uranus_bigtts`），原样透传给 TTS provider；该字符串不在本系统编目（`voice_model` 表已随 `admin-prune-vestigial-features` 删除），ABC 不关心 voice_id 的内部映射；`voice_id` 为空时实现 MAY 回落到 provider 默认音色
 
 ### Requirement: LLM Provider chat 接口与 JSON Mode
 

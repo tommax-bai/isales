@@ -39,7 +39,7 @@
 
 ## meta-repo（spec + 根文档）
 
-- [x] `appointment` spec delta：REMOVED 全部 requirement <!-- meta: specs/appointment/spec.md REMOVED all 5 requirements -->
+- [x] `appointment` spec delta：REMOVED 5 条 + ADDED 1 条 tombstone「预约能力已下线」（openspec 不允许空 spec，故 capability 保留为下线声明） <!-- meta: specs/appointment/spec.md REMOVED 5 + ADDED tombstone; archive 时 rebuilt spec 必须 ≥1 requirement -->
 - [x] `human-handoff` spec delta：MODIFIED「TRANSFERRING 流程」(worker 只标 transferred，不写 handoff_task) + REMOVED「坐席工作流」 + Data Schema 删 handoff_task 行 <!-- meta: specs/human-handoff -->
 - [x] `data-model` spec delta：MODIFIED 全表清单（删 3 行 + lead 去 appointed/visited） <!-- meta: specs/data-model -->
 - [x] `web-admin-ui` spec delta：MODIFIED TopNav + view 清单（删 3 入口） <!-- meta: specs/web-admin-ui -->

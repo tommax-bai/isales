@@ -1,9 +1,7 @@
 ## Purpose
 
 定义"转人工"在 v1 的衰减实现：标记 + 通知，不做实时话路桥接。本规范覆盖 4 种触发机制、流程、坐席工作流与数据模型。实时 SIP 桥接 / GSM 呼叫转接（AT+CHLD）/ 自研 SIP 软话机三种实时桥接方案 MUST 列入 v2 计划，v1 范围之外。
-
 ## Requirements
-
 ### Requirement: v1 衰减为标记 + 通知
 
 v1 选择自研 USB GSM modem 方案，**MUST NOT 引入 SIP/PBX 设施**，因此 MUST NOT 做实时话路桥接。转人工 SHALL 衰减为以下流程：AI 识别需要人工介入 → 礼貌告知用户「稍后专员会主动联系您」 → AI 主动结束通话 → 系统派发待回拨任务 → 坐席手动外呼。
@@ -44,7 +42,7 @@ v1 选择自研 USB GSM modem 方案，**MUST NOT 引入 SIP/PBX 设施**，因�
 
 ### Requirement: TRANSFERRING 流程
 
-进入 TRANSFERRING 后 engine SHALL 顺序执行：播衔接话术 → 等 TTS 播完 → 主动挂断 → 由 worker 派发 handoff_task。
+进入 TRANSFERRING 后 engine SHALL 顺序执行：播衔接话术 → 等 TTS 播完 → 主动挂断 → 由 worker 把 `lead.status` 标记为 `transferred`（并在命中 callback_config 时发 webhook）。worker MUST NOT 创建 `handoff_task` 记录——该表已删除；转人工的下游只剩「标记 lead 状态 + 可选 webhook」，没有任务队列。
 
 #### Scenario: 衔接话术播放
 
@@ -56,34 +54,15 @@ v1 选择自研 USB GSM modem 方案，**MUST NOT 引入 SIP/PBX 设施**，因�
 - **WHEN** 衔接话术 TTS 播放完成
 - **THEN** engine 主动挂断；call_record 字段 MUST 写入：`transfer_status="marked_for_handoff"`、`transfer_reason="<触发类型>"`，并进入 END
 
-#### Scenario: handoff_task 派发
+#### Scenario: worker 标记 lead 并可选发 webhook
 
 - **WHEN** worker 收到通话结束消息且 transfer_status="marked_for_handoff"
-- **THEN** worker SHALL 创建 handoff_task 记录（`status=pending`，`agent_id=null`）；如配置了 callback_config 且 trigger 命中，MUST 同时触发 webhook
+- **THEN** worker SHALL 把关联 `lead.status` 标记为 `transferred`；如配置了 callback_config 且 trigger 命中，MUST 同时触发 webhook；MUST NOT 创建 handoff_task 记录（该表已删除）
 
 #### Scenario: 没有"无坐席兜底"分支
 
 - **WHEN** v1 任一转人工触发命中
-- **THEN** 流程 MUST 直接走"标记 + 派发"，没有"立刻找空闲坐席"或"无空闲坐席兜底话术"分支（这两个分支属于 v2 实时桥接模式）
-
-### Requirement: 坐席工作流
-
-坐席 SHALL 通过 isales-web 查看待回拨任务清单；任务详情 MUST 包含完整上下文以便无缝接续。
-
-#### Scenario: 任务列表展示
-
-- **WHEN** 坐席登录 isales-web
-- **THEN** 系统 SHALL 展示状态为 pending 的 handoff_task 列表，按 created_at 降序
-
-#### Scenario: 任务详情字段
-
-- **WHEN** 坐席打开某 handoff_task 详情
-- **THEN** 详情页 MUST 包含：用户线索基础信息、转接原因、完整 transcript、已提取字段、触发时刻、距今时长
-
-#### Scenario: 状态流转
-
-- **WHEN** 坐席点击「领取」/「回拨」/「完成」
-- **THEN** handoff_task.status SHALL 依次流转 `pending → in_progress → completed`，并记录 `picked_up_at` / `completed_at`
+- **THEN** 流程 MUST 直接走"标记 + 挂断"，没有"立刻找空闲坐席"或"无空闲坐席兜底话术"分支（这两个分支属于 v2 实时桥接模式）
 
 ### Requirement: 与状态机的交互
 
