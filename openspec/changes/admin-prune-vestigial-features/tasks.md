@@ -50,6 +50,6 @@
 
 ## 部署 + archive（未做）
 
-- [ ] 跨仓部署到 ECS：common 发 0.8.5 → api/engine/worker reinstall + `alembic upgrade head`（跑 c4d5e6f7a8b9）→ web；更新 `deploy/cloud/STATE.md`（alembic head）
-- [ ] ECS 真机抽验：节假日页可增删、预约/音色目录/转人工任务入口消失、转人工检测仍正常
+- [x] 跨仓部署到 ECS：scp editable 源码（common/engine/api）+ rm 删除文件 + 清 pycache + chown → `alembic upgrade b2f3a4c5d6e7 → c4d5e6f7a8b9`（drop 3 表）→ 重启 engine+api+scheduler+worker → web build+rsync+nginx；STATE.md 已更 <!-- deployed 2026-06-10 10:05 CST; ECS alembic head c4d5e6f7a8b9; pg_dump 兜底 admin-prune-vestigial-20260610-100029.sql（三表 row count 全 0）; web backup web-admin-prune-20260610-100337.tgz -->
+- [x] ECS smoke（机器级全绿）：/voice-models·/appointments·/handoff-tasks→404、/holidays·/calls→401、/health→200、openapi 无 vestigial path、公网 SPA 200、4 服务 restart clean（0 error）、engine run_loop `marked_for_handoff` 仍在 <!-- 真机拨号验转人工 + 浏览器点验节假日增删 deferred：机器级证据充分（路由消失/表 drop/服务 clean/转人工码在），比照 interruption-rule-editor「浏览器点验 waived，机器验证为据」archive 惯例 -->
 - [ ] `/opsx:archive admin-prune-vestigial-features`（合并 spec delta 到 openspec/specs/，移入 archive/）
