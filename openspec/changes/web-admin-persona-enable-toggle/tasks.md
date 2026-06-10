@@ -28,8 +28,15 @@
 - [x] 4.1 `promptTierEditor.test.ts`：开关开/关 ↔ `update:personaFanoutCap` 1↔2 映射；开时露出并发上限控件并能调 2/3；cap-check 用 model 值。
 - [x] 4.2 `routingRulesTab.test.ts`：断言不再渲染并发上限控件 + 门控超时仍在。
 - [~] 4.3 `campaignDetail.test.ts`：PromptTierEditor 被 stub，v-model 接线是模板编译层、无独立可测行为；emit↔cap 映射已由 4.1 覆盖 → **本文件无需改**（且该文件当前正被并发 interruption session 改动，不属本 change）。
-- [x] 4.4 我的 3 测试文件 vitest 全绿（promptTierEditor 12 + routingRulesTab 8）；lint 我的 4 文件 exit 0；typecheck 我的文件无错。
-<!-- 注：仓库级 vitest/vue-tsc 当前因并发 interruption-min-chars-and-mode-toggle WIP（interruptionRuleEditor.test.ts 函数签名漂移 + 打断改名 → campaignDetail.test.ts 期望「打断保护」失败）整体非绿；与本 change 无关，属并发 session 收口范围。 -->
+- [x] 4.4 我的测试文件 vitest 全绿（promptTierEditor 13 + routingRulesTab 8 = 21）；lint 我的文件 exit 0；typecheck 我的文件无错。
+<!-- 注：仓库级 vue-tsc 当前因并发 interruption-min-chars-and-mode-toggle WIP（campaignTabs.test.ts MessageBoxData / campaignDetail.test.ts 期望「打断保护」失败）整体非绿；与本 change 无关，属并发 session 收口范围。 -->
+
+## 4b. 部署前对抗式审查 + 修复（isales-web c9050c2）
+
+多 agent 审查（3 维度 find→verify，0 bug / 2 risk / 2 nit）发现并修复两个真问题：
+- [x] 4b.1 **risk**：开关/卡内 cap 原本只写内存 form、靠底部「保存」条才落库，而同卡人设行是即时保存 → 用户开开关存了人设行、不点底部保存就离开 → 后端 cap 仍 1、引擎 `personas[:0]`、人设永不运行。修：`persistCap()` 在开关/输入 `@change` 即时 `campaignsApi.update(id,{persona_fanout_cap})`（PATCH 单字段），对齐同卡即时保存语义；v-model 仍同步父 form，底部保存幂等重发。新增测试断言点开关即 PATCH `{persona_fanout_cap:2}`。
+- [x] 4b.2 **nit**：数字框清空 → cap 瞬时 null → `open` 塌陷卸载正在编辑的框、不自动回弹、可能 POST null。修：`fanoutLevel` clamping computed 拦截 null/越界回 [2,3]，cap 永不 null。
+- [ ] 4b.3 **nit（不修，记 followup）**：死代码 `views/Campaigns/Tabs/RoleConfigTab.vue`（无人挂载）残留过时文案「多流路由」cap 提示。确认不可达、不影响行为，且并发 session 没碰它 → 本 change 不动（不 polish 死代码 / 不在并行窗口删文件）；建议日后单独清理 RoleConfigTab + RoleConfigDialog 死代码。
 
 ## 5. 收口
 
