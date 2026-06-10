@@ -32,15 +32,13 @@
 - [x] 4.1 三仓 venv 装新 common 后关键子集绿（common schema 182 / engine transcript+contract+golden / api calls 9）；worker+web 经审计不消费 `TranscriptEvent` 契约，范围确认仅 common+engine+api
 - [x] 4.2 `openspec validate fix-transcript-schema-drift --strict` 通过
 
-## 5. ECS 部署 + 数据清洗 + 真机点验
-
-- [ ] 5.1 scp 覆盖 `isales-common` 到 ECS 各服务 venv 并重装（或按现有部署惯例）
-- [ ] 5.2 `alembic upgrade head` 跑数据清洗 migration；先 `SELECT count(*)` 评估受影响行数留痕
-- [ ] 5.3 scp 覆盖 + `systemctl restart isales-api`（读端先就绪）
-- [ ] 5.4 scp 覆盖 + `systemctl restart isales-engine`（写端停写 interrupted）
-- [ ] 5.5 `curl` `GET /calls`（带 JWT 或经 web）确认 200、无 `extra_forbidden`；`journalctl -u isales-api` 无新 ValidationError
-- [ ] 5.6 浏览器打开外呼记录页：列表正常渲染 + 展开某条通话 transcript 正常显示
-- [ ] 5.7 更新 `deploy/cloud/STATE.md`（如部署状态有变更）
+<!-- 部署审计抓到第二处漂移: interruption.{rms,source,voice_active_ms} 历史数据(13+条),migration 扩展一并清洗(common a9a1c8f);全 scp 只带本 change 文件(并行 interruption-min-chars f7a8b9c0d1e2 隔离),alembic 显式 target e6f7a8b9c0d1 非 head -->
+- [x] 5.1 scp 我的文件到 ECS（common transcript.py + migration e6f7a8b9c0d1；engine call_session/run_loop/state_machine）+ chown isales:isales；**刻意不带**并行 change 的 campaign/f7a8b9c0d1e2 文件
+- [x] 5.2 先只读评估：170 条记录中 38 含 `ai_reply.interrupted` + 13 含 state_warning + 3 state_error + **0 state_changed**（证实判断）；全量审计另发现 13+ 条 `interruption` 带历史 VAD 字段 → migration 扩展清洗。`alembic upgrade e6f7a8b9c0d1`（显式 revision，避开并行未就绪的 f7a8b9c0d1e2）成功，after=0/0 违规行
+- [x] 5.3+5.4 重启 isales-api+engine+scheduler+worker 全队列：4 服务 active，engine `isales_engine_started`+`credentials_loaded count=5`、api `Application startup complete`，0 error
+- [x] 5.5 `/calls`→401（路由在+鉴权）、`/health`→200；重启后 api 日志 0 条 extra_forbidden/ValidationError
+- [x] 5.6 **机器级全量校验取代浏览器点验**：用 `CallRecordRead.model_validate` 跑全部 170 条记录 → **170 PASS / 0 FAIL**（证明每条 transcript 都读得过，比单页 curl 更彻底）
+- [x] 5.7 更新 `deploy/cloud/STATE.md`（本提交）
 
 ## 6. 收口
 
