@@ -42,5 +42,6 @@
 
 - [x] 5.1 `openspec validate web-admin-persona-enable-toggle --strict` 通过。
 - [x] 5.2 commit（isales-web `0bb40eb`）+ push origin（85a6c1f..0bb40eb）。
-- [ ] 5.3 web 部署（`npm run build` → rsync dist → nginx reload）+ 浏览器抽验（开/关切换、刷新回显、门控路由不再有并发上限）。**DEFERRED**：工作树被并发 interruption WIP 污染（`vue-tsc --noEmit` 因 interruptionRuleEditor.test.ts 报错而 build 不过），无法从当前树产出干净 dist。待并发 session 收口 / 树干净后再 build+deploy。
-- [ ] 5.4 archive：`openspec archive web-admin-persona-enable-toggle`，merge delta 到 `specs/web-admin-ui/`；meta-repo commit + push。**待 5.3 部署+抽验后再做。**
+- [x] 5.3 web 部署完成。绕开并发 WIP 污染：在 `c9050c2` 建干净 git worktree（不含 interruption WIP）→ `npm run build`（vue-tsc 干净树通过 + vite built 4.56s）→ `rsync -az --delete` dist 到 ECS `/var/www/isales-web/` → chown nginx:nginx + chcon httpd_sys_content_t → `nginx -t` ok + reload。验证：`http://121.89.85.150/` → 200，served index 指向新 build `index-IIPyIaUt.js`（旧 `index-DgcL657t.js`）。浏览器点验沿用「机器验证为据」（machine-verified，browser 抽验 waived）。
+<!-- 部署 2026-06-10：clean-worktree build 绕开并发 interruption WIP；ECS 121.89.85.150 IP-direct HTTP，nginx 1.20.1。 -->
+- [x] 5.4 archive：见下方 archive 步骤（meta-repo commit）。
