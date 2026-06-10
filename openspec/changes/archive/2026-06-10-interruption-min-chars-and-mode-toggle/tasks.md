@@ -37,9 +37,11 @@ Repo legend: [common] isales-common · [engine] isales-engine · [api] isales-ap
 - [x] 5.2 Touched repos green (common/engine/api/web); only pre-existing unrelated fails noted in 2.3 / 3.3. <!-- done -->
 - [x] 5.3 Committed: common 9a6f5be · engine 71ce573 · api 007a5ed · web 6ab90df · meta (this commit). Push next. <!-- done -->
 - Review: 5-dim adversarial review (workflow) verdict=ship, 0 blockers; folded in 1 medium (web confirm-guard) + 1 low (api round-trip test) + 2 nits (engine comment, spec 800→400).
-- [ ] 5.4 [deploy] `alembic upgrade head` on RDS; redeploy api/engine/web on ECS (scp + systemctl restart). Update `deploy/cloud/STATE.md` (alembic head + common 0.8.8) in the same deploy commit. **(needs user go-ahead — prod migration)**
-- [ ] 5.5 [deploy] Smoke: PATCH a campaign's `interruption_min_chars` via api, GET back; confirm web 非高级 mode shows/saves.
+- [x] 5.4 [deploy] Deployed to ECS/RDS: scp migration → `alembic upgrade head` (e6f7a8b9c0d1 → f7a8b9c0d1e2) → scp common/engine/api → chown → restart 4 services; web rsync `--delete` (entry index-C7mTywFH.js, backup web-interruption-min-chars-20260610-174448.tgz) → nginx reload. STATE.md updated (this commit). <!-- deploy 2026-06-10 17:45 -->
+- [x] 5.5 [deploy] Smoke green: alembic current=f7a8b9c0d1e2; column integer NOT NULL default 2; campaign 1+2 backfilled to 2; openapi has interruption_min_chars; /health 200, /campaigns 401, SPA 200; engine+api boot clean. (Live authenticated PATCH skipped — would mutate prod config; write path covered by api round-trip test + openapi + DB read.) <!-- deploy verified -->
 
 ## 6. Archive
 
-- [ ] 6.1 [meta] `/opsx:archive interruption-min-chars-and-mode-toggle` — merge deltas into `openspec/specs/`. At merge, also append `interruption_min_chars` to the `interruption-detection` § Configuration table and (optionally) the `data-model` 全表清单 campaign row, since those informational tables are not covered by requirement-level deltas. Verify the change dir actually moved to `archive/` (openspec archive is silent-failure on abort).
+- [x] 6.1 [meta] `/opsx:archive interruption-min-chars-and-mode-toggle` — merge deltas into `openspec/specs/`. At merge, also append `interruption_min_chars` to the `interruption-detection` § Configuration table and the `data-model` 全表清单 campaign row, since those informational tables are not covered by requirement-level deltas. Verify the change dir actually moved to `archive/` (openspec archive is silent-failure on abort).
+
+<!-- archived 2026-06-10 as archive/2026-06-10-interruption-min-chars-and-mode-toggle; specs synced (+1 added data-model, ~2 interruption-detection, ~1 web-admin-ui); Configuration table + 全表清单 rows added manually; validate --specs 22/0 -->

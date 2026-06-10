@@ -82,13 +82,13 @@ SPEAKING / FILLER 状态下 engine SHALL 用一棵**可组合规则树**判定�
 
 #### Scenario: 字数低于 length 叶子阈值视为非打断
 
-- **WHEN** SPEAKING 期间 ASR partial 文本 strip 后字符数 < 规则树中 `length` 叶子的 `value`（默认树为 2）
+- **WHEN** SPEAKING 期间 ASR partial 文本 strip 后字符数 < 规则树中 `length` 叶子的 `value`（默认树取 `campaign.interruption_min_chars`，默认 2）
 - **THEN** 规则树求值为 `ignored`（`and` 短路），TTS 继续；`evaluate_partial` 返回 `verdict="ignored"`
 - **AND** `_partial_monitor` SHALL 记录 `logger.info("partial_monitor_skip ... reason=length")` 以便 ops 调参
 
 #### Scenario: 时长低于 duration 叶子阈值视为非打断
 
-- **WHEN** SPEAKING 期间自用户 speech_start 至当前的 elapsed 毫秒数 < 规则树中 `duration` 叶子的 `value_ms`（默认树取 `campaign.interruption_min_duration_ms`，默认 800）
+- **WHEN** SPEAKING 期间自用户 speech_start 至当前的 elapsed 毫秒数 < 规则树中 `duration` 叶子的 `value_ms`（默认树取 `campaign.interruption_min_duration_ms`，默认 400）
 - **THEN** 规则树求值为 `ignored`，TTS 继续
 
 #### Scenario: regex / 分隔符叶子命中触发打断
@@ -98,7 +98,7 @@ SPEAKING / FILLER 状态下 engine SHALL 用一棵**可组合规则树**判定�
 
 #### Scenario: 整棵树求值满足触发打断
 
-- **WHEN** ASR partial 文本使规则树根节点求值为真（如默认树 `AND(NOT keyword, length≥2, duration≥阈值)` 全过）
+- **WHEN** ASR partial 文本使规则树根节点求值为真（如默认树 `AND(NOT keyword, length≥interruption_min_chars, duration≥阈值)` 全过）
 - **THEN** engine 立刻停止 TTS、状态转为 INTERRUPTED → PROCESSING，使用 ASR 终态结果作为本轮用户输入；`evaluate_partial` 返回 `verdict="triggered"`
 
 #### Scenario: 可组合规则按 and/or/not 嵌套求值
@@ -110,18 +110,18 @@ SPEAKING / FILLER 状态下 engine SHALL 用一棵**可组合规则树**判定�
 
 `campaign` 表 SHALL 持有 `interruption_rules` JSONB 列存放规则树。`isales_engine.realtime.interruption_detector` SHALL 提供 factory 把规则树 dict **编译一次**成 `Rule` 对象树（装配 `InterruptionConfig` 时编译，`evaluate_partial` 每个 partial 只调求值，不重建）。非法规则树（未知 `type` / 结构错）MUST 在装配期 fail-fast 并 ERROR 日志。
 
-向后兼容 SHALL 由"缺省合成默认树"实现：`interruption_rules` 为 NULL 时，`runtime_config` MUST 从 legacy 列合成默认树 `AND( NOT keyword(match="exact", values=interruption_whitelist), length(value=2), duration(value_ms=interruption_min_duration_ms) )`，使**未配置规则树的 campaign 行为与历史「白名单(精确) + 时长 + 字数≥2」逐字节等价**。engine MUST NOT 因 `interruption_rules` 为 NULL 报错。
+向后兼容 SHALL 由"缺省合成默认树"实现：`interruption_rules` 为 NULL 时，`runtime_config` MUST 从 legacy 标量列合成默认树 `AND( NOT keyword(match="exact", values=interruption_whitelist), length(value=interruption_min_chars), duration(value_ms=interruption_min_duration_ms) )`。其中 `length` 叶子的 `value` MUST 取 `campaign.interruption_min_chars`（NOT NULL，默认 2）而非历史硬编码 `2`；存量 campaign 经迁移回填 `interruption_min_chars=2` 后，默认树与历史「白名单(精确) + 时长 + 字数≥2」**逐字节等价**。engine MUST NOT 因 `interruption_rules` 为 NULL 报错。
 
-#### Scenario: 缺省合成的默认树等价历史行为
+#### Scenario: 缺省合成的默认树取 interruption_min_chars
 
-- **WHEN** campaign 的 `interruption_rules` 为 NULL（存量 campaign 未配规则树）
-- **THEN** `runtime_config` SHALL 从 `interruption_whitelist` + `interruption_min_duration_ms` 合成默认树（keyword 用 `match="exact"`、length=2、duration=该列值）
-- **AND** 对任意 ASR partial 输入，默认树的 `triggered`/`ignored` 判定 MUST 与历史 `evaluate_partial`（whitelist 精确匹配 → 字数≥2 → 时长）一致
+- **WHEN** campaign 的 `interruption_rules` 为 NULL（非高级模式 / 存量 campaign 未配规则树）
+- **THEN** `runtime_config` SHALL 从 `interruption_whitelist` + `interruption_min_chars` + `interruption_min_duration_ms` 合成默认树（keyword 用 `match="exact"`、length=`interruption_min_chars`、duration=`interruption_min_duration_ms`）
+- **AND** 当 `interruption_min_chars` 取默认 2 时，默认树的 `triggered`/`ignored` 判定 MUST 与历史 `evaluate_partial`（whitelist 精确匹配 → 字数≥2 → 时长）逐字节一致
 
 #### Scenario: campaign 配置自定义规则树覆盖默认
 
 - **WHEN** campaign 的 `interruption_rules` 为非 NULL 合法规则树
-- **THEN** engine SHALL 编译该树用于判定，忽略 legacy 列派生的默认树
+- **THEN** engine SHALL 编译该树用于判定，忽略 legacy 标量列（含 `interruption_min_chars`）派生的默认树
 
 #### Scenario: 非法规则树装配期 fail-fast
 
@@ -154,6 +154,7 @@ SPEAKING / FILLER 状态下 engine SHALL 用一棵**可组合规则树**判定�
 |---|---|---|---|
 | `interruption_whitelist` | JSONB array | `["嗯","嗯嗯","好","好的","哦","哦哦","对","是的"]` | 白名单短语，整段完全匹配 |
 | `interruption_min_duration_ms` | int | 800 | 时长阈值，低于此值视为非打断 |
+| `interruption_min_chars` | int | 2 | 字数阈值（≥1），缺省默认树 `length` 叶子取值；低于此 rune 数视为非打断，仅 `interruption_rules` 为 NULL 时生效 |
 | `max_continuous_interruptions` | int | 3 | 触发保护策略前允许的连续打断次数 |
 | `continuous_interruption_strategy` | enum | `short_reply` | `short_reply` / `listen_only` |
 

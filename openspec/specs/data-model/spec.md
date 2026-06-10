@@ -27,7 +27,7 @@
 
 | 表 | 关键字段 | 归属服务 | 详细规范 |
 |---|---|---|---|
-| `campaign` | name, voice_id, default_replies(JSONB), concurrency, time_windows(JSONB), extraction_fields(JSONB), max_silence_activations, silence_threshold_ms, silence_phrases(JSONB), silence_hangup_phrase, wrap_up_max_rounds, wrap_up_max_seconds, wrap_up_closing_phrases(JSONB), interruption_whitelist(JSONB), interruption_min_duration_ms, max_continuous_interruptions, continuous_interruption_strategy, transfer_keyword_enabled, transfer_keywords(JSONB), transfer_intent_enabled, transfer_intent_threshold, transfer_round_enabled, transfer_round_threshold, transfer_llm_enabled, transfer_llm_prompt_version_id, transfer_phrases(JSONB), retry_intervals(JSONB), retry_max_count, follow_up_interval_days, follow_up_max_count, do_not_call_keywords(JSONB), do_not_call_llm_enabled, do_not_call_llm_prompt_version_id, respect_holidays, **greeting(Text, nullable — campaign-level 固定开场白文案；NULL 时 engine 走 LLM 生成开场白路径，详见 ai-pipeline § "开场白不走管线")** | api | 各 capability |
+| `campaign` | name, voice_id, default_replies(JSONB), concurrency, time_windows(JSONB), extraction_fields(JSONB), max_silence_activations, silence_threshold_ms, silence_phrases(JSONB), silence_hangup_phrase, wrap_up_max_rounds, wrap_up_max_seconds, wrap_up_closing_phrases(JSONB), interruption_whitelist(JSONB), interruption_min_duration_ms, interruption_min_chars, max_continuous_interruptions, continuous_interruption_strategy, transfer_keyword_enabled, transfer_keywords(JSONB), transfer_intent_enabled, transfer_intent_threshold, transfer_round_enabled, transfer_round_threshold, transfer_llm_enabled, transfer_llm_prompt_version_id, transfer_phrases(JSONB), retry_intervals(JSONB), retry_max_count, follow_up_interval_days, follow_up_max_count, do_not_call_keywords(JSONB), do_not_call_llm_enabled, do_not_call_llm_prompt_version_id, respect_holidays, **greeting(Text, nullable — campaign-level 固定开场白文案；NULL 时 engine 走 LLM 生成开场白路径，详见 ai-pipeline § "开场白不走管线")** | api | 各 capability |
 | `holiday` | date, name, region | api | time-window |
 | `agent` | name, login_user, status (online/offline) | telephony | human-handoff |
 | `handoff_task` | call_record_id, agent_id (nullable), trigger_type, trigger_detail, status, created_at, picked_up_at, completed_at | api（worker 创建，api 提供查询/状态变更） | human-handoff |
@@ -317,6 +317,30 @@ JSONB 字段 SHALL 用于半结构化的配置或事件流；任何新引入的 
 
 - **WHEN** campaign `filler_delay_ms = 400`
 - **THEN** engine SHALL 在首音频超过 400ms 未出时播垫词
+
+### Requirement: campaign.interruption_min_chars 字数门控阈值
+
+`campaign` 表 SHALL 持有 `interruption_min_chars` 列（`Integer`，NOT NULL，`server_default="2"` / Python 默认 `2`，schema 约束 `ge=1`）。该列表示 barge-in **缺省合成默认树**中 `length` 叶子的字数阈值——ASR partial strip 后 rune 数 ≥ 该值才可能构成打断。它与既有 `interruption_min_duration_ms`（时长阈值）对称，把原本硬编码在引擎 `default_rule(min_text_length=2)` 的字数门控提升为 Campaign 级可配字段。
+
+该列 SHALL 仅在 `interruption_rules` 为 NULL（非高级模式）时被引擎读取用于合成默认树；campaign 配置了显式 `interruption_rules`（高级模式）时该列不参与判定。约束 `ge=1` 因 `length(value=0)` 会匹配空串（每个静默 partial 都过），非合理门控。默认 `2` 复刻历史硬编码值。
+
+#### Scenario: 新列加性迁移回填默认值
+
+- **WHEN** isales-common Alembic 迁移在已有数据的 `campaign` 表上新增 `interruption_min_chars` 列（down_revision 接当前 head `e6f7a8b9c0d1`）
+- **THEN** 迁移 MUST 以 `server_default="2"` 回填所有存量行，列 NOT NULL 不产生 NULL 窗口
+- **AND** 存量 null-rule campaign 的打断判定行为 MUST 与迁移前（硬编码字数≥2）逐字节一致
+
+#### Scenario: 仅 null-rule campaign 读取该列
+
+- **WHEN** campaign 的 `interruption_rules` 为 NULL
+- **THEN** 引擎合成默认树时 `length` 叶子 `value` MUST 取 `campaign.interruption_min_chars`
+- **WHEN** campaign 的 `interruption_rules` 为非 NULL 显式规则树
+- **THEN** 引擎 MUST 忽略 `interruption_min_chars`，用显式树自身的 `length` 叶子（若有）
+
+#### Scenario: schema 暴露与 PATCH 写入
+
+- **WHEN** 客户端通过 campaign API 读取或 PATCH `interruption_min_chars`
+- **THEN** `CampaignBase` / `CampaignRead` MUST 含该字段（`int`，`ge=1`），`CampaignUpdate` MUST 以可选字段（`int | None`）支持部分更新；isales-api MUST NOT 在字段白名单层静默丢弃该字段
 
 ## Cross-Reference
 
