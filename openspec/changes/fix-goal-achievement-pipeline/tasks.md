@@ -1,3 +1,10 @@
+## 0. isales-common — RoutePersonaAction.goal_type schema(Path A,实装暴露后新增)
+
+- [x] 0.1 `schemas/jsonb/routing_rule.py` `RoutePersonaAction` 加可选 `goal_type`(max 64)+ `model_validator`(`to != "closing"` 带 goal_type → ValueError);`extra=forbid` 下使 route:closing+goal_type 合法、避免 `GET /campaigns` 500 <!-- isales-common, commit pending -->
+- [x] 0.2 版本 0.8.9→0.8.10(纯 JSONB shape,**无 alembic**);consumer pin `>=0.8.x,<0.9` 已涵盖 0.8.10,无需改 pin
+- [x] 0.3 测试:`test_route_closing_carries_goal_type` + `test_route_goal_type_rejected_for_non_closing`(`tests/test_tools_personas_gating.py`);`pytest` → 183 passed
+- [ ] 0.4 部署:scp common `routing_rule.py` 到 ECS 各服务 release,**先于 §3 配置写入**重启 api/engine(否则旧 schema 校验 route+goal_type → 500)
+
 ## 1. isales-engine — decider route 动作补 goal_type
 
 - [x] 1.1 `pipeline/decider.py` 的 `route` 分支(atype=="route")对称补 `goal_type=action.get("goal_type")`,与 `transition` 分支一致;`DeciderAction` 已有 `goal_type` 字段,无需改 dataclass <!-- isales-engine 59654ff -->
@@ -26,6 +33,7 @@
 - [x] 4.1 `RoutingRulesTab.vue`:legacy `transition`/`restructure` 选项改为「仅当本行已是该类型时显示」(不可新建、存量可编辑、下拉不变空);`addRule()` 默认 action 由 legacy `transition` 改现代 `route` <!-- isales-web 28a961f -->
 - [x] 4.2 `types/campaign.ts` 的 `RoutingAction` union 保留 legacy 类型定义(后端 shim 仍执行存量规则),无需改;创建入口收口在 4.1 的 dropdown + addRule 默认值;legacy 行重选经 `onActionTypeChange` 四分支正确处理 <!-- 28a961f -->
 - [x] 4.3 `vitest run`(routing/campaign 5 文件)→ 34 passed;`routingRulesTab.test.ts` addRule 默认值断言同步改为 route/closing <!-- 28a961f -->
+- [x] 4.4 (Path A)`types/campaign.ts` `RoutePersonaAction` 加 `goal_type?`;`RoutingRulesTab.vue` 在 `route` 且 `to=closing` 时显示 goal_type 输入,`onRouteTargetChange` 切走 closing 清空(防 validator 422);加 `clears route goal_type` 测试;`vitest` 29 passed + `npm run typecheck` clean <!-- isales-web, commit pending -->`
 
 ## 5. spec 同步与校验
 
@@ -35,7 +43,10 @@
 
 ## 6. 部署与真机验收
 
-- [ ] 6.1 按 design Migration Plan 顺序部署:engine(§1)→ worker(§2)→ campaign 配置(§3)→ web(§4);scp 覆盖 + systemctl restart(参照 ECS scp 部署纪律),无 alembic
+- [x] 6.1a 部署 engine(decider §1)+ worker(§2):scp `decider.py`/`mock.py`/`base.py` → ECS `/opt/isales/current`,import smoke OK,`systemctl restart isales-engine isales-worker` → 双 active、日志干净(engine `cloud_edge_grpc_server_started`+`credentials_loaded`,worker `metrics_tick_done campaigns=1`)<!-- 2026-06-11 deployed -->
+- [ ] 6.1b 部署 common(§0.4):scp `routing_rule.py` → ECS api/engine release,重启 api/engine。**必须先于 6.1c 配置写入**
+- [ ] 6.1c 部署 web(§4):build + rsync dist → `/var/www/isales-web` + nginx reload
+- [ ] 6.2 mac 真机/QA 拨一通走「成功」路径的电话,验证链路:transcript 出 `ai_reply{goal_achieved:true,goal_type:X}` + 独立 `goal_achieved` 事件
 - [ ] 6.2 mac 真机/QA 拨一通走「成功」路径的电话,验证链路:transcript 出 `ai_reply{goal_achieved:true,goal_type:X}` + 独立 `goal_achieved` 事件
 - [ ] 6.3 验证 worker 落 `call_summary.goal_achieved=true, goal_type=X`,且摘要正文含 AI 回复
 - [ ] 6.4 验证 lead 进 `COMPLETED`(referee_hangup 路径 goal_done→COMPLETED;或 wrap_up_completed 正常挂断路径 goal_achieved→COMPLETED)
@@ -44,6 +55,6 @@
 
 ## 7. 收口
 
-- [ ] 7.1 4 仓(engine/worker/web + meta)+ campaign 配置改动 commit & push(meta-repo 回写进度)
-- [ ] 7.2 `make test-all` 全绿(或甄别既有 pre-existing 失败)
-- [ ] 7.3 `openspec validate --strict` 后准备 archive(`/opsx:archive fix-goal-achievement-pipeline`)
+- [x] 7.1 代码 4 仓 commit & push 完成:engine `59654ff` / worker `cecfa16` / web `28a961f` / meta `a6ebf1d`(均 push origin main)。campaign 配置(§3)为 prod DB,未提交(seed 若存在再随 §3 同步)
+- [x] 7.2 `make test-all`:worker 57 ✓ / web 88 ✓ / common 181 ✓ / telephony 345 ✓;engine 406 passed(1 pre-existing `test_gate_fails_open_to_main_on_referee_timeout`,clean HEAD 同 red);api 2 + scheduler 3 失败=**redis-steal 环境 flake**(两仓我未触碰、git clean,当前 redis 有 3 个 BLPOP client 偎队列,见 [[feedback_legacy_macos_deploy_steals_redis]])。**本改动零新增失败**
+- [ ] 7.3 `openspec validate --strict` 后准备 archive(`/opsx:archive fix-goal-achievement-pipeline`)——待 §3 配置 + §6 真机验收完成后

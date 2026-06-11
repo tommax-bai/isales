@@ -11,7 +11,9 @@
 ## What Changes
 
 - **[isales-worker]** `_last_role_markers` 与 `_stitch_text` 改读 `ai_reply` 事件(对齐 `transcript` 权威契约),不再读 `bot_speech`;更新 `base.py` 中 stale 的契约 docstring。修复 `goal_achieved` / `goal_type` 标记读取与摘要正文拼接。
+- **[isales-common]** `RoutePersonaAction`(`type:route`)schema 新增可选 `goal_type` 字段 + validator(仅 `to=closing` 时合法),使 `{type:route, to:closing, goal_type:X}` 通过 `extra=forbid` 校验(否则 `GET /campaigns` 会因未知字段 500)。common 版本 0.8.9→0.8.10(纯 JSONB shape,无 alembic);consumer pin `>=0.8.x,<0.9` 已涵盖,无需改 pin。
 - **[isales-engine]** `pipeline/decider.py` 的 `route` 动作对称补齐 `goal_type` 提取(与 `transition` 动作一致),使 `{type: route, to: closing, goal_type: X}` 能把 `X` 真正落进 `goal_achieved` 事件。
+- **[isales-web]** `types/campaign.ts` 的 `RoutePersonaAction` 加 `goal_type`;`RoutingRulesTab.vue` 在 `route` 且 `to=closing` 时显示 goal_type 输入框,切走 closing 时清空(避免非 closing 带 goal_type 被 validator 拒)。
 - **[config / data]** campaign 1 的 referee(`main_judge`)prompt 增补「已达成」判定语义与输出 category;对应 routing rule 由 `{type: tool, tool: hangup}` 改为 `{type: route, to: closing, then_state: WRAPPING_UP, goal_type: <待定>}`。此为 `goal-achievement` spec 既定正路,无需 DB schema 变更。
 - **[cleanup]** 删除 campaign `tools` 中 orphan 的 `end_call`(零代码引用的 seed 残留);**[isales-web]** `RoutingRulesTab.vue` + `types/campaign.ts` 动作类型下拉移除 `transition(旧)` / `restructure(旧)` 两个 legacy 选项(0 campaign 在用,engine 保留 removal-tracked shim 仍执行存量规则,仅收口编辑入口)。
 - **[spec 硬化]** 在 `goal-achievement` spec 补 scenario,把「worker 从哪个 transcript 事件类型读取 goal 标记」钉死为 `ai_reply`(+ 独立 `goal_achieved` 事件),并明确 `route` 与 legacy `transition` 动作的 `goal_type` 提取对称——把上述两个代码 bug 锁进 spec,防止此类漂移再次发生。`transcript` spec 已正确定义 `ai_reply` 承载 goal 标记(枚举中本就无 `bot_speech`),无需改动。
@@ -25,18 +27,20 @@
 
 ### Modified Capabilities
 - `goal-achievement`: 修订「实时目标达成判定」requirement,新增两条 scenario——(a) 钉死 worker 读取 goal 标记的 transcript 事件类型为 `ai_reply`(/ 独立 `goal_achieved` 事件),消除 `bot_speech` 这一已废弃事件名残留导致的读取漂移;(b) 明确 `route` 与 legacy `transition` 动作的 `goal_type` 提取对称。
+- `data-model`: 修订「routing_rules action 扩展」requirement,给 `RoutePersonaAction` 加可选 `goal_type`(仅 `to=closing` 合法),并新增 scenario「route:closing 动作携带 goal_type」。这是实装暴露的必需补丁——`route` 动作此前无 goal_type 字段,而 `extra=forbid` 使 route:closing 无法携带目标标签。
 
 <!-- transcript spec 已正确定义 ai_reply 承载 goal 标记、枚举中无 bot_speech,无需 delta -->
 <!-- decider route goal_type 提取、worker 读 ai_reply 均为回归现有 spec 的 bug fix,不单列 capability -->
 <!-- web legacy 选项移除、end_call 清理为纯实现/数据清理,无 spec 行为变更 -->
 <!-- referee prompt + routing rule 改 = goal-achievement spec line 26-29 既定机制的 campaign 配置应用,非 spec 变更 -->
-- `data-model` / `ai-pipeline` / `retry-followup` / `web-admin-ui`: 不修改,仅受益于上述 bug fix 后行为恢复正常。
+- `ai-pipeline` / `retry-followup` / `web-admin-ui`: 不修改,仅受益于上述 bug fix 后行为恢复正常。
 
 ## Impact
 
 - **isales-worker**: `isales_worker/llm/mock.py`(`_last_role_markers`、`_stitch_text`)、`isales_worker/llm/base.py`(docstring)。修复后 `call_summary.goal_achieved` / `goal_type` / 摘要正文恢复正确;下游 `lead_state`(COMPLETED 判定)与 `process_callbacks`(webhook trigger)随之恢复。
+- **isales-common**: `schemas/jsonb/routing_rule.py`(`RoutePersonaAction` 加 `goal_type` + validator);版本 0.8.9→0.8.10。**部署顺序关键:api 必须先装新 common 再写 route+goal_type 配置,否则旧 schema 校验 `GET /campaigns` 500。**
 - **isales-engine**: `isales_engine/pipeline/decider.py`(`route` 动作 `goal_type` 提取)。下游 `goal_achieved` 事件的 `goal_type` 字段恢复正确。
-- **isales-web**: `src/views/Campaigns/Tabs/RoutingRulesTab.vue`、`src/types/campaign.ts`(移除 legacy 动作类型选项)。
+- **isales-web**: `src/views/Campaigns/Tabs/RoutingRulesTab.vue`、`src/types/campaign.ts`(移除 legacy 动作类型选项 + route:closing 的 goal_type 输入)。
 - **数据 / 配置**: campaign 1 的 referee prompt(`prompt_version`)、`routing_rules`、`tools`(删 `end_call`)。无 DB schema / alembic 变更。
 - **指标**: 看板 `/analytics/goal-rate` 修复后将反映真实达成率(此前恒 0)。
 - **测试**: worker 现有测试 fixture 使用旧名 `bot_speech`,需同步改为 `ai_reply`,否则新代码下测试会反向失败(此前是它们掩盖了 bug)。

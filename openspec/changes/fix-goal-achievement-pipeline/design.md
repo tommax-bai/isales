@@ -39,6 +39,13 @@ transcript spec 是权威口径,`ai_reply` 是规范事件、`bot_speech` 是已
 
 **D6 — 测试 fixture 修正:** worker 测试(`test_summarize.py` / `test_callend.py` / `scripts/fake_call_end.py`)的 mock transcript 从 `bot_speech` 改 `ai_reply`,否则改完代码反被旧 fixture 测红——它们正是掩盖 bug 的来源。新增一条「`ai_reply` 输入能正确读出 goal 标记」的回归测试。
 
+**D7 —(实装暴露,2026-06-11)route 动作扩展 goal_type,而非改用 transition。**
+实装到 §3 时发现:`RoutePersonaAction`(`type:route`)schema **没有 `goal_type` 字段**,而 `AppModel` 是 `extra="forbid"`——往 route 动作写 goal_type 会让 `GET /campaigns`(CampaignRead 用 `list[RoutingRule]` 校验)500(重演 fix-transcript-schema-drift)。能携带 goal_type 的只有 legacy `TransitionAction`。三条收法(A 扩展 route schema / B 改用 transition / C route 不带标签),**用户选 A**:
+- 给 `RoutePersonaAction` 加可选 `goal_type` + validator(仅 `to=closing` 合法),common 0.8.9→0.8.10。
+- 好处:route 成为单一 goal 机制,真正消除「route vs transition」双轨拧巴(本 change 初衷),且先前已做的 engine decider goal_type 提取 + web 删 legacy 选项 + goal-achievement spec「对称」scenario 全部在 A 下成立。
+- 代价:多一个 common schema 变更 + 重部署 common(api 必须先于配置写入上线)。
+- 否决 B(双轨保留、web 删 transition 反而错)、C(丢用户选的 intent_confirmed 标签)。
+
 ## Risks / Trade-offs
 
 - **[只修 worker/engine、不改 campaign 配置 → 达成率仍 0]** → 三处必须同 change 同批上线;config 改动依赖 D3(decider goal_type)与 D1/D2(worker)已部署。Migration Plan 锁定顺序。
