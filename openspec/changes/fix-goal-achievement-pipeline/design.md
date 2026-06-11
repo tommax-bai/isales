@@ -46,6 +46,13 @@ transcript spec 是权威口径,`ai_reply` 是规范事件、`bot_speech` 是已
 - 代价:多一个 common schema 变更 + 重部署 common(api 必须先于配置写入上线)。
 - 否决 B(双轨保留、web 删 transition 反而错)、C(丢用户选的 intent_confirmed 标签)。
 
+**D8 —(referee 活体验收暴露,2026-06-11)修 3 个卡死 referee 的非本-change latent blocker。**
+部署后先做 referee 活体测试(ECS 上 `run_referee` + 部署 qwen-turbo 喂真实话术),连环挖出 3 个让 referee 判不出任何类(→ goal/HANGUP 全失效)的问题,均与本 change 的代码无关但卡死其目标:
+- (a) **referee prompt 缺占位符**:camp1 main_judge prompt(原版 + 本 change 初版)都没有 `{{user_last_utterance}}` / `{{recent_dialog_history}}`,而 `run_referee` 靠 `.replace()` 这两个占位符注入对话 → referee 永远看不到客户说了什么。改为 canonical 格式(参 `isales-api/scripts/seed_pipeline_stream_campaign.py`)。
+- (b) **referee provider 错配**:main_judge `ext_params.provider=volcengine` 但 `model=qwen-turbo`(dashscope 模型),volcengine 仅有 ASR/TTS 凭据 → LLM 调用 401 fail-open。是 `per-role-llm-config`(今早部署、让 ext_params.provider 真正生效)暴露的数据错配;registry 不回落(volcengine 有凭据)。改 `provider=dashscope`(对齐同用 qwen-turbo 的 extractor)。
+- (c) **ECS 部署的 `referee.py` 滞后 main**:`releases/20260517` 的 `_USER_PRIMER` 仍是旧版 `"请只输出一个词：pass 或 hold…"`——这条 user 消息硬逼模型只吐 pass/hold,**压过 system prompt 的任何枚举** → 本引擎上所有多类别 referee 全废。main 早改成通用 `"请按系统提示只输出一个分类词…"`(diff 仅此一行 + 注释)。scp main referee.py + 重启 engine。
+修完 **referee 活体 4/4 全绿**。**⚠️ 更广隐患**:(c) 暴露 ECS engine release 对「未单独 scp 过」的文件可能整体滞后 main(scp-overwrite 部署只覆盖改动文件)→ 引擎全量对齐 main 应另起排查(超出本 change)。
+
 ## Risks / Trade-offs
 
 - **[只修 worker/engine、不改 campaign 配置 → 达成率仍 0]** → 三处必须同 change 同批上线;config 改动依赖 D3(decider goal_type)与 D1/D2(worker)已部署。Migration Plan 锁定顺序。

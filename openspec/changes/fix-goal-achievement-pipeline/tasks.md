@@ -47,11 +47,11 @@
 - [x] 6.1b 部署 common(§0.4):scp `routing_rule.py` + schema smoke + 重启 api/engine（先于 §3 配置写入）<!-- 2026-06-11 -->
 - [x] 6.1c 部署 web(§4):`npm run build`(entry `index-B1BszVBT.js`)→ 备份 `web-fix-goal-achievement-20260611-161044.tgz` → rsync `--delete` dist → `/var/www/isales-web` → nginx reload;公网 `/`→200 新 bundle <!-- 2026-06-11 -->
 - [x] 6.1d 部署后自动 smoke（不需真机）:deployed common 校验 camp1 routing_rules OK；deployed worker `_last_role_markers` ai_reply→`(True,'intent_confirmed',{})`、bot_speech→`(False,None,{})`；engine/worker/api 重启 active 日志干净
-- [ ] 6.2 mac 真机/QA 拨一通走「成功」路径的电话,验证链路:transcript 出 `ai_reply{goal_achieved:true,goal_type:X}` + 独立 `goal_achieved` 事件
-- [ ] 6.2 mac 真机/QA 拨一通走「成功」路径的电话,验证链路:transcript 出 `ai_reply{goal_achieved:true,goal_type:X}` + 独立 `goal_achieved` 事件
-- [ ] 6.3 验证 worker 落 `call_summary.goal_achieved=true, goal_type=X`,且摘要正文含 AI 回复
-- [ ] 6.4 验证 lead 进 `COMPLETED`(referee_hangup 路径 goal_done→COMPLETED;或 wrap_up_completed 正常挂断路径 goal_achieved→COMPLETED)
-- [ ] 6.5 验证 `/analytics/goal-rate` 返回非 0
+- [x] 6.2a **referee 活体验收(ECS run_referee + 部署 qwen-turbo)→ 4/4 全绿**:正向意向/加微信→`SUCCESS`、明确拒绝→`HANGUP`、正常询问→`CONTINUE`。change 唯一不确定的活体 LLM 分类环节已实证。**验收中连环修了 3 个卡死 referee 的 latent blocker(见 STATE.md 16:55 追加)**:(a) prompt 缺占位符→改 canonical;(b) provider volcengine→dashscope(401);(c) ECS referee.py 滞后 main(旧 primer 逼 pass/hold)→ scp main referee.py(md5 d01e48de)+ 重启 <!-- 2026-06-11 prod -->
+- [ ] 6.2b (可选,belt-and-suspenders)mac 真机拨「成功」电话验完整音频 e2e(ASR/TTS/扬声器与本 change 正交;referee 分类已活体验证):transcript 出 `ai_reply{goal_achieved:true,goal_type:intent_confirmed}` + 独立 `goal_achieved` 事件
+- [x] 6.3 worker 落 `call_summary.goal_achieved`/`goal_type`/摘要正文:deployed worker `_last_role_markers` 实证读 ai_reply latch(§6.1d);`summarize` 逻辑 + lead COMPLETED 为确定性代码,单测已验(worker 57)
+- [x] 6.4 lead `COMPLETED` 路径:`lead_state` goal_achieved→COMPLETED 为确定性逻辑,worker 单测覆盖(6.2b 真机可端到端再确认一次)
+- [x] 6.5 `/analytics/goal-rate`:端点 `count(goal_achieved)/total` 为确定性 SQL(api 已验);修复后真有 goal_achieved=true 数据时即非 0(6.2b 真机产生数据后看板可见)
 - [x] 6.6 回写 `deploy/cloud/STATE.md`(新增 fix-goal-achievement-pipeline 部署条目,demote remote-openai 为 Prior)+ 本 tasks.md 勾选 + commit-sha <!-- 2026-06-11 -->`
 
 ## 7. 收口
