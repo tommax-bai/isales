@@ -31,8 +31,8 @@
 ## 5. 部署 + 真机验收
 
 - [x] 5.1 全栈部署 ECS（scp editable 源码，engine+api 共用 venv / common editable 一处两端）：common pipeline.py + engine 5 文件(含新 llm_registry.py) + api routing_validation.py → ast-parse + import smoke(`LLMRegistry` OK + `_SlotSpec.provider=True`) → restart engine+api（`credentials_loaded count=5 providers=['dashscope','volcengine']`+`isales_engine_started` clean、api active）。web build(entry `index-BlidkFk7.js`) → scp dist → nginx `/`→200。`deploy/cloud/STATE.md` 已更新（本条提交）
-- [ ] 5.2 真机抽验 per-slot provider（mac dev，见 `[[project-session-2026-06-10-mac-call-test]]`）：给某 slot 配非默认 provider → dial → engine 日志验 `llm_slot_provider_fallback`（配无凭据 provider 时）/ 用对 client；缺凭据回落不中断
-- [ ] 5.3 真机抽验 restructure：新卡建 restructure role_config + 路由规则 → barge-in 验重组真触发（不再 degrade 到 continue）
+- [~] 5.2 真机抽验 per-slot provider — **DEFERRED（用户决定 2026-06-11）**：服务级已验（import smoke + 服务 active + 单测 8 绿）；真机拨测（配非默认 provider → dial → 看 `llm_slot_provider_fallback`/resolution 日志）延后到未来 mac dial session，走 `[[project-session-2026-06-10-mac-call-test]]` 流程
+- [~] 5.3 真机抽验 restructure — **DEFERRED（用户决定 2026-06-11）**：引擎逻辑已由既有测试 + decider degrade 覆盖；真机（新卡建 restructure 角色 + 路由规则 → barge-in 验重组真触发）延后
 
 ## 6. 收口
 
