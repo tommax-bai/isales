@@ -141,8 +141,8 @@ python3 -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().
 #   ↑ 输出值同时写入 4 个 env 文件 + password manager + deploy/cloud/env/SECRETS.md
 #   (gitignored 离线副本)。详见 § 凭据轮换。
 
-# Provider 凭据 (volcengine app_key/app_token, openai api_key, dashscope
-# api_key 等) 现在走 DB SSOT —— env 不再持有；首次部署 alembic 完成后
+# Provider 凭据 (volcengine app_key/app_token, dashscope api_key 等)
+# 现在走 DB SSOT —— env 不再持有；首次部署 alembic 完成后
 # 用 isales-cred-migrate 一次性灌入：
 sudo -u isales bash -c '
   set -a; source /etc/isales/env/api.env; set +a

@@ -72,8 +72,9 @@ TBD - created by archiving change web-admin-ui-redesign. Update Purpose after ar
 #### Scenario: provider 选项对齐引擎实装
 
 - **WHEN** 用户在 prompt 配置或 provider 配置中选择 model provider
-- **THEN** 可选项 SHALL 对齐 `isales-engine` factory 实装的 provider（LLM：volcengine / openai / mock），MUST NOT 列出引擎未对接的 provider
-- **AND** main 用大模型（如 doubao-pro / gpt-4o），referee 与 extractor MAY 推荐用便宜小模型（如 qwen-turbo / gpt-4o-mini / doubao-lite），编辑器 SHALL 在 model 选择器 hover 时显示"main 推荐 ⭐⭐⭐ / referee 推荐 ⭐ / extractor 推荐 ⭐"
+- **THEN** 可选项 SHALL 对齐 `isales-engine` factory 实装的**真实** LLM provider（volcengine / dashscope），MUST NOT 列出引擎未对接的 provider
+- **AND** `mock` 虽是 engine factory 合法 provider 名（测试 / dev 经 `ISALES_ENGINE_LLM_PROVIDER` env 配置）但 MUST NOT 在 UI 的 provider 选择器或「模型厂商」凭据 view 中暴露（它无需凭据、选中即把真活动配成假 LLM）
+- **AND** main 用大模型（如 doubao-pro），referee 与 extractor MAY 推荐用便宜小模型（如 qwen-turbo / doubao-lite），编辑器 SHALL 在 model 选择器 hover 时显示"main 推荐 ⭐⭐⭐ / referee 推荐 ⭐ / extractor 推荐 ⭐"
 
 #### Scenario: 模型厂商配置写入 DB
 

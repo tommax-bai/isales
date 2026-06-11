@@ -19,7 +19,7 @@ DB SHALL 是运行时凭据的唯一事实来源。覆盖字段含 `api_key` / `
 - **WHEN** 一次 fresh deploy 完成
 - **THEN** `/etc/isales/env/{api,engine,worker,scheduler}.env` MUST NOT
   包含 `ISALES_VOLCENGINE_APP_KEY` / `ISALES_VOLCENGINE_APP_TOKEN` /
-  `ISALES_OPENAI_API_KEY` / `ISALES_OPENAI_BASE_URL` /
+  `ISALES_DASHSCOPE_API_KEY` / `ISALES_DASHSCOPE_BASE_URL` /
   `ISALES_VOLCENGINE_*_ENDPOINT` 等字段；4 个 env 文件 SHALL 仅持有
   `ISALES_FERNET_KEY`（同一值，4 处一致）以及非凭据配置（数据库
   URL / Redis URL / JWT secret / ARTC AppId/AppKey 等）
@@ -45,7 +45,7 @@ DB SHALL 是运行时凭据的唯一事实来源。覆盖字段含 `api_key` / `
 - **WHEN** `ISALES_CREDENTIALS_REQUIRED=false`（仅 dev / CI 使用）且
   `provider_credential` 表为空或解密失败
 - **THEN** engine SHALL 跳过装载 + 强制 `factory.build_*` 走 mock
-  provider 分支；运行时调用 build_volcengine / build_openai 等真 provider
+  provider 分支；运行时调用 build_volcengine / build_dashscope 等真 provider
   SHALL 抛 `NotImplementedError` 明示原因
 
 ### Requirement: Fernet 对称加密 fabric
