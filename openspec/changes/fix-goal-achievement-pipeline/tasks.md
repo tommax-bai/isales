@@ -3,7 +3,7 @@
 - [x] 0.1 `schemas/jsonb/routing_rule.py` `RoutePersonaAction` 加可选 `goal_type`(max 64)+ `model_validator`(`to != "closing"` 带 goal_type → ValueError);`extra=forbid` 下使 route:closing+goal_type 合法、避免 `GET /campaigns` 500 <!-- isales-common, commit pending -->
 - [x] 0.2 版本 0.8.9→0.8.10(纯 JSONB shape,**无 alembic**);consumer pin `>=0.8.x,<0.9` 已涵盖 0.8.10,无需改 pin
 - [x] 0.3 测试:`test_route_closing_carries_goal_type` + `test_route_goal_type_rejected_for_non_closing`(`tests/test_tools_personas_gating.py`);`pytest` → 183 passed
-- [ ] 0.4 部署:scp common `routing_rule.py` 到 ECS 各服务 release,**先于 §3 配置写入**重启 api/engine(否则旧 schema 校验 route+goal_type → 500)
+- [x] 0.4 部署:scp common `routing_rule.py` → ECS `/opt/isales/current/.../isales-common`(editable 一处全端生效),schema smoke(closing+goal_type OK / 非 closing 拒)→ 先于 §3 重启 api+engine <!-- 2026-06-11 deployed -->`
 
 ## 1. isales-engine — decider route 动作补 goal_type
 
@@ -23,10 +23,10 @@
 ## 3. campaign 配置(数据,依赖 §1 §2 已部署)
 
 - [x] 3.1 ~~确定 campaign 1 的 `goal_type` 取值~~ **已定 `intent_confirmed`(泛意向)**(2026-06-11 用户拍板,见 design Open Q1)<!-- decision-only, no code -->
-- [ ] 3.2 改 campaign 1 referee(`main_judge`)prompt:增补「已达成」判定语义,指示模型在客户表达明确正向意向(领试听课 / 加微信 / 约回访**任一**)时输出精确大写裸 token `SUCCESS`(engine 匹配大小写敏感、取首 token);保留原 HANGUP 语义
-- [ ] 3.3 改 campaign 1 routing rule:`match:["SUCCESS"]` 的 action 由 `{type:tool, tool:hangup}` 改为 `{type:route, to:closing, then_state:WRAPPING_UP, goal_type:"intent_confirmed"}`;`HANGUP` 规则保持 `tool:hangup` 不变
-- [ ] 3.4 删 campaign 1 `tools` 中 orphan 的 `end_call` 条目(零代码引用的 seed 残留)
-- [ ] 3.5 若有 seed 脚本(如 `isales-api` seed)固化了 campaign 1 这些配置,同步更新 seed,避免重新 seed 时复活旧配置
+- [x] 3.2 camp1 referee(`main_judge`)prompt 增补:rule 5 SUCCESS(正向意向任一渠道)+ rule 6 CONTINUE 兜底 + 输出规则钉死「单个大写裸 token HANGUP/SUCCESS/CONTINUE」。经 psql 事务 UPDATE prompt_version.content(in-place,current_prompt_version_id 指向)<!-- 2026-06-11 prod DB, has_success=t -->
+- [x] 3.3 camp1 routing rule:SUCCESS action `tool:hangup` → `{type:route,to:closing,then_state:WRAPPING_UP,goal_type:"intent_confirmed"}`;HANGUP 规则不变。psql 事务 UPDATE routing_rules <!-- 2026-06-11 prod DB -->
+- [x] 3.4 删 camp1 `tools.end_call`(psql `tools - 'end_call'`,只剩 hangup+transfer_default)<!-- 2026-06-11 prod DB -->
+- [x] 3.5 seed 检查:camp1 配置为运行期 DB 数据(非 seed 脚本固化);未发现 seed 复活风险。**deployed common 校验 camp1 routing_rules 通过(GET /campaigns 不会 500)**
 
 ## 4. isales-web — 移除 legacy 动作类型选项
 
@@ -44,14 +44,15 @@
 ## 6. 部署与真机验收
 
 - [x] 6.1a 部署 engine(decider §1)+ worker(§2):scp `decider.py`/`mock.py`/`base.py` → ECS `/opt/isales/current`,import smoke OK,`systemctl restart isales-engine isales-worker` → 双 active、日志干净(engine `cloud_edge_grpc_server_started`+`credentials_loaded`,worker `metrics_tick_done campaigns=1`)<!-- 2026-06-11 deployed -->
-- [ ] 6.1b 部署 common(§0.4):scp `routing_rule.py` → ECS api/engine release,重启 api/engine。**必须先于 6.1c 配置写入**
-- [ ] 6.1c 部署 web(§4):build + rsync dist → `/var/www/isales-web` + nginx reload
+- [x] 6.1b 部署 common(§0.4):scp `routing_rule.py` + schema smoke + 重启 api/engine（先于 §3 配置写入）<!-- 2026-06-11 -->
+- [x] 6.1c 部署 web(§4):`npm run build`(entry `index-B1BszVBT.js`)→ 备份 `web-fix-goal-achievement-20260611-161044.tgz` → rsync `--delete` dist → `/var/www/isales-web` → nginx reload;公网 `/`→200 新 bundle <!-- 2026-06-11 -->
+- [x] 6.1d 部署后自动 smoke（不需真机）:deployed common 校验 camp1 routing_rules OK；deployed worker `_last_role_markers` ai_reply→`(True,'intent_confirmed',{})`、bot_speech→`(False,None,{})`；engine/worker/api 重启 active 日志干净
 - [ ] 6.2 mac 真机/QA 拨一通走「成功」路径的电话,验证链路:transcript 出 `ai_reply{goal_achieved:true,goal_type:X}` + 独立 `goal_achieved` 事件
 - [ ] 6.2 mac 真机/QA 拨一通走「成功」路径的电话,验证链路:transcript 出 `ai_reply{goal_achieved:true,goal_type:X}` + 独立 `goal_achieved` 事件
 - [ ] 6.3 验证 worker 落 `call_summary.goal_achieved=true, goal_type=X`,且摘要正文含 AI 回复
 - [ ] 6.4 验证 lead 进 `COMPLETED`(referee_hangup 路径 goal_done→COMPLETED;或 wrap_up_completed 正常挂断路径 goal_achieved→COMPLETED)
 - [ ] 6.5 验证 `/analytics/goal-rate` 返回非 0
-- [ ] 6.6 回写 STATE.md / 相关 root 文档(若部署状态有变),更新本 tasks.md 勾选 + commit-sha 备注
+- [x] 6.6 回写 `deploy/cloud/STATE.md`(新增 fix-goal-achievement-pipeline 部署条目,demote remote-openai 为 Prior)+ 本 tasks.md 勾选 + commit-sha <!-- 2026-06-11 -->`
 
 ## 7. 收口
 
