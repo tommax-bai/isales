@@ -42,14 +42,14 @@
 
 ## 7. 部署 + 迁移 + 真机验收
 
-- [ ] 7.1 按 design Migration Plan:备份 provider_credential → common 上线 → dry-run 迁移核对 → `--apply` 迁移 → engine factory 上线 + 重启 → api 白名单 → web 部署
-- [ ] 7.2 写入有效 ark key(`82989d4d-…`)到 `volcengine.api_key`;camp1 main 角色 `model` 改有效 ark 模型ID/接入点
-- [ ] 7.3 验证:engine `build_llm("volcengine")` 实测豆包回话(不再 401);ASR/TTS 仍正常(走 volcengine_speech);兜底词不再触发
-- [ ] 7.4 真机:mac/QA 拨一通,AI 真用豆包对话(非"喂喂、喂喂"兜底)+ 配合 `fix-goal-achievement-pipeline` 验完整 goal_achieved 链(referee 已验)
-- [ ] 7.5 回写 `deploy/cloud/STATE.md`(provider 拆分 + 迁移)+ tasks.md 勾选 + commit-sha
+- [x] 7.1 按 design Migration Plan:备份 provider_credential → common 上线 → dry-run 迁移核对 → `--apply` 迁移 → engine factory 上线 + 重启 → api 白名单 → web 部署 <!-- 2026-06-12 全栈部署:pg_dump `provider_credential-split-20260612-101555.sql` → scp common(cred_migrate+tts_volcengine) → dry-run 核对 4 行 → split-speech --apply(4 行 → volcengine_speech) → import-env 写 ark key → scp engine factory.py + api router + 翻 engine.env ASR/TTS=volcengine_speech → 重启 engine+api → web build+rsync+nginx reload(index-CJ3BqlMB.js)。详见 deploy/cloud/STATE.md 2026-06-12 10:30 条 -->
+- [x] 7.2 写入有效 ark key(`82989d4d-…`)到 `volcengine.api_key`;~~camp1 main 角色 `model` 改有效 ark 模型ID/接入点~~ <!-- ark key 82989d4d-…2c49 已写入 volcengine.api_key(import-env --apply)。camp1 main model **用户决定自己在「模型配置」UI 处理**(2026-06-12):火山方舟账号当前无可用豆包模型(GET /models 全 Shutdown / doubao-seed-1-6 ModelNotOpen / doubao-pro-32k NotFound),需用户开通模型/建 ep-xxx 接入点 -->
+- [~] 7.3 验证:engine `build_llm("volcengine")` ~~实测豆包回话~~(**不再 401** ✓);ASR/TTS 仍正常(走 volcengine_speech)✓;~~兜底词不再触发~~ <!-- ark key 鉴权实测通过(curl ark 返回 model NotFound 而非 auth-failed,401 根因已除);build_llm("volcengine") 构建 OK key_prefix=8298;build_asr/tts 从 volcengine_speech 构建成功(engine startup credentials_loaded count=6 无 NotImplementedError)。**豆包回话/兜底词清除 待 camp1 main 模型开通**(账号侧,见 7.2);⚠️ LLMRegistry fail-open 只接 build 错误不接 runtime 404 → valid-key/bad-model 仍 404→兜底 -->
+- [ ] 7.4 真机:mac/QA 拨一通,AI 真用豆包对话(非"喂喂、喂喂"兜底)+ 配合 `fix-goal-achievement-pipeline` 验完整 goal_achieved 链(referee 已验) <!-- DEFERRED:需用户先开通豆包模型(7.2)+ 真机拨测;account-blocked + 需真人电话 -->
+- [x] 7.5 回写 `deploy/cloud/STATE.md`(provider 拆分 + 迁移)+ tasks.md 勾选 + commit-sha <!-- STATE.md 2026-06-12 10:30 条 + 本 tasks.md + meta commit -->
 
 ## 8. 收口
 
-- [ ] 8.1 跨仓 commit & push(common/engine/web/api + meta 回写)
-- [ ] 8.2 `make test-all`(甄别 pre-existing redis-steal / gate-timeout flake)
-- [ ] 8.3 `openspec validate --strict` 后 archive(`/opsx:archive split-model-and-speech-provider-config`)
+- [x] 8.1 跨仓 commit & push(common/engine/web/api + meta 回写) <!-- common d0bf1f9 / engine 2457991 / api 2eac78f / web abae626 / meta 068e646 全 push origin main -->
+- [x] 8.2 `make test-all`(甄别 pre-existing redis-steal / gate-timeout flake) <!-- common 189 / telephony 345 / worker 57 / web 90 全绿;engine 1(gate-timeout)+ api 2 + scheduler 3 = pre-existing redis-steal/gate flake,均与本 change 无关(stash 验证 + scheduler/telephony/worker 未触碰)。ultracode 对抗审计 0 confirmed / 3 dismissed -->
+- [x] 8.3 `openspec validate --strict` 后 archive(`/opsx:archive split-model-and-speech-provider-config`) <!-- 见下方 archive -->`
