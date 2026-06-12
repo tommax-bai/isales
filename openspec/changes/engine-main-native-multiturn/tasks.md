@@ -28,9 +28,12 @@
 
 ## 4. 部署
 
-- [ ] 4.1 scp `prompt_builder.py` 到 ECS engine 部署路径（参照既有 scp 覆盖纪律，不走 git pull）
-- [ ] 4.2 `ssh root@121.89.85.150 'systemctl restart isales-engine'` + 确认 active
-- [ ] 4.3 更新 `deploy/cloud/STATE.md` 若涉及部署状态变化
+<!-- scp → releases/20260517-222944/isales-engine/isales_engine/pipeline/prompt_builder.py（editable，共享 /opt/isales/current/venv）。 -->
+- [x] 4.1 scp `prompt_builder.py` 到 ECS engine 部署路径（参照既有 scp 覆盖纪律，不走 git pull）
+<!-- deployed module: build_main_messages present / _render_dialog removed / _render_context present；engine active。 -->
+- [x] 4.2 `ssh root@121.89.85.150 'systemctl restart isales-engine'` + 确认 active
+<!-- STATE.md 新增 17:10 CST 条目（engine 单文件 + 重启，无 alembic/无 common 版本）。 -->
+- [x] 4.3 更新 `deploy/cloud/STATE.md` 若涉及部署状态变化
 
 ## 5. 真机验收
 
