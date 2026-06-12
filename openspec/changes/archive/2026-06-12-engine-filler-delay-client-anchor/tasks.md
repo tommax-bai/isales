@@ -28,4 +28,5 @@
 
 <!-- engine c921d7a (isales-engine, pushed main); meta commit 见下 -->
 - [x] 4.1 tasks.md 用 HTML 注释回写 commit/PR# + 偏离说明；engine（`c921d7a`）+ meta-repo 提交并 `git push`。
-- [ ] 4.2 `openspec archive engine-filler-delay-client-anchor`（合并 filler spec delta），确认目录移入 `changes/archive/`。**等用户确认**（真机验收 deferred，是否先 archive 由用户定）。
+<!-- archived: openspec archive 合并 filler MODIFIED requirement 进 specs/filler/spec.md（~1 modified，验证全 body+4 scenario 落地）→ 目录移入 archive/2026-06-12-engine-filler-delay-client-anchor（验证 dir moved，非信 exit code）。meta archive commit 见 STATE 同 commit -->
+- [x] 4.2 `openspec archive engine-filler-delay-client-anchor`（合并 filler spec delta），确认目录移入 `changes/archive/`。
