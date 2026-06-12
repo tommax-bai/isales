@@ -62,8 +62,8 @@ Repo legend: [common] isales-common · [engine] isales-engine · [api] isales-ap
 - [x] 5.3 Committed: common cb108c9 · engine d0a5f1f · api 4a685a0 · web 1b3be9a · meta (this commit). Push next. <!-- done -->
 <!-- 5.4-5.6 below: deploy + acceptance pending explicit go-ahead (prod RDS schema mutation). -->
 
-- [ ] 5.4 [deploy] Deploy to ECS/RDS: scp migration → `alembic upgrade head` (f7a8b9c0d1e2 → new) → scp common/engine/api → restart 4 services; web build rsync + nginx reload. Update `deploy/cloud/STATE.md` (alembic head) in the same commit.
-- [ ] 5.5 [deploy] Smoke: alembic current = new head; column boolean NOT NULL default false; campaigns backfilled false; openapi has `auto_restructure_on_interrupt`; /health 200, /campaigns 401, SPA 200; engine + api boot clean.
+- [x] 5.4 [deploy] Deploy to ECS/RDS: scp migration → `alembic upgrade head` (f7a8b9c0d1e2 → new) → scp common/engine/api → restart 4 services; web build rsync + nginx reload. Update `deploy/cloud/STATE.md` (alembic head) in the same commit. <!-- done 2026-06-12 09:43 CST: alembic f7a8b9c0d1e2->a8b9c0d1e2f3; 4 svc restart; web rsync entry index-CrRHl5l3.js; STATE.md updated -->
+- [x] 5.5 [deploy] Smoke: alembic current = new head; column boolean NOT NULL default false; campaigns backfilled false; openapi has `auto_restructure_on_interrupt`; /health 200, /campaigns 401, SPA 200; engine + api boot clean. <!-- done: column boolean NOT NULL default false; camp 1+2 backfilled f; openapi has field; /api/docs 200 /api/campaigns 401 SPA 200; engine cloud_edge_grpc_server_started, 4 svc active -->
 - [ ] 5.6 [accept] Real-machine / mac-dev演练: 用垫词("嗯""你继续")打断 → AI 自动续说被切的话; 真异议("我没空""多少钱")打断 → AI 正常回应 (验 veto). 记录到 acceptance.
 
 ## 6. Archive
