@@ -37,8 +37,9 @@
 
 ## 5. 真机验收
 
-- [ ] 5.1 重启 engine 防 bug2 冻死后跑 `mac_dev_no_modem_smoke.py --no-listen-check`，确认管线全绿（多轮改动不破坏 main 调用）
-- [ ] 5.2 真人 mic：同 campaign 同话术，改前/改后对比主对话衔接质量（主观但需记录结论）
+<!-- 部署后跑 2 通：call 187 走到 status=end，greeting TTS×3 + join + 上行过门 + 下行出声全绿，engine journal 部署后零 python 异常（traceback/exception 计数=0，决定性证明多轮代码不报错）；但 ASR 零识别(post_downmix_rms~500-880 上行偏弱，rig flake，同会话 call 182 还识别 3 句)→ main 未被触发(无用户轮)→多轮 main e2e 路径这通未真正验到。第二通在 freeze probe 又撞 bug2 冻死(call 187 收尾后)。结论：plumbing + 部署代码健康已绿；多轮 main 产出回复留给 §5.2 真人 mic 验(真人声强、ASR 稳、必触发 main)。 -->
+- [~] 5.1 重启 engine 防 bug2 冻死后跑 `mac_dev_no_modem_smoke.py --no-listen-check`，确认管线全绿（多轮改动不破坏 main 调用）——**plumbing + 部署零异常已绿；main 路径因 ASR rig flake 未触发，转 §5.2 验**
+- [ ] 5.2 真人 mic：同 campaign 同话术，改前/改后对比主对话衔接质量（主观但需记录结论）**← 待用户**
 
 ## 6. 收口
 
