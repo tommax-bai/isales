@@ -56,6 +56,9 @@ if (action.kind == "continue"
 **D7 — 观测：复用 `restructure_trigger="interrupt_remaining"` + `matched_rule=None`，不动 pipeline_trace schema。**
 自动改判产生的 restructure trace 与显式 `source=interrupt_remaining` 同值（spec 限定 `restructure_trigger` ∈ {last_reply, interrupt_remaining}，不引入新枚举）；"自动 vs 显式"由 `matched_rule is None` 区分，并加一行 `logger.info("auto_restructure_on_interrupt fired ...")`。无需改 `pipeline_trace`。
 
+**D8 — 同变更内退役 restructure 路由动作（用户决策 2026-06-12）。**
+开关引入后，"用 routing rule 触发 restructure" 成为冗余的第二条路径（多路径兜底气味，`[[feedback-avoid-multilayer-fallback]]`）。经查 ECS 生产库 0 campaign 使用 restructure 路由动作、seed 默认也不含 → 安全硬删。删除范围：common `RestructureAction`/`RestructureSource`（union/export/测试）；engine decider `atype=="restructure"` 分支 + `restructure_enabled` 参数（删后 `decide()` 永不返回 kind=restructure，只有 call-site 开关 override 会）+ `_BUILTIN_THEN` 的 restructure；api `_BUILTIN_ROUTES` 的 restructure（`route to=restructure` 改 422）；web 路由编辑器的重组目标/legacy 动作/source 选择器/fail-open 选项 + TS 类型。**保留**：restructure 角色（`kind=restructure` role_config）、restructure route 执行路径（run_loop `kind=="restructure"` 分支 1200-1204 + 路由 handler，开关产 kind=restructure 走它）、`max_continuous_restructure` 列（现已基本 vestigial——开关 restructure 一次性消费 `interrupt_remaining_text` 不自累、连封顶难触发；列暂留，标后续清理候选）。须与本变更同 change（改的是同批 ai-pipeline/data-model Requirement，分开会 archive 撞段）。
+
 ## Risks / Trade-offs
 
 - [真异议未被显式规则接住 → 被自动续说忽略]（D5）→ 缓解：默认 OFF + opt-in；文档强调配齐否决规则；仅 barge-in 残留场景触发，不影响无打断轮。

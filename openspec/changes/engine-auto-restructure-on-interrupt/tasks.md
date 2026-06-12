@@ -66,6 +66,19 @@ Repo legend: [common] isales-common · [engine] isales-engine · [api] isales-ap
 - [x] 5.5 [deploy] Smoke: alembic current = new head; column boolean NOT NULL default false; campaigns backfilled false; openapi has `auto_restructure_on_interrupt`; /health 200, /campaigns 401, SPA 200; engine + api boot clean. <!-- done: column boolean NOT NULL default false; camp 1+2 backfilled f; openapi has field; /api/docs 200 /api/campaigns 401 SPA 200; engine cloud_edge_grpc_server_started, 4 svc active -->
 - [ ] 5.6 [accept] Real-machine / mac-dev演练: 用垫词("嗯""你继续")打断 → AI 自动续说被切的话; 真异议("我没空""多少钱")打断 → AI 正常回应 (验 veto). 记录到 acceptance.
 
+## 7. Retire restructure routing action (folded-in cleanup, user decision 2026-06-12)
+
+Restructure becomes switch-only; restructure is no longer a routing-rule action.
+Verified 0 production campaigns use it before removal.
+
+- [x] 7.1 [common] `routing_rule.py`: remove `RestructureAction` + `RestructureSource` from the union + `__init__` export + `__all__`; RoutePersonaAction docstring builtin = closing/recovery. bump 0.8.12 → 0.8.13. tests: restructure action now rejected (`test_routing_rule` / `test_pipeline_schemas` swapped to route). <!-- 189 passed -->
+- [x] 7.2 [engine] `decider.py`: drop `atype=="restructure"` branch + `restructure_enabled` param (decide() never returns kind=restructure now). `run_loop.py`: drop `restructure` from `_BUILTIN_THEN` + drop `restructure_enabled` kwarg at call site; KEEP `kind=="restructure"` branch (switch produces it). pin 0.8.13. tests: removed obsolete rule-driven fires/caps + degrade tests. <!-- 412 passed +1 pre-existing gate -->
+- [x] 7.3 [api] `routing_validation.py`: drop `restructure` from `_BUILTIN_ROUTES` (`route to=restructure` → 422). pin 0.8.13. `test_route_to_restructure_now_422`. <!-- 113 passed +2 pre-existing redis-steal -->
+- [x] 7.4 [web] `RoutingRulesTab.vue`: remove 重组 route target + legacy restructure action option + source selector + fail-open restructure + onActionTypeChange restructure branch + intro text. `types/campaign.ts`: remove `RestructureAction`/`RestructureSource`. tests updated. <!-- vitest 90 + vue-tsc/build green -->
+- [x] 7.5 [meta] spec deltas: ai-pipeline (decider 切重组流 scenario → restructure-不再是路由动作; 重组流 restructure MODIFIED → switch-triggered; InterruptText-source MODIFIED → interrupt_remaining only), data-model (routing_rules action MODIFIED — restructure removed). `openspec validate --strict` valid.
+- [ ] 7.6 [deploy] Re-deploy removal: diff-verify then scp common(routing_rule+__init__+pyproject)+engine(decider+run_loop)+api(routing_validation) → restart 4 svc; web rsync + nginx reload. **No new alembic** (schema-only, no DB column change). STATE.md updated.
+- [ ] 7.7 [followup] `max_continuous_restructure` cap column is now largely vestigial (switch restructure is one-shot — consumes interrupt_remaining_text, doesn't self-accumulate). Left in place; flag as a candidate for a later drop-column cleanup change. (Not removed here — out of scope.)
+
 ## 6. Archive
 
 - [ ] 6.1 [meta] `openspec validate engine-auto-restructure-on-interrupt --strict` clean → `/opsx:archive engine-auto-restructure-on-interrupt`. At merge, also append `auto_restructure_on_interrupt` to the `data-model` 全表清单 campaign row (informational table not covered by requirement-level deltas). **Verify the change dir actually moved to `archive/`** (openspec archive is silent-failure on abort — see `[[feedback_openspec_archive_silent_failure]]`).

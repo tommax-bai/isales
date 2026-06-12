@@ -18,9 +18,10 @@ iSales 的"被打断后让 AI 把刚被切断的话顺过来接着说"（restruc
 - 新增 campaign 字段 `auto_restructure_on_interrupt`（bool，NOT NULL，默认 `false`）。
 - **engine**：在 `decide()` 调用点（gate 之后、`_select_gated_route` 之前），当 `action.kind == "continue"`（无显式规则命中）+ 开关 ON + restructure slot 存在 + `session.interrupt_remaining_text` 非空时，把 action 改判为 `DeciderAction(kind="restructure", source="interrupt_remaining")`。`decide()` 保持纯函数（override 在调用点，不进 `decide()`）。自动 restructure 仍受 `max_continuous_restructure` 封顶。开关 OFF（默认）时行为逐字节不变。
 - **web**：「打断配置」卡片下新增该开关（`el-switch`），作为**与高级 / 非高级模式无关**的字段，渲染在模式切换器下方；文案说明作用与代价。
-- bump `isales-common` 0.8.10 → 0.8.11；consumers（engine / api）bump pin。
+- bump `isales-common` 0.8.10 → 0.8.11（后续 0.8.13）；consumers（engine / api）bump pin。
+- **同一变更内退役被取代的 restructure 路由动作**（开关一旦存在，"用规则触发 restructure" 即冗余——避免多路径兜底）：删除 legacy `type=restructure` action（common `RestructureAction`/`RestructureSource`）+ `route to=restructure` 目标（api `_BUILTIN_ROUTES`、web 下拉/source 选择器）+ engine decider 的 restructure 分支与 `restructure_enabled` 参数 + `_BUILTIN_THEN` 的 restructure。restructure 从此**纯开关驱动**（保留 restructure 角色 / route 执行路径 / `max_continuous_restructure` 封顶）。生产 0 campaign 使用该动作，删除无数据影响。
 
-无 **BREAKING**：新列默认 `false`，存量 campaign 行为不变。
+无 **BREAKING**：新列默认 `false`，存量 campaign 行为不变；restructure 路由动作生产无人使用，移除不影响在跑 campaign。
 
 ## Capabilities
 
@@ -28,8 +29,8 @@ iSales 的"被打断后让 AI 把刚被切断的话顺过来接着说"（restruc
 <!-- none -->
 
 ### Modified Capabilities
-- `ai-pipeline`：新增 Requirement「被打断自动重组开关 auto_restructure_on_interrupt」；MODIFIED「路由规则引擎（decider）」——无命中缺省出口在开关下可改判 restructure；MODIFIED「重组流触发场景的 InterruptText 来源」——对"无命中 → continue"补开关例外（low_confidence 死分支禁令不变）。
-- `data-model`：campaign 表新增 `auto_restructure_on_interrupt`（bool，NOT NULL，default false）。
+- `ai-pipeline`：新增 Requirement「被打断自动重组开关 auto_restructure_on_interrupt」；MODIFIED「路由规则引擎（decider）」——无命中缺省出口在开关下可改判 restructure，且 restructure 不再是 routing action；MODIFIED「重组流 restructure」——触发改为开关驱动；MODIFIED「重组流触发场景的 InterruptText 来源」——restructure source 固定 interrupt_remaining（switch），last_reply 仅退化兜底，去除 routing-rule source 字段。
+- `data-model`：campaign 表新增 `auto_restructure_on_interrupt`（bool，NOT NULL，default false）；MODIFIED「routing_rules action 扩展」——删除 legacy `restructure` action + `route to=restructure` 目标。
 - `web-admin-ui`：「打断配置」卡新增模式无关的自动重组开关。
 
 ## Impact
