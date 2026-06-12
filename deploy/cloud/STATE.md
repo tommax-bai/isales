@@ -1106,6 +1106,19 @@ Cloud Linux binding (project-internal pybind11):
 | §5.4 smoke verified | 2026-05-26 — `OnJoinChannelResult code=0` + 10s clean listen loop + `inbound_frames=1001 / push_count=99 / exit 0` |
 | §5.1 self-sign verified | 2026-05-26 (`rtc_token.py::_pack_options` fix, byte-perfect vs vendor console "Token生成器") |
 
+**2026-06-12 — bug2 engine 进程级冻死真根因修复 + 重部署（binding `0.1.0` → `0.1.1`）。**
+根因 = `EngineHandle::destroy_unlocked` **持 GIL** 调 `SetEngineEventListener(nullptr)`；远端挂断时
+SDK 在事件线程抛终态 `EngineListener` 回调（每个回调第一行 `py::gil_scoped_acquire`），与 loop 线程
+的 teardown 死锁 → 整台 engine 单 asyncio loop 冻死、只能重启。**gdb 实证**（冻死进程 PID 963515）：
+Thread 1 在 `libDingRTC std::condition_variable::wait`（`engine.destroy()` 内）持 GIL；Thread 12
+（`ali-rtc-message`）在 `take_gil`（`dingrtc_pywrap` 的 listener 回调内）。修法 = 把 `py::gil_scoped_release`
+扩到覆盖 vendor unregister/destroy 调用（engine `753ff13`，`__version__` 0.1.1）。ECS 上 `rm -rf
+build/dingrtc-binding` + 直跑 cmake 重编 + `cp` 覆盖 platlib `.so` + restart；启动 `cloud_edge_grpc_server_started`
+正常、binding `__version__==0.1.1`。
+⚠️ **ECS 上 `build-dingrtc-binding.sh` 是 CRLF 行尾**（`$'\r'` 报错、跑不动），重编要么先
+`sed -i 's/\r$//'`，要么绕过它直接跑 cmake（见上）。**真机远端挂断 soak（real-machine acceptance）仍 pending**——
+本次只验证了 binding 重编 + 干净启动，未真机拨测复现远端挂断不再冻。
+
 Box can't reach `github.com` over HTTPS (no PAT installed); deploy flow
 for now = `scp` loose files from dev mac + `chown isales:isales` +
 rebuild binding via the script above. To switch to `git pull` deploys,
