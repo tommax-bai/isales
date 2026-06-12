@@ -1,6 +1,6 @@
 ## 0. 待定决策(apply 前拍板)
 
-- [ ] 0.1 【需用户拍板】新语音 provider_id 命名:`volcengine_speech`(默认/推荐)/ `doubao_voice` / 其他;LLM 侧保留 `volcengine`(默认)还是重命名 `volcengine_ark`(见 design Open Q1)
+- [x] 0.1 ~~新语音 provider_id 命名~~ **已定:LLM 保留 `volcengine` + 语音新增 `volcengine_speech`**(2026-06-11 用户拍板,改动面最小,见 design Open Q1)<!-- decision-only -->`
 - [ ] 0.2 语音卡是否同时暴露新旧控制台两套(api_key 新版 / app_key+app_token 旧版),还是只留新版(默认两套都迁、都支持,见 Open Q2)
 
 ## 1. isales-common — provider_id 拆分 + 凭据模型

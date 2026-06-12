@@ -57,6 +57,6 @@
 
 ## Open Questions
 
-1. **新语音 provider_id 命名**:`volcengine_speech` vs `doubao_voice` vs `volcengine_asr_tts`?LLM 侧是否保留 `volcengine`(D1 倾向保留)还是也重命名 `volcengine_ark`?默认 `volcengine`(LLM) + `volcengine_speech`(语音),待用户拍板。
+1. ~~**新语音 provider_id 命名**~~ **已定(2026-06-11 用户拍板):LLM 保留 `volcengine`(火山方舟)+ 语音新增 `volcengine_speech`。** 改动面最小:web LLM SSOT + role_config.ext_params.provider 存量 `volcengine` 不用迁,只新开语音 id。
 2. **ASR/TTS 新旧控制台双模式**:是否两套(新版 api_key / 旧版 app_key+app_token)都在语音卡暴露,还是只留新版 api_key?默认两套都迁、都支持(行为不变)。
 3. **ark `default_model` 填法**:模型卡是否做 ark 模型ID/接入点的格式校验/下拉?默认纯文本 + 提示文案,不做在线校验(account-specific)。
