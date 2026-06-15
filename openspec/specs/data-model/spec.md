@@ -29,7 +29,7 @@
 
 | 表 | 关键字段 | 归属服务 | 详细规范 |
 |---|---|---|---|
-| `campaign` | name, voice_id, default_replies(JSONB), concurrency, time_windows(JSONB), extraction_fields(JSONB), max_silence_activations, silence_threshold_ms, silence_phrases(JSONB), silence_hangup_phrase, wrap_up_max_rounds, wrap_up_max_seconds, wrap_up_closing_phrases(JSONB), interruption_whitelist(JSONB), interruption_min_duration_ms, interruption_min_chars, max_continuous_interruptions, continuous_interruption_strategy, transfer_keyword_enabled, transfer_keywords(JSONB), transfer_intent_enabled, transfer_intent_threshold, transfer_round_enabled, transfer_round_threshold, transfer_llm_enabled, transfer_llm_prompt_version_id, transfer_phrases(JSONB), retry_intervals(JSONB), retry_max_count, follow_up_interval_days, follow_up_max_count, respect_holidays, **greeting(Text, nullable — campaign-level 固定开场白文案；NULL 时 engine 走 LLM 生成开场白路径，详见 ai-pipeline § "开场白不走管线")** | api | 各 capability |
+| `campaign` | name, voice_id, default_replies(JSONB), concurrency, time_windows(JSONB), extraction_fields(JSONB), max_silence_activations, silence_threshold_ms, silence_phrases(JSONB), silence_hangup_phrase, wrap_up_max_rounds, wrap_up_max_seconds, wrap_up_closing_phrases(JSONB), interruption_whitelist(JSONB), interruption_min_duration_ms, interruption_min_chars, max_continuous_interruptions, continuous_interruption_strategy, transfer_keyword_enabled, transfer_keywords(JSONB), transfer_intent_enabled, transfer_intent_threshold, transfer_round_enabled, transfer_round_threshold, transfer_llm_enabled, transfer_llm_prompt_version_id, transfer_phrases(JSONB), retry_intervals(JSONB), retry_max_count, follow_up_interval_days, follow_up_max_count, respect_holidays, auto_restructure_on_interrupt(Boolean), **greeting(Text, nullable — campaign-level 固定开场白文案；NULL 时 engine 走 LLM 生成开场白路径，详见 ai-pipeline § "开场白不走管线")** | api | 各 capability |
 | `holiday` | date, name, region | api | time-window |
 | `agent` | name, login_user, status (online/offline) | telephony | human-handoff |
 | `handoff_task` | call_record_id, agent_id (nullable), trigger_type, trigger_detail, status, created_at, picked_up_at, completed_at | api（worker 创建，api 提供查询/状态变更） | human-handoff |
@@ -229,8 +229,10 @@ JSONB 字段 SHALL 用于半结构化的配置或事件流；任何新引入的 
 
 `campaign.routing_rules` 的 `action` 联合 SHALL 新增两个成员，并保持 iSales 既有 `category in match[]` first-match-wins 语义不变：
 
-- `RoutePersonaAction{type: "route", to: <persona-label | closing | recovery | restructure>, then_state?: ThenState}`
+- `RoutePersonaAction{type: "route", to: <persona-label | closing | recovery | restructure>, then_state?: ThenState, goal_type?: <str>}`
 - `RouteToolAction{type: "tool", tool: <alias>, then_state?: ThenState, closing_phrase?: str}`
+
+`RoutePersonaAction.goal_type` 为可选标签，**仅当 `to == "closing"` 时有效**（goal-achieved 软结局收尾路由）；`to` 为 persona label 或其他内置路由（recovery/restructure）时 `goal_type` MUST 省略或为 null，否则保存 SHALL 拒绝。它是 legacy `TransitionAction.goal_type`（`transition to=goal_achieved`）的 modern 对等物：engine decider 从命中规则 action 提取 `goal_type` 并透传，使 `goal_achieved` 事件 + `call_summary.goal_type` 记录该标签——`route` 与 `transition` 两种形态的提取 MUST 对称（不得只对 `transition` 提取而在 `route` 丢弃）。
 
 `RouteToolAction.closing_phrase` 为可选**单句**，仅对 `tool: hangup` 有意义：命中规则携带它时 SHALL **覆盖** `HangupToolConfig.closing_phrase`，使多条不同关键字（referee category）的规则复用**同一个** hangup 工具、各带不同结束语；省略时回落到工具配置的 `closing_phrase`，**两者皆空 / 缺省时直接挂断、不播话术**。
 
@@ -241,6 +243,12 @@ JSONB 字段 SHALL 用于半结构化的配置或事件流；任何新引入的 
 - **WHEN** 路由规则 action 为 `{type: route, to: "<persona-label>", then_state: "LISTENING"}`
 - **THEN** 系统 MUST 校验 `to` 指向同 campaign 已定义的 persona label 或内置 `closing/recovery/restructure`；未定义的 persona label MUST 在保存时以 `422 routing_rule_unknown_persona` 拒绝；engine 选中后按 `then_state` 投影（见 ai-pipeline / call-state-machine spec）
 
+#### Scenario: route:closing 动作携带 goal_type
+
+- **WHEN** 路由规则 action 为 `{type: route, to: "closing", then_state: "WRAPPING_UP", goal_type: "intent_confirmed"}`
+- **THEN** schema MUST 校验通过（`goal_type` 仅 `to="closing"` 时合法）；engine decider MUST 从该 action 提取 `goal_type` 并使最终 `goal_achieved` 事件携带 `goal_type="intent_confirmed"`，与 legacy `transition to=goal_achieved` 形态结果一致
+- **AND** 同一 action 若 `to` 非 `"closing"` 而携带 `goal_type`，保存 MUST 被拒绝（schema validation error）
+
 #### Scenario: tool 动作引用工具 alias
 
 - **WHEN** 路由规则 action 为 `{type: tool, tool: "hangup", then_state: "END"}`
@@ -250,11 +258,6 @@ JSONB 字段 SHALL 用于半结构化的配置或事件流；任何新引入的 
 
 - **WHEN** 同一 referee 下两条规则分别为 `{match: ["OFFENSIVE"], action: {type: "tool", tool: "hangup", closing_phrase: "不打扰了，再见"}}` 与 `{match: ["HANGUP"], action: {type: "tool", tool: "hangup", closing_phrase: "那再见"}}`
 - **THEN** 两条规则 MUST 校验通过、复用同一个 hangup 工具 alias；engine 选中时 SHALL 取**命中规则**的 `closing_phrase`（覆盖工具配置）；`closing_phrase` 若提供 MUST 为单句字符串，省略或空串表示直接挂断
-
-#### Scenario: legacy action 经 shim 向后兼容
-
-- **WHEN** 存量 campaign 的规则仍为 `{type: transition, ...}` / `{type: restructure, ...}`
-- **THEN** 系统 MUST 经 shim 原样接受并按既有语义执行；决策结果 MUST NOT 因本 change 改变
 
 ### Requirement: campaign 门控与多人设配置列
 
@@ -352,6 +355,21 @@ JSONB 字段 SHALL 用于半结构化的配置或事件流；任何新引入的 
 
 - **WHEN** 迁移在既有 `pipeline_trace` 上加 `main_first_token_ms` / `main_first_sentence_ms`
 - **THEN** 历史行该两列 SHALL 为 NULL;`call_record` 读路径(transcript)不受影响;downgrade SHALL drop 两列
+
+### Requirement: campaign.auto_restructure_on_interrupt 被打断自动重组开关
+
+`campaign` 表 SHALL 持有 `auto_restructure_on_interrupt` 列（`Boolean`，NOT NULL，`server_default=sa.false()` / Python 默认 `False`）。该列为布尔开关：ON 时引擎在门控 decider 缺省（无显式 routing rule 命中）、本轮存在 barge-in 残留（`session.interrupt_remaining_text` 非空）且配置了 `kind=restructure` role_config 时，把缺省出口由 continue 改判为 `restructure(source=interrupt_remaining)`（语义见 ai-pipeline § 被打断自动重组开关）。默认 `False` → 行为与引入前一致；该列与既有 `routing_rules` / `max_continuous_restructure` / `interruption_*` 列同属 campaign 的打断与重组配置面。
+
+#### Scenario: 新列加性迁移回填默认值
+
+- **WHEN** isales-common Alembic 迁移在已有数据的 `campaign` 表上新增 `auto_restructure_on_interrupt` 列（down_revision 接当前 head `f7a8b9c0d1e2`）
+- **THEN** 迁移 MUST 以 `server_default=sa.false()` 回填所有存量行，列 NOT NULL 不产生 NULL 窗口
+- **AND** 存量 campaign 默认关闭，被打断后的决策行为 MUST 与迁移前逐字节一致
+
+#### Scenario: schema 暴露与 PATCH 写入
+
+- **WHEN** 客户端通过 campaign API 读取或 PATCH `auto_restructure_on_interrupt`
+- **THEN** `CampaignBase` / `CampaignRead` MUST 含该字段（`bool`，默认 `False`），`CampaignUpdate` MUST 以可选字段（`bool | None`）支持部分更新；isales-api MUST NOT 在字段白名单层（`CampaignNestedUpdate`）静默丢弃该字段
 
 ## Cross-Reference
 

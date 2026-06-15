@@ -1,3 +1,5 @@
+> **2026-06-15 归档**：代码与 spec 已部署上线（engine 59a1a9d，scp+restart 零异常）；剩余真人 mic 衔接验收（5.2）已合并至 `pipeline-stream-realmachine-acceptance` §3.1（用户指示「打电话验收合并到一个」）。
+
 ## 1. 调研确认（apply 开场）
 
 <!-- prompt_builder.py grep: _render_dialog/_render_lead_info/_build_user_message 仅被 build_main_messages(main) 调用，无外部复用；referee 有独立 _render_dialog_history_for_referee。可安全重构。 -->

@@ -1,5 +1,7 @@
 # Tasks — engine-auto-restructure-on-interrupt
 
+> **2026-06-15 归档**：代码与 spec 已部署上线（common 0.8.11，alembic a8b9c0d1e2f3）；剩余打断真机验收（5.6）已合并至 `pipeline-stream-realmachine-acceptance` §3.2。7.7 是显式 out-of-scope 备注（vestigial cap 列留待后续 cleanup change）。
+
 Repo legend: [common] isales-common · [engine] isales-engine · [api] isales-api · [web] isales-web · [meta] this repo.
 
 ## 1. isales-common — new column + schema + migration

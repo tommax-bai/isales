@@ -1,3 +1,5 @@
+> **2026-06-15 归档**：代码已全栈部署上线（common 0.8.10 + engine + worker + web + camp1 prod DB）；剩余可选真机验收（6.2b）已合并至 `pipeline-stream-realmachine-acceptance` §3.3。
+
 ## 0. isales-common — RoutePersonaAction.goal_type schema(Path A,实装暴露后新增)
 
 - [x] 0.1 `schemas/jsonb/routing_rule.py` `RoutePersonaAction` 加可选 `goal_type`(max 64)+ `model_validator`(`to != "closing"` 带 goal_type → ValueError);`extra=forbid` 下使 route:closing+goal_type 合法、避免 `GET /campaigns` 500 <!-- isales-common, commit pending -->

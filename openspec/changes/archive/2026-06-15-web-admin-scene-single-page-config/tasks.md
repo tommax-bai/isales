@@ -1,3 +1,5 @@
+> **2026-06-15 归档**：已部署上线（2026-06-08 rsync dist + nginx reload，index 200，STATE.md 已更）；剩余浏览器点测（7.4）已合并至 `pipeline-stream-realmachine-acceptance` §3.4。
+
 ## 1. 状态合并（CampaignDetail form → CampaignBase）
 
 - [x] 1.1 `CampaignDetail.vue`：把 `form` 从 8 字段子集扩成 `reactive<CampaignBase>`（`{ ...CAMPAIGN_DEFAULTS }` 初始化）；`onRefresh` 改 `Object.assign(form, detail)` 全量加载；核对 CampaignBase 全字段覆盖（routing_rules/tools/silence_*/interruption_*/transfer_*/wrap_up_*/retry_*/do_not_call_* 等）
