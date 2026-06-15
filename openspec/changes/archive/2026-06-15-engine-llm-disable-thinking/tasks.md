@@ -22,11 +22,11 @@
 
 ## 4. 真机验收
 
-- [ ] 4.1 部署后下一通真实通话的 `pipeline_trace`：`tokens_out` ~50、`first_audio_ms` ~1-3s（dashscope 路径）。
+- [x] 4.1 部署后真实通话 call 194（2026-06-15 10:18，camp1 main=qwen3.6-flash dashscope）实测 PASS：`main_tokens_out` 7/19/22（改前 193 为 1663/2008）、`main_duration_ms` 343-549ms（改前 10334/14845）、`first_audio_ms` ~608/632ms（改前 10600/14837）。思考尾巴消失、对话流畅、bug2 未复现（正常 silence_max hangup 收尾）。约 20× 提速。 <!-- 2026-06-15 call 194 -->
 - [ ] 4.2 volcengine 路径真机生效 —— **deferred**（火山账号当前无可用豆包模型）。
 
 ## 5. 收口
 
 - [x] 5.1 `openspec validate engine-llm-disable-thinking --strict` 通过。
-- [ ] 5.2 commit engine + meta（tasks.md 进度回写），push origin。 <!-- engine cb2e756 done; meta + push 进行中 -->
-- [ ] 5.3 archive。
+- [x] 5.2 commit engine + meta（tasks.md 进度回写），push origin。 <!-- engine cb2e756 / meta db29685+fe27471 -->
+- [x] 5.3 archive。 <!-- 2026-06-15 -->
