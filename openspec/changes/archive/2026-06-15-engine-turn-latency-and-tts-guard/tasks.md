@@ -33,13 +33,15 @@
 
 > ⚠️ STATE.md 未改:纯加列迁移(additive nullable)+ 单文件 scp,无新服务/端口/凭据/拓扑变更。alembic head 由 c0d1e2f3a4b5 → d1e2f3a4b5c6。
 
-## 6. 真机验收
+## 6. 真机验收 — **deferred**（部署后至收口无自然通话；用户选择收口）
 
-- [ ] 6.1 新通话:pipeline_trace 见 `main_first_token_ms`/`main_first_sentence_ms` 落值、restructure 轮有行、无 `No readable text` error。
-- [ ] 6.2 smoke 脚本 `mac_dev_no_modem_smoke.py` 跑出对话 + 分节点耗时视图。
+- [ ] 6.1 新通话:pipeline_trace 见 `main_first_token_ms`/`main_first_sentence_ms` 落值、restructure 轮有行、无 `No readable text` error。 <!-- deferred 2026-06-15: 部署后 0 通话；行为由单测覆盖(splitter 3 测 + restructure 决策/输出行断言 + golden) + 部署期 isales-venv 运行时实测(过滤 T/F/F/T + 列 hasattr)双重背书。下一通真实通话即可坐实。 -->
+- [ ] 6.2 smoke 脚本 `mac_dev_no_modem_smoke.py` 跑出对话 + 分节点耗时视图。 <!-- deferred: 需 mac edge + 真拨;py_compile OK -->
 
 ## 7. 收口
 
-- [ ] 7.1 `openspec validate engine-turn-latency-and-tts-guard --strict`。
-- [ ] 7.2 commit common/engine/telephony/meta,push。
-- [ ] 7.3 archive。
+- [x] 7.1 `openspec validate engine-turn-latency-and-tts-guard --strict`。 <!-- valid -->
+- [x] 7.2 commit common(675a192)/engine(87c8792)/telephony(40044b8)/meta(912d2b4+1c3010f),push。
+- [x] 7.3 archive。 <!-- 2026-06-15 -->
+
+> 说明:§6 真机验收 deferred（同 engine-llm-disable-thinking §4.2 模式）。代码行为由单测 + 部署期运行时实测背书；真机端到端坐实留给下一通自然通话。
