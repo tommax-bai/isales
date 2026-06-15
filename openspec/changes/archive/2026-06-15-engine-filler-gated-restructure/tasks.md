@@ -34,9 +34,9 @@ Repo legend: [engine] isales-engine · [api] isales-api · [meta] this repo.
 - [x] 5.1 [meta] `openspec validate engine-filler-gated-restructure --strict` 通过；MODIFIED header 与主 spec 逐字匹配。
 - [x] 5.2 [engine] scp `prompt_builder.py`/`run_loop.py`/`referee.py`/`providers/llm_mock.py` → ECS `/opt/isales/current/isales-engine/isales_engine/` + 重启 engine（active、`isales_engine_started` 无 traceback；import 验证 `restructure_gate_category=FILLER` + `gate_filler` in run_loop）。 <!-- 9484274 部署 2026-06-15 15:07 CST -->
 - [x] 5.3 [api] camp1（id=1）门控 prompt（`prompt_version` id=9）dollar-quoted SQL 原地 UPDATE → HANGUP/SUCCESS/CONTINUE/FILLER 版（含占位符，1601 字符，旧内容备份 ECS `/tmp/camp1_referee_id9_backup.txt`）；ssh 核实 camp1 已 `auto_restructure_on_interrupt=t` + restructure slot=1 + routing `SUCCESS→closing`/`HANGUP→hangup`（无 transfer）。 <!-- referee label 实为中文「主门控」≠ main_judge → override 用 any() 不 by-label 才对，已实证 -->
-- [ ] 5.4 真机抽验合并到 `pipeline-stream-realmachine-acceptance`：①垫词打断（"嗯嗯你说"）→ AI 顺着说完；②实质打断（"那多少钱"）→ AI 正面作答（不重组）；③非打断正常对话不受影响。
+- [~] 5.4 真机抽验 **deferred → 合并到 `pipeline-stream-realmachine-acceptance`**（archive 时未真机验，与 `engine-auto-restructure-on-interrupt` 同样 deferred；acceptance 以机器验证为据：engine 436 测 + 部署健康 + camp1 ground-truth）：①垫词打断（"嗯嗯你说"）→ AI 顺着说完；②实质打断（"那多少钱"）→ AI 正面作答（不重组）；③非打断不受影响。
 
 ## 6. 收尾
 
-- [ ] 6.1 [meta] tasks.md 回写 PR#/commit；按需 bump 文档。
-- [ ] 6.2 [meta] `openspec archive engine-filler-gated-restructure`（验证目录已移动，见 `[[feedback-openspec-archive-silent-failure]]`）。
+- [x] 6.1 [meta] tasks.md 回写 commit（engine `9484274` / api `f50f5de` / meta `586758d`+`33a6fb5`）+ `deploy/cloud/STATE.md` 顶条 + memory。
+- [x] 6.2 [meta] `openspec archive engine-filler-gated-restructure`（验证目录已移动，见 `[[feedback-openspec-archive-silent-failure]]`）。 <!-- archived 2026-06-15 -->
