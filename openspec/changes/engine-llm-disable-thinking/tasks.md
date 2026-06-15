@@ -15,7 +15,10 @@
 
 ## 3. 部署
 
-- [ ] 3.1 scp `llm_openai_compatible.py` 到 ECS，`systemctl restart isales-engine`，验证服务健康。
+- [x] 3.1 scp `llm_openai_compatible.py` 到 ECS（`/opt/isales/current/isales-engine/...`，current→releases/20260517-222944），`systemctl restart isales-engine`，验证服务健康。 <!-- 2026-06-15 deploy: 新 PID 1012106 active(running)，旧进程 graceful_shutdown active=0 无打断；isales_engine_started + credentials_loaded count=6；isales venv import 确认 _thinking_off_payload 返回 dashscope={'enable_thinking':False}/volcengine={'thinking':{'type':'disabled'}} -->
+- [x] 3.2 部署后运行时确认两 provider helper 返回值正确（isales venv `-c` import 实测）。 <!-- 2026-06-15 -->
+
+> ⚠️ STATE.md 未改：本 change 为纯代码补丁（scp 单文件 + restart），无新服务/端口/alembic/凭据变化，不属 STATE.md 跟踪的部署拓扑变更。
 
 ## 4. 真机验收
 
