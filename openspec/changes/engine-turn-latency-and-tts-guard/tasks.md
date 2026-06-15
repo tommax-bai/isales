@@ -28,7 +28,10 @@
 
 ## 5. 部署
 
-- [ ] 5.1 common 0.8.16 文件 + alembic `d1e2f3a4b5c6` 到 ECS(reinstall common into engine venv + `alembic upgrade head`),scp engine 三文件,restart engine,验健康 + head。
+- [x] 5.1 scp common(editable,model + 迁移)+ engine 三文件到 ECS;`alembic upgrade head`(`c0d1e2f3a4b5 → d1e2f3a4b5c6`,prod DB);restart engine。 <!-- 2026-06-15: 新 PID 1014192 active, isales_engine_started + credentials_loaded count=6 无报错;DB 两列 main_first_{token,sentence}_ms(integer,nullable)已建;isales venv 实测 _has_synthesizable_text("呃.")=T/(".")=F/("。。。")=F/("3")=T + model 两列 hasattr=T,T -->
+- [x] 5.2 部署后运行时校验:分句器过滤 + model 列 import 实测通过。 <!-- 2026-06-15 -->
+
+> ⚠️ STATE.md 未改:纯加列迁移(additive nullable)+ 单文件 scp,无新服务/端口/凭据/拓扑变更。alembic head 由 c0d1e2f3a4b5 → d1e2f3a4b5c6。
 
 ## 6. 真机验收
 
