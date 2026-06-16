@@ -45,7 +45,8 @@
 
 ## 7. 部署 + 真机验收（DEFERRED — 同既往真机验收并入 pipeline-stream-realmachine-acceptance）
 
-- [ ] 7.1 scp engine 改动到 ECS，alembic upgrade（RDS），重启服务，上传背景音素材到 `$ISALES_AMBIENT_DIR`，更新 `deploy/cloud/STATE.md`
+- [x] 7.1 全栈部署 ECS：common scp+`alembic upgrade head`（d1e2f3a4b5c6→a2c4e6b8d0f2，两列已建实证）/ engine 5 文件（部署前 md5==main base 00b4c48 防覆盖分支）+重启 active / api schemas.py+重启 / web rebuild+scp+nginx reload（http200）/ 示例素材 `/opt/isales/ambient/office.wav`（16k mono RMS≈5000）+引擎内 get_ambient_loop 实证可加载。STATE.md 已更新 <!-- 见 deploy/cloud/STATE.md 2026-06-16 16:37 条 -->
+  - 偏离：素材目录用引擎默认 `/opt/isales/ambient`（未设 ISALES_AMBIENT_DIR）；office.wav 是合成占位底噪，建议换真实办公室录音
 - [ ] 7.2 白名单 campaign 配 `ambient_audio` + 低电平 `ambient_gain`
 - [ ] 7.3 **真机回声实测**：开背景音后真人 mic 通话，确认入向 ASR 无持续 partial / 误 finalize / 误触发 barge-in；客户侧持续听到背景音；TTS 无变调/卡顿。回声超标 → 下调电平或换无人声素材。**无此验收不视为完成**
 - [ ] 7.4 真机听感：句间空档与静默期背景音持续不断、打断后背景音延续
