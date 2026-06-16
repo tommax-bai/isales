@@ -32,7 +32,8 @@
 ## 5. isales-api / isales-web — 配置入口
 
 - [x] 5.1 isales-api：CampaignNestedCreate 继承 common（自动得字段），CampaignNestedUpdate 显式声明二字段（否则 PATCH 丢字段）；update 经 model_dump(exclude_unset)+setattr 通用透传 <!-- api 160f6fa -->
-- [x] 5.2 isales-web：新增 AmbientAudioTab（素材名 el-input + 混入电平 el-input-number），插在 FillerEditor 后；CampaignBase + CAMPAIGN_DEFAULTS 加字段，经 buildPayload 白名单提交；默认关闭、回显、hint 提示回声风险 <!-- web d0cf6c7 -->
+- [x] 5.2 isales-web：新增 AmbientAudioTab，插在 FillerEditor 后；CampaignBase + CAMPAIGN_DEFAULTS 加字段，经 buildPayload 白名单提交；默认关闭、回显、hint 提示回声风险 <!-- web d0cf6c7 -->
+  - [x] 5.2a 改进：填文件名 → **启用开关 + 场景下拉**（AMBIENT_PRESETS：安静室内/办公室/呼叫中心），关→ambient_audio=null；自定义素材（不在 catalog）仍作额外项不丢 <!-- web 28c7681 -->
 
 ## 6. 测试
 
