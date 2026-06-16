@@ -24,6 +24,7 @@
 - [x] 3.3 泵在 `enable_ambient`（connect 后、greeting 前）启动、`close_iterators` 里 `stop_outbound_pump` 取消；`_pump_ts` 连续 +10 <!-- engine ecf9e34 -->
 - [x] 3.4 `audio_out()` ambient 开启时走 `feed_playout`（切 10ms + 短帧补零写 playout_q，await q.join() 保「播放完成」语义），关闭时走原直推 <!-- engine ecf9e34。偏离：双模式由 config 选择（非 fallback），默认关闭路径字节级不变以降风险；移除触发=真机验证泵稳定后考虑统一为单路径 -->
 - [x] 3.5 逐样本混音 pure-array（不依赖 audioop/numpy）——audioop 在 Py3.13+ 已移除，纯 array 单路径可在任意 Python 测试 <!-- engine ecf9e34 -->
+- [x] 3.6 出向 jitter cushion（集成期 follow-up）：泵 10ms 严格节拍 + 空队列塞静音，混音前 direct-push 靠 RTC SDK jitter buffer 抹平 vendor 抖动/慢供帧，泵路径无此层 → TTS 瞬时欠载被打成语音静音空洞 = 对话「生硬/卡顿」（一轮第一句最重；开场白整段先缓冲故不受影响）。`feed_playout` 先攒满 `PLAYOUT_PREBUFFER_FRAMES`(=20,200ms) 再放给泵；已 pre-synth 句子 cushion 瞬填≈0 延迟，慢 vendor 最多付 200ms；流结束 flush cushion 防短句死锁。+2 测（保序完整 + 短句仍播），engine 21 ambient 测通过 <!-- engine 部署 scp+restart active；commit 见 isales-engine HEAD; 真机听感验收并入 §7.3/7.4 -->
 
 ## 4. isales-engine — 打断路径
 
