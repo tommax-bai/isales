@@ -30,12 +30,14 @@
 
 ## 5. 部署与验收
 
-- [ ] 5.1 scp 部署 engine `run_loop.py`(及相关改动文件)到 ECS + `systemctl restart`(纯 engine,无 alembic / common 版本联动);部署后查 STATE.md 一致性
-- [ ] 5.2 真机拨测:对比同一通电话 turn-1 vs turn-2 的 `main_first_token_ms` / `first_audio_ms`(读 DB,api 未暴露这些字段),断言差距显著收窄、ASR 首 finalize 不再含 WS 建连握手 —— **可挂 `pipeline-stream-realmachine-acceptance` deferred**
-- [ ] 5.3 验证 Open Question:开场白时长是否短于 ASR vendor idle 断连阈值;若证伪则按 D2 加保活占位帧(标记不参与 finalize)
+- [x] 5.1 scp 部署 engine `run_loop.py`(及相关改动文件)到 ECS + `systemctl restart`(纯 engine,无 alembic / common 版本联动);部署后查 STATE.md 一致性 <!-- 2026-06-17 16:46 部署 committed c87e98c 版(非工作区,避开遗留 wrap-up-bypass);部署前 md5 89cb2a21==base d3c6c9e、部署后 430dd5c7;engine active + grpc_server_started + credentials_loaded count=6 + isales_engine_started 无 traceback;备份 /opt/isales/backups/run_loop.py.bak-20260617-prewarm;STATE.md 已更新 -->
+- [ ] 5.2 真机拨测:对比同一通电话 turn-1 vs turn-2 的 `main_first_token_ms` / `first_audio_ms`(读 DB,api 未暴露这些字段),断言差距显著收窄、ASR 首 finalize 不再含 WS 建连握手 —— **可挂 `pipeline-stream-realmachine-acceptance` deferred** <!-- DEFERRED 到 pipeline-stream-realmachine-acceptance(沿用 wrap-up-silence-hangup §6.2 先例;archive 不阻塞) -->
+- [ ] 5.3 验证 Open Question:开场白时长是否短于 ASR vendor idle 断连阈值;若证伪则按 D2 加保活占位帧(标记不参与 finalize) <!-- DEFERRED:随 5.2 真机一并验;证伪才补保活帧 -->
 
 ## 6. 收口
 
-- [ ] 6.1 `openspec validate engine-greeting-window-prewarm --strict` 通过
-- [ ] 6.2 tasks.md 用 HTML 注释回写每个 task 的 commit / PR# / 偏离说明;commit + push(meta-repo + engine sub-repo)
-- [ ] 6.3 全 task 完成 → `/opsx:archive engine-greeting-window-prewarm`(delta 合并进 `openspec/specs/ai-pipeline/spec.md`)
+- [x] 6.1 `openspec validate engine-greeting-window-prewarm --strict` 通过 <!-- valid -->
+- [x] 6.2 tasks.md 用 HTML 注释回写每个 task 的 commit / PR# / 偏离说明;commit + push(meta-repo + engine sub-repo) <!-- engine c87e98c push origin/main;meta ee1adce push origin/main -->
+- [x] 6.3 全 task 完成 → `/opsx:archive engine-greeting-window-prewarm`(delta 合并进 `openspec/specs/ai-pipeline/spec.md`) <!-- 真机验收(5.2/5.3)deferred,沿用先例 archive;见 archive commit -->
+
+<!-- 真机验收 5.2/5.3 deferred 到 pipeline-stream-realmachine-acceptance(用户确认 archive-with-real-machine-deferred);其余 §1-6 全部完成。 -->
