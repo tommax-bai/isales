@@ -34,6 +34,6 @@
 
 ## 6. 部署 + 验收
 
-- [ ] 6.1 部署：common（生产 DB `alembic upgrade`，列有 default 对在途通话安全）→ engine（scp + restart）→ web；更新 `deploy/cloud/STATE.md` 如涉及
-- [ ] 6.2 真机/真通话验收：收尾期客户静默后引擎在 `wrap_up_silence_hangup_ms` 内主动挂断、无「你好，还在么？」；transcript `hangup.reason="wrap_up_silence"`，`/calls` 读回不 500
-- [ ] 6.3 在本文件用 `<!-- commit-sha 备注 -->` 回写各 task 的 PR#/commit/偏离说明
+- [ ] 6.1 部署：common（生产 DB `alembic upgrade`，列有 default 对在途通话安全）→ engine（scp + restart）→ web；更新 `deploy/cloud/STATE.md` 如涉及 <!-- PENDING: prod DB migration + global behavior change, awaiting user go-ahead -->
+- [ ] 6.2 真机/真通话验收：收尾期客户静默后引擎在 `wrap_up_silence_hangup_ms` 内主动挂断、无「你好，还在么？」；transcript `hangup.reason="wrap_up_silence"`，`/calls` 读回不 500 <!-- PENDING: needs real call -->
+- [x] 6.3 在本文件用 `<!-- commit-sha 备注 -->` 回写各 task 的 PR#/commit/偏离说明 <!-- common 0afdffa / engine d3c6c9e / web 5282204 / meta 0897fe8 ; all pushed to origin/main 2026-06-17. api: no code change (venv-only refresh to 0.8.21) -->
