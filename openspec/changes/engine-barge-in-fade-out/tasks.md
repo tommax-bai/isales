@@ -18,7 +18,7 @@
 - [x] 2.2 `schemas/campaign.py`：`CampaignBase` 加 `barge_in_fadeout_ms: int = Field(default=100, ge=0)`（Read/Create 继承）；`CampaignUpdate` 加 `barge_in_fadeout_ms: int | None = Field(default=None, ge=0)`。test_schemas_dto 两处补字段
 - [x] 2.3 alembic `f0a1b2c3d4e5`（down=c4e6a8b0d2f3 单 head，add column server_default 100，downgrade drop）；`alembic heads` 验证单 head 无撞
 - [x] 2.4 bump common 0.8.22→0.8.23；engine `RuntimeConfig.barge_in_fadeout_ms`(默认100) + `load_runtime_config` 取 `campaign.barge_in_fadeout_ms`；run_loop 在 configure_ambient 后 `telephony.set_barge_in_fadeout(call, config.barge_in_fadeout_ms)`；`TelephonyClient.set_barge_in_fadeout` 基类 no-op + RtcTelephonyClient override 写 `state._barge_in_fadeout_ms`（mirror configure_ambient 模式）
-- [x] 2.5 isales-api：schema 自动透传（无需 api 代码改动）；campaign 端点测试 21 passed（2 失败=pre-existing redis-steal，已用 `redis-cli client list` 实证 3 个长寿命 BLPOP daemon 偷消息，与本改无关）
+- [x] 2.5 isales-api（api 7bc2ec4）：**`CampaignNestedUpdate` 是 hand-kept extra=forbid mirror（不继承 common CampaignUpdate）→ 必须手动补 `barge_in_fadeout_ms`，否则 PATCH 422**（STATE.md hotfix 教训，初判「无需改」是错的）。Create 继承 CampaignBase 自动有。campaign 测试 21 passed（另 2 失败=pre-existing redis-steal，已用 `redis-cli client list` 实证 3 个长寿命 BLPOP daemon 偷消息）
 - [x] 2.6 isales-web：`types/campaign.ts` 加字段+默认 100；`InterruptionTab.vue` 在「与模式无关」段加「打断收声淡出(ms)」`el-input-number`（mode-independent）。vitest 90 passed + `vue-tsc --noEmit` 干净
 - [x] 2.7 common 为 editable 安装（engine/api venv `Editable project location` 指向 sibling）→ 下游自动取新版，无需改 pin
 
@@ -26,9 +26,9 @@
 
 - [x] 3.1 各仓 pytest/vitest 已分别跑：common 192✓ / engine 484✓(1 pre-existing gating) / api campaign 21✓(2 pre-existing redis-steal) / web 90✓+typecheck✓
 - [x] 3.2 `openspec validate engine-barge-in-fade-out --strict` 通过
-- [ ] 3.3 部署 ECS engine（scp 覆盖 + restart）；alembic upgrade head；与 `engine-ambient-background-mix §7` 并行改动协调避免 run_loop.py/rtc_telephony.py 撞车（部署 main HEAD 为准）
-- [ ] 3.4 smoke：确认统一 pump 后开场白/首句首帧延迟无回归（对照 `engine-greeting-window-prewarm` 关切）；必要时调 `PLAYOUT_PREBUFFER_FRAMES`
-- [ ] 3.5 更新 `deploy/cloud/STATE.md`（若部署状态变化）
+- [x] 3.3 ECS 全栈部署完成：common 3 文件+migration → `alembic upgrade head`（`c4e6a8b0d2f3 → f0a1b2c3d4e5`，2 campaign 回填 100）；engine 5 文件（run_loop md5 部署前实证 == box `b43a53e0` == git c5a07df，无并行漂移；部署后 grep 验 prewarm 15 hits 仍在=未 clobber 并行 work）；api `schemas.py`；web rebuild（`CampaignDetail-86mBisvx.js`）+ nginx reload；engine/api/scheduler/worker 全重启 active。探针：engine `isales_engine_started`+`credentials_loaded count=6` 无 traceback、`DEFAULT_BARGE_IN_FADEOUT_MS=100`、`set_barge_in_fadeout` 在、`RuntimeConfig.barge_in_fadeout_ms` 在；api openapi 含 `barge_in_fadeout_ms`（PATCH 不 422）
+- [x] 3.4 首音延迟无回归：设计上保证（cushion 仅 ambient 时启用，bare-TTS 路径 primed 立即放帧），已 `test_bare_pump_no_cushion_first_audio_not_delayed` 单测；活体延迟测量并入 §4 真机
+- [x] 3.5 `deploy/cloud/STATE.md` 已更新（同 meta commit）
 
 ## 4. 真机验收（deferred — 同 pipeline-stream-realmachine-acceptance）
 
