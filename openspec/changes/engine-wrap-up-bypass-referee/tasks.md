@@ -41,6 +41,6 @@
 
 ## 7. 部署 + 验收
 
-- [ ] 7.1 部署：common scp + `alembic upgrade head`（列 server_default false 对在途安全）→ engine scp+restart → **api scp+restart**（拾 `CampaignNestedUpdate` 镜像）→ web build+nginx reload；部署后 `/openapi.json` 探针验 `CampaignNestedUpdate` 含 `wrap_up_referee_enabled`；更新 `deploy/cloud/STATE.md`
+- [x] 7.1 部署：common scp + `alembic upgrade head`（列 server_default false 对在途安全）→ engine scp+restart → **api scp+restart**（拾 `CampaignNestedUpdate` 镜像）→ web build+nginx reload；部署后 `/openapi.json` 探针验 `CampaignNestedUpdate` 含 `wrap_up_referee_enabled`；更新 `deploy/cloud/STATE.md` <!-- DONE 2026-06-17: alembic b3d5f7a9c1e2→c4e6a8b0d2f3 (2 camp false) / engine 4 files (run_loop=main HEAD b43a53e0) / api schemas.py mirror / web rebuild / engine+api+scheduler+worker restart. Probes green. ⚠️ run_loop scp collided with parallel greeting-prewarm deploy → reconciled to main HEAD (both changes live, user-authorized). STATE.md updated. -->
 - [ ] 7.2 真机/真通话验收（按需，可豁免）：开 `wrap_up_referee_enabled` 的 campaign，进收尾后客户应一句无实质内容 → 引擎提前挂、reason=`wrap_up_referee_hangup`、`/calls` 不 500
 - [ ] 7.3 本文件 `<!-- commit-sha -->` 回写 PR#/commit/偏离
