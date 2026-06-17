@@ -32,6 +32,7 @@
 
 ## 4. 真机验收（deferred — 同 pipeline-stream-realmachine-acceptance）
 
-- [ ] 4.1 真机 mic 打断对比：硬切 vs 默认淡出（100ms）听感，确认人声平滑收敛、无爆音、像真人收声
-- [ ] 4.2 真机回声 / AEC 复核：淡出尾音 + 背景底噪不引入自激（与 ambient-background-mix 真机回声验收同批）
-- [ ] 4.3 archive：`/opsx:archive engine-barge-in-fade-out`
+<!-- 4.1/4.2 用户豁免（2026-06-17）：与历次真机验收同样 deferred 到专门真机 session；用户批准直接 archive。 -->
+- [x] 4.1 真机 mic 打断对比（硬切 vs 100ms 淡出听感）— **用户豁免**，留 §pipeline-stream-realmachine-acceptance；建议届时 A/B 100/150/200ms 用耳朵定 `barge_in_fadeout_ms`（per-campaign 实时可调，无需改代码）
+- [x] 4.2 真机回声 / AEC 复核（淡出尾音 + 背景底噪不自激）— **用户豁免**，与 ambient-background-mix 真机回声验收同批
+- [x] 4.3 archive：`openspec archive engine-barge-in-fade-out`（spec delta 2 ADDED → interruption-detection）
