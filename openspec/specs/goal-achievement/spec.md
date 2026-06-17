@@ -4,13 +4,19 @@
 ## Requirements
 ### Requirement: 实时目标达成判定
 
-目标达成判定 SHALL 由「某个 referee 输出的 category + 一条 action 命中 `closing` route（或 legacy `transition to=goal_achieved`，经 shim 映射为 `closing` route）」共同决定（替代原单 referee `decision="goal_achieved"` 字段）。`goal_type` SHALL 取自命中规则 action 的 `goal_type` 字段，而非 referee 输出。判定发生在**开口前门控**：门控选中 `closing` route → 播放收尾风格回复（MainSpec + 收尾追加）→ 由其 `then_state=WRAPPING_UP` 经 StatusProjector 投影进 WRAPPING_UP；engine MUST NOT 在 route 内直接 `sm.transition_to`。通话结束后 worker MUST NOT 再次判定 goal_achieved（仅 post-call extractor 抽取 `extracted` 字段入库，与 goal_achieved 判定无关）。
+目标达成判定 SHALL 由「某个 referee 输出的 category + 一条 action 命中 `closing` route（或 legacy `transition to=goal_achieved`，经 shim 映射为 `closing` route）」共同决定（替代原单 referee `decision="goal_achieved"` 字段）。`goal_type` SHALL 取自命中规则 action 的 `goal_type` 字段，而非 referee 输出；该提取 MUST 对 `route` 与 legacy `transition` 两种 action 形态对称——engine MUST NOT 仅对 `transition` 提取 `goal_type` 而在 `route` 形态丢弃它。判定发生在**开口前门控**：门控选中 `closing` route → 播放收尾风格回复（MainSpec + 收尾追加）→ 由其 `then_state=WRAPPING_UP` 经 StatusProjector 投影进 WRAPPING_UP；engine MUST NOT 在 route 内直接 `sm.transition_to`。通话结束后 worker MUST NOT 再次判定 goal_achieved（仅 post-call extractor 抽取 `extracted` 字段入库，与 goal_achieved 判定无关）；worker 读取 goal 标记 SHALL 以 transcript 中的规范事件类型 `ai_reply`（及达成里程碑 `goal_achieved` 事件）为唯一来源。
 
 #### Scenario: 规则命中选 closing route 投影 WRAPPING_UP
 
 - **WHEN** 某 referee 返回判定「已约到」的 category 且对应 routing rule action 为 `{type: route, to: closing, then_state: WRAPPING_UP}`（或 legacy `{type: transition, to: goal_achieved, goal_type: appointment}` 经 shim 映射为 closing route）
 - **THEN** engine SHALL 由门控选中 `closing` route 放行收尾风格回复，其 `then_state=WRAPPING_UP` 经 StatusProjector 投影进 WRAPPING_UP；MUST NOT 在 route/decider 内直接 `sm.transition_to`
 - **AND** `goal_type` MUST 取自规则 action 而非 referee 输出
+
+#### Scenario: route 与 transition 动作的 goal_type 提取对称
+
+- **WHEN** 命中规则的 action 为 `{type: route, to: closing, goal_type: X}`（modern 形态）
+- **THEN** engine 的规则决策层（decider）MUST 从该 action 提取 `goal_type=X` 并沿门控选路一路透传，使最终 `goal_achieved` 事件携带 `goal_type=X`
+- **AND** 该提取行为 MUST 与 legacy `{type: transition, to: goal_achieved, goal_type: X}` 形态产生一致结果，MUST NOT 出现「`transition` 携带 `goal_type` 而 `route` 丢弃为空」的不对称
 
 #### Scenario: 多 referee 下目标判定优先级
 
@@ -22,6 +28,13 @@
 - **WHEN** worker 处理通话结束消息
 - **THEN** `summarize_call` 仅生成摘要并把通话过程中最后一次命中 goal_achieved/closing 规则的 `goal_type` 写入 `call_summary`，MUST NOT 触发独立的目标判定 LLM 调用
 - **AND** worker 的 `post_call_extractor` consumer 仅抽 `extracted` 字段，MUST NOT 重判 goal_achieved
+
+#### Scenario: worker 从 ai_reply 事件读取 goal 标记
+
+- **WHEN** worker 的 `summarize_call`（及其 provider）从 transcript 读取 `goal_achieved` / `goal_type` / `extracted` 结构化标记
+- **THEN** 消费方 MUST 从规范事件类型 `ai_reply`（携带这些字段，见 `transcript` spec § 事件类型枚举）读取——取倒序最近一条携带该标记的 `ai_reply` 事件；达成轮另写的独立 `goal_achieved` 里程碑事件亦为合法来源
+- **AND** 消费方 MUST NOT 依据已废弃的 `bot_speech` 事件名读取（该事件名在 `2026-06-10-fix-transcript-schema-drift` 后引擎不再产出，transcript 事件枚举中亦无此类型）；读不到标记时 MUST fail-safe 视为未达成（`goal_achieved=false`）而非报错
+- **AND** 摘要正文拼接 SHALL 同样以 `ai_reply` 作为 AI 侧话语来源，MUST NOT 因事件名不匹配而丢失 AI 回复文本
 
 #### Scenario: 目标定义仍在 prompt + 规则中，不固化 schema
 
@@ -64,7 +77,9 @@ Campaign 表 MUST NOT 固化目标 schema；目标定义、判定准则、可提
 
 ### Requirement: 收尾双计数器与主动挂断
 
-WRAPPING_UP 状态 SHALL 同时维护轮数计数器与时长计数器，**任一耗尽时**主动挂断。
+WRAPPING_UP 状态 SHALL 同时维护轮数计数器与时长计数器，作为收尾的**兜底（safety-net）**终止条件，**任一耗尽时**主动挂断。计数器耗尽属于"硬上限"，不是收尾期唯一的主动终止路径——收尾期客户静默亦会触发主动挂断（见「收尾期间的特殊情况处理」），二者覆盖互斥的输入（前者为对话持续不收敛，后者为客户不再开口）。
+
+计数器耗尽的挂断 reason SHALL 限定为 `wrap_up_completed`（transcript 事件 `wrap_up_completed.reason` 取值为封闭枚举 `max_rounds` / `max_seconds`）。收尾期其它主动挂断路径（如客户静默）MUST NOT 复用或扩宽该 reason 词汇，改用各自的 `hangup` 事件 reason，以避免 transcript schema 漂移。
 
 #### Scenario: 轮数耗尽先到达
 
@@ -80,10 +95,24 @@ WRAPPING_UP 状态 SHALL 同时维护轮数计数器与时长计数器，**任�
 
 WRAPPING_UP 状态下用户的非常规行为 SHALL 按以下规则处理；engine MUST NOT 退回主管线（避免反复无效循环）。
 
+WRAPPING_UP 期间 engine 的静音判定 SHALL 与通话中段不同：通话中段静音走「重新激活（如『你好，还在么？』）→ 多次后挂断」阶梯；而收尾期客户静默时 engine MUST NOT 播放任何重新激活话术，而是静默达 `campaign.wrap_up_silence_hangup_ms` 后直接主动挂断。该行为对所有 campaign 全局生效（收尾期仍做重新激活即此前的缺陷行为），不设 per-campaign 开关。收尾期静音判定 SHALL 复用既有静音机制并按收尾阶段分支，MUST NOT 新建独立的第二条静音判定路径。
+
 #### Scenario: 用户提出新问题
 
 - **WHEN** WRAPPING_UP 期间用户说出与目标无关的新问题
 - **THEN** engine SHALL 继续走简化管线回应，MUST NOT 退回主管线
+
+#### Scenario: 客户静默后主动挂断
+
+- **WHEN** WRAPPING_UP 期间客户连续静默达到 `campaign.wrap_up_silence_hangup_ms`（默认 6000ms，SHALL 配置为长于通话中段 `campaign.silence_threshold_ms`，给客户在告别语后留思考时间）
+- **THEN** engine SHALL 直接进入 END，发 `hangup` 事件（`reason="wrap_up_silence"`, `initiated_by="ai"`）
+- **AND** engine MUST NOT 播放任何 `silence_activation` 重新激活话术（如「你好，还在么？」）
+- **AND** engine MUST NOT 将该终止写入 `wrap_up_completed.reason`（其为封闭枚举），亦 SHALL 复用 `HangupCause.SILENCE_MAX_REACHED` 而非新增枚举
+
+#### Scenario: 客户在收尾静默窗口内再次开口
+
+- **WHEN** WRAPPING_UP 期间客户在静默达到 `campaign.wrap_up_silence_hangup_ms` 之前再次说话
+- **THEN** 收尾静默窗口 SHALL 重置，engine 按简化管线正常回应，MUST NOT 因先前静默而挂断（避免打断慢思考的客户）
 
 #### Scenario: 用户主动挂断
 
@@ -122,9 +151,10 @@ worker 的 `process_callbacks` SHALL 通过 `callback_config.trigger`（JsonLogi
 | `call_summary.goal_achieved` | 通话最后一轮的标记 |
 | `call_summary.goal_type` | 通话最后一轮的目标类型 |
 | `call_summary.extracted_fields` (JSONB) | 通话最后一轮的提取字段 |
-| `campaign.wrap_up_max_rounds` | 收尾轮数上限 |
-| `campaign.wrap_up_max_seconds` | 收尾时长上限 |
+| `campaign.wrap_up_max_rounds` | 收尾轮数上限（兜底） |
+| `campaign.wrap_up_max_seconds` | 收尾时长上限（兜底） |
 | `campaign.wrap_up_closing_phrases` (JSONB) | 收尾挂断话术池 |
+| `campaign.wrap_up_silence_hangup_ms` | 收尾期客户静默主动挂断阈值（默认 6000ms，长于 `silence_threshold_ms`；收尾期跳过重新激活直接挂断） |
 | `campaign.extraction_fields` (JSONB) | 字段抽取的配置参考（具体抽取由角色 LLM 完成） |
 
 ## Design Trade-off
