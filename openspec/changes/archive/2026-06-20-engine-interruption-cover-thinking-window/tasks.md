@@ -32,6 +32,6 @@
 ## 6. 校验 + 部署 + 实呼 smoke
 
 - [x] 6.1 `make spec-validate`（含 `openspec validate --strict`）通过。
-- [ ] 6.2 `scp` `run_loop.py` + `call_session.py` 到 ECS engine release，按 `deploy/cloud/STATE.md` 重启 engine（无 alembic / 无 common bump）。——待部署窗口。
-- [ ] 6.3 实呼 smoke：复现「客户说 A → 停顿（AI 未出声）→ 说 B」，确认不再慢一拍、语气词不误打断、播音中 barge-in→重组不回归；结果回写 acceptance + `deploy/cloud/STATE.md`。——需真机。
+- [x] 6.2 已部署 ECS `121.89.85.150`（2026-06-20 09:57 CST）：preflight md5==git base `59b2fae`（无漂移）→ 备份 `*-thinking-window` → scp 2 文件 + chown（post-scp md5==git HEAD `5709d2e`）→ 重启 engine（active、clean boot、`in_processing_turn` 在两文件、他方 hotspot 改动仍在）。详见 `deploy/cloud/STATE.md` 顶条。commit meta `f90d66f`。
+- [ ] 6.3 实呼 smoke（**DEFERRED — 用户决定提前 archive，真机验收待补**）：复现「客户说 A → 停顿（AI 未出声）→ 说 B」确认不再慢一拍、语气词不误打断、播音中 barge-in→重组不回归。代码已上线、单测全覆盖；此项是行为层的真机确认，需人工拨测，归档后单独补做（不通过则按 STATE.md 顶条 rollback）。
 - [x] 6.4 根文档漂移核查：grep 根 docs（`DESIGN.md` / `IMPLEMENTATION_PLAN.md` / `README.md`）无「barge-in 仅限 SPEAKING/FILLER」的摘要陈述；spec 索引指向 capability spec 本身，已随 delta 更新——无需额外根文档改动。
