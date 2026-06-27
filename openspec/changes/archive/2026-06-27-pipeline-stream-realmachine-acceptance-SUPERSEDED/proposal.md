@@ -1,3 +1,13 @@
+> **2026-06-27 SUPERSEDED / 撤回 — DO NOT IMPLEMENT。**
+>
+> 这张面向旧 `pipeline-stream-and-referee` 管线的真机验收清单，验收对象已被后续多轮引擎重构盖过：
+> referee 改名 gate-supervision、barge-in 三次重做（`engine-barge-in-fade-out` archive 06-17）、
+> `engine-main-native-multiturn`（archive 06-15）、`engine-interruption-cover-thinking-window`
+> （archive 06-20）、以及 DingRTC 换 vendor。而「逐 change 在 deploy/cloud/STATE.md 各自部署 + 探针
+> 冒烟」的做法已实际取代这张汇总表。真机本身一直在测（call #157/#163/#165/#166 已双向通），只是没人
+> 来勾这张过时的清单。撤回；若 v1.0 仍需一张正式 e2e 验收 gate，待 DingRTC 迁移稳定后按当前管线行为
+> 重写（勿沿用本表旧措辞）。
+
 ## Why
 
 `pipeline-stream-and-referee`（main 流式 + referee 旁路 + post-call extractor 双 LLM 架构）的**代码实装、全仓 pytest、mac dev 机制验证（call_record 137：首音频 678-1106ms / referee 决策驱动状态机 / extractor 离线写库 / fallback=false）、ECS 部署（alembic head `c3d4e5f6a7b8`，4 服务 restart 无异常）已全部完成并 archive**。但「真人 + 真机端到端验收」因物理 Windows 盒子 / 真人交互 blocker 未做（详见 `[[project_session_2026_06_04_handoff]]`：barge-in 真机验证长期卡在 mac edge 起不来 / 用户声音太轻 / Windows 盒子未 ready）。本 change 把这批验收从 `pipeline-stream-and-referee` 拆出独立追踪，待物理条件 ready 时执行，避免阻塞依赖它的 `engine-multi-referee-and-restructure` 开工。

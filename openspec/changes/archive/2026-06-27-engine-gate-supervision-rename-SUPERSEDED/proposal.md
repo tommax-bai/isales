@@ -1,3 +1,13 @@
+> **2026-06-27 SUPERSEDED / 撤回 — DO NOT IMPLEMENT。**
+>
+> 代码侧（纯分类器契约 + 删 confidence 死代码）已落各仓 origin/main（2026-06-09）并随后续部署上线；
+> proposal 强调的 seed referee-prompt live bug 已由 `engine-filler-gated-restructure`（2026-06-15
+> 在 prod 直接 SQL UPDATE camp1 referee prompt id=9）顺手修掉。但本 change 的「旁路/裁判→门控监管」
+> **spec 改名目标已不可干净达成**：06-09 之后归档的 `engine-wrap-up-bypass-referee`（archive 06-17）、
+> `engine-interruption-cover-thinking-window`（archive 06-20）等又把「旁路/裁判」术语大量写回 live
+> specs（现存约 37 处），本 change 按 06-09 基线写的 18 条 MODIFIED delta 已与漂移后的 specs 冲突且
+> 覆盖不全。撤回此 change；若仍要统一术语，另起一个覆盖新增项的 fresh purge change。
+
 # 门控监管命名统一 + 纯分类器契约收口（engine-gate-supervision-rename）
 
 ## Why
