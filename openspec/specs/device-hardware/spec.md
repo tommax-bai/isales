@@ -16,7 +16,7 @@ v1.0 SHALL 不引入任何开源 PBX；硬件控制 MUST 由自研 `modem-contro
 - **WHEN** 部署 v1.0
 - **THEN** isales-telephony 仓库 SHALL 提供单一边缘进程 entry point，进程内含以下 asyncio task：
   - **modem-controller**：udev / pyserial polling + AT 命令通道 + PCM 设备 IO（macOS 平台用既有 macOS audio backend，Windows 由 D1 提供 audio backend）
-  - **audio-bridge**：阿里 ARTC SDK 客户端 + PCM 重采样 + 与 modem-controller 同进程环形 buffer 桥接
+  - **audio-bridge**：阿里 DingRTC 3.x SDK 客户端 + PCM 重采样 + 与 modem-controller 同进程环形 buffer 桥接
   - **cloud-edge gRPC client**：与云端 engine 维护 bidi stream + 本地 SQLite 离线 buffer
   - **telephony-api**（可选）：HTTP server 监听 loopback，提供本地设备查询接口（运维 / 本地 isales-web 使用，A2 后非云调用入口）
 
@@ -401,7 +401,7 @@ macOS 边缘进程 SHALL 支持 **dev-no-modem 启动模式**：跳过真 GSM mo
 
 - **WHEN** `isales-telephony-edge` 启动且 `--dev-no-modem --dev-channel <name> --dev-uid <id> [--dev-peer-uid <id>]` 顶层 flag 传入且 `sys.platform == "darwin"`
 - **THEN** `EdgeOrchestrator` SHALL 在 `start()` 跳过 `SerialATClient` 实例化 / USB watcher 起动 / 任何 AT 命令；仍正常起 cloud-edge grpc_client + audio_bridge
-- 进程 SHALL 正常注册 cloud-edge grpc 回调；cloud-side 主动 `Cloud2Edge.dial` 时 edge 直接走"已接通"分支（跳过 `cpcmreg_enable` 与 capture / playback pumps），调 `audio_bridge.join` 用 `MacosArtcPyObjCSession` 真 join RTC 房间
+- 进程 SHALL 正常注册 cloud-edge grpc 回调；cloud-side 主动 `Cloud2Edge.dial` 时 edge 直接走"已接通"分支（跳过 `cpcmreg_enable` 与 capture / playback pumps），调 `audio_bridge.join` 用 `MacosDingRtcPyObjCSession` 真 join RTC 房间
 - teardown 由 SIGINT / SIGTERM 触发，发 `Edge2Cloud.remote_hangup{hangup_cause="dev_terminate"}` → audio_bridge.leave → 退出进程
 
 #### Scenario: dev-no-modem 不影响生产路径
@@ -412,18 +412,18 @@ macOS 边缘进程 SHALL 支持 **dev-no-modem 启动模式**：跳过真 GSM mo
 #### Scenario: 平台守护
 
 - **WHEN** `--dev-no-modem` flag 传入但 `sys.platform != "darwin"`
-- **THEN** 进程 SHALL fail-fast 退出，打印明确错误 "--dev-no-modem 仅 macOS 支持；Windows 商用走真 GSM modem + windows-artc-pybind11 真 Aliyun RTC 路径"
+- **THEN** 进程 SHALL fail-fast 退出，打印明确错误 "--dev-no-modem 仅 macOS 支持；Windows 商用走真 GSM modem + 真 DingRTC 路径"
 
 ### Requirement: audio-bridge 组件
 
-isales-telephony 仓库 SHALL 新增 `audio-bridge` 模块，作为边缘进程内 asyncio task 运行；职责限定于 PCM 重采样 + 阿里 ARTC SDK 客户端 + 与 modem-controller 同进程环形 buffer 桥接；MUST NOT 涉及 AT 命令 / 设备硬件管理 / AI 编排。
+isales-telephony 仓库 SHALL 新增 `audio-bridge` 模块，作为边缘进程内 asyncio task 运行；职责限定于 PCM 重采样 + 阿里 DingRTC 3.x SDK 客户端 + 与 modem-controller 同进程环形 buffer 桥接；MUST NOT 涉及 AT 命令 / 设备硬件管理 / AI 编排。
 
 #### Scenario: audio-bridge 模块职责
 
 - **WHEN** 一通通话激活
 - **THEN** audio-bridge SHALL：
   1. 接收来自 cloud-edge gRPC client 转发的 `DialCommand{rtc_channel, rtc_token, rtc_uid_edge}` 入会参数
-  2. 调用 ARTC SDK `JoinChannel(token, channel, uid_edge, username, joinConfig)` 入会
+  2. 调用 DingRTC SDK `JoinChannel(token, channel, uid_edge, username, joinConfig)` 入会
   3. 启用 `SetExternalAudioSource(enable=True, sampleRate=16000, channelsPerFrame=1)` 关掉默认麦克风
   4. 从 modem-controller 上行环形 buffer 取 PCM 帧（已重采样至 16 kHz）→ `PushExternalAudioFrameRawData` 推到 RTC
   5. 收 `OnSubscribeAudioFrame(uid=rtc_uid_engine, pcm)` → 推到 modem-controller 下行环形 buffer
@@ -436,7 +436,7 @@ isales-telephony 仓库 SHALL 新增 `audio-bridge` 模块，作为边缘进程�
 
 #### Scenario: audio-bridge 反压
 
-- **WHEN** ARTC SDK 触发 `OnPushAudioFrameBufferFull` 回调
+- **WHEN** DingRTC SDK 触发 `OnPushAudioFrameBufferFull` 回调
 - **THEN** audio-bridge SHALL 暂停从 modem-controller 上行 buffer 取帧 → SDK 内部 buffer 排空后恢复；MUST NOT 简单丢弃帧（造成对端听到断续）；如反压持续 > 200 ms 视为媒体面异常，SHALL 上报 `Edge2Cloud.HardwareAlert{kind="audio_buffer_stalled"}` 并触发挂断流程
 
 #### Scenario: audio-bridge 与 modem-controller 接口

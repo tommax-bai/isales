@@ -22,7 +22,7 @@ DB SHALL 是运行时凭据的唯一事实来源。覆盖字段含 `api_key` / `
   `ISALES_DASHSCOPE_API_KEY` / `ISALES_DASHSCOPE_BASE_URL` /
   `ISALES_VOLCENGINE_*_ENDPOINT` 等字段；4 个 env 文件 SHALL 仅持有
   `ISALES_FERNET_KEY`（同一值，4 处一致）以及非凭据配置（数据库
-  URL / Redis URL / JWT secret / ARTC AppId/AppKey 等）
+  URL / Redis URL / JWT secret / DingRTC AppId/AppKey 等）
 
 #### Scenario: engine 启动从 DB 装载
 
