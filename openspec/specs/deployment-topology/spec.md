@@ -141,7 +141,7 @@ v1.0 边缘机 platform option SHALL 包括 Windows 10 21H2+ / Windows 11（x64�
 - **WHEN** v1.0 客户员工部署边缘客户端
 - **THEN** PC SHALL 满足：
   - Windows 10 21H2 或更新（x64）/ Windows 11（x64）
-  - 至少 4 GB RAM / 200 MB 可用磁盘（含 PyInstaller frozen 包 + ARTC SDK DLL）
+  - 至少 4 GB RAM / 200 MB 可用磁盘（含 PyInstaller frozen 包 + DingRTC SDK DLL）
   - 至少 1 个可用 USB 端口（接 GSM modem）
   - 网络可访问云端 gRPC TLS endpoint + 阿里 RTC UDP 端口
   - **不要求** Python 运行时已安装（PyInstaller 包自带）
@@ -157,7 +157,7 @@ v1.0 边缘机 platform option SHALL 包括 Windows 10 21H2+ / Windows 11（x64�
     isales-telephony.exe        # PyInstaller frozen 主程序
     _internal\                  # PyInstaller _MEIPASS 等价（Python 运行时 + 依赖）
     vendor\
-      aliyun-artc-windows\     # ARTC SDK Windows native binary（.dll）+ 项目内 pybind11 binding
+      dingrtc-windows\         # DingRTC 3.x SDK Windows native binary（.dll）+ 项目内 pybind11 binding
     icons\
       tray.ico
     env.example.txt             # 空 env 模板
@@ -208,6 +208,11 @@ v1.0 边缘机 platform option SHALL 包括 Windows 10 21H2+ / Windows 11（x64�
 
 - **WHEN** v1.0 部署
 - **THEN** macOS Mac mini 形态（由 `impl-deploy-macos` 已 ship 的 launchd plist 部署套件）SHALL 继续作为支持选项，主要用于：(a) iSales 内部 QA / PoC 环境（A2 主形态）/ (b) 个别企业客户机房集中部署需求；商用主推 Windows，但 macOS 路径 MUST NOT 被本 change 移除
+
+#### Scenario: cloud-edge full daemon 拨通真号端到端实测
+
+- **WHEN** Windows edge daemon 起在 dev box 上 + ECS engine 已部署 + provider_credential DB 装载 + RTC AppKey 已在 engine.env + PG 含 campaign + lead (phone=+8613301035545 / status=new) 种子
+- **THEN** scheduler tick 取数 → engine push DialRequest Redis 队列 → engine consume + RtcTelephonyClient join DingRTC channel + DialCommand 通过 cloud-edge gRPC 到 edge → edge SIM7600G-H 实拨 `ATD+8613301035545;` → modem 上报 `CONNECT` → 双方加入同 channel → engine 调 volcengine TTS 生成 PCM → edge 接收 PCM 通过 SerialPcm 推向 modem → 接听端 (dev 自己手机) 听到 AI 开场白 → 挂断后 engine 落 call_record + transcript[0] 含 AI 文本；SHALL 在两份 STATE.md (cloud + windows-edge) 记录 MVP gate 通过证据 (call_record.id / duration_s / transcript[0] / "AI 开场白是否听到 yes/no"，必须 yes 才算通过)
 
 ### Requirement: Windows 客户端依赖与打包
 

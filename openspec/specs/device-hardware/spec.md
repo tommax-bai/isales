@@ -68,6 +68,11 @@ modem-controller SHALL 实现以下子系统：USB watcher（macOS pyserial poll
 - **WHEN** udev 检测到 USB 设备拔出
 - **THEN** 对应 device 状态 SHALL 立即置 `offline`；正在使用该 device 的 call_session MUST 收到 device_error 事件并优雅清理
 
+#### Scenario: edge daemon 五件套真启动后双通道实测
+
+- **WHEN** Windows edge `isales_telephony.main_windows` daemon 启动且通过 cloud-edge gRPC 与 ECS engine 建链 (`grpc_connected`)
+- **THEN** 同一进程 SHALL 同时持有：① COM12 (HS-USB AT) `pyserial` 句柄 ATR `AT\r\n → OK`；② COM11 (HS-USB Audio Class=Ports) PCM byte stream gated by `AT+CPCMREG=1`；③ `dingrtc_pywrap` 的 `WindowsDingRtcSession` (Windows pybind .pyd 加载成功 + DingRTC vendor DLL 链路顺)；④ `.edge-token-test.jwt` 加载完成 (cloud-edge gRPC client 持 bearer)；五件套全 active 后 `device.status` SHALL 透过 cloud-edge `Heartbeat` 上报 → `registered` (无 USB 拔出 / 无 AT 失败 / 无 RTC join 失败)；MUST 在 tray icon 显示 green
+
 ### Requirement: SIM 卡资料化管理
 
 `sim_card` 表 SHALL 覆盖以下属性：iccid / imsi / phone_number / carrier / plan / balance / signal_strength / status / last_checked_at。`device_sim_binding` 表 SHALL 记录绑定历史。
