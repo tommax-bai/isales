@@ -116,15 +116,7 @@
 
 ## REMOVED Requirements
 
-### Requirement: 云端 isales-engine `transport/aliyun_rtc.py` 通过专用 SDK 驱动线程承载 vendor recvCoroutine
-
-**Reason**: 本 Requirement（来自 active change `engine-artc-sdk-thread-model`）建立在错误前提上 —— 假设 `AliRTCSDK_Linux-7.10.2`（ApsaraVideo Live 产品线下的 ARTC SDK + Python ↔ TCP sidecar IPC 模型）是正确的 cloud RTC SDK。诊断（[[project_dingrtc_migration_groundtruth]]）证明该 SDK 与 ECS 配置的 DingRTC 3.x AppId 跨产品线 → 即便 sidecar drive 修好，roomserver 也必然拒 token。本变更切到 DingRTC Linux C++ SDK 后，C++ in-process 调用模型整体淘汰 sidecar / recvCoroutine drive 问题。
-
-**Migration**:
-- 删除 `isales-engine/isales_engine/transport/aliyun_rtc.py`、`isales-engine/isales_engine/transport/_rtc_sdk.py`、`isales-engine/isales_engine/transport/_rtc_driver.py`（含 commit fb62fdd 1410 行 sidecar pump）
-- 任何 import `isales_engine.transport.aliyun_rtc._AliyunArtcChannel` / `isales_engine.transport._rtc_sdk` 的代码 SHALL 改 import 新增的 `isales_engine.transport.dingrtc.DingRtcSession`
-- ECS smoke 入口 `isales-engine/scripts/ecs_pcm_loopback_listen.py` SHALL 改用 `DingRtcSession`；既有 sidecar log 路径（`/tmp/Ali_RTC_Log_Client/aio_logger/`）SHALL **NOT** 再产生（DingRTC C++ in-process 没有 sidecar 进程）
-- `engine-artc-sdk-thread-model` change SHALL archive 同 PR 内，archive 备注引用本 change（"被 `engine-rtc-dingrtc-migration` 整体淘汰：DingRTC C++ in-process，sidecar pump 不再需要"）
+<!-- 2026-06-27 归档对账：原 REMOVED「…aliyun_rtc.py…recvCoroutine」已 moot——该 requirement 在 live device-hardware spec 中已不存在（前序 change 已移除），故撤掉此 REMOVED 以免 archive abort；原意（淘汰 aliyun_rtc sidecar/recvCoroutine）已由 DingRTC C++ in-process 达成。 -->
 
 ### Requirement: 云端 engine 的 ARTC SDK 接入
 
@@ -135,3 +127,7 @@
 - `deploy/cloud/scripts/install.sh` 中 `install-artc-sdk` 步骤 SHALL 改名 `install-dingrtc-sdk`，下载源 SHALL 从 `dingrtc.oss-cn-zhangjiakou.aliyuncs.com/sdk/linux/3.9.0/DingRTC_Linux_SDK_3_9_0.zip` 拉取
 - `audio_pipe` 的 `AliyunRTCCapture` / `AliyunRTCPlayback` backend 类 SHALL 重命名为 `DingRtcCapture` / `DingRtcPlayback`，capture-backend / playback-backend 抽象基类不变
 - engine session 启动调用 `aliyun_rtc.RtcSession(...).join()` SHALL 改为 `dingrtc.DingRtcSession(...).join()`；接口形状（`async def on_audio_frame()` / `async def push_audio(pcm, timestamp)` / `await leave()`）SHALL 保持兼容
+
+### Requirement: macOS 边缘 ARTC SDK 通过 PyObjC binding 接入（dev / QA 形态）
+
+**Reason**: ApsaraVideo Live ARTC 产品线整体被 DingRTC 3.x 取代（macOS 走 DingRTC PyObjC dev/QA 形态，见本 change ADDED 的「macOS 边缘 DingRTC SDK 通过 PyObjC binding 接入」），ARTC SDK 已不存在。

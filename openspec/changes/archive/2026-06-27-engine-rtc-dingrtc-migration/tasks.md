@@ -1,3 +1,12 @@
+> **2026-06-27 归档对账（checkbox 落后 as-built）：** 本 change 的 75/90 勾选严重低估真实进度。
+> 三端切换已全部落 origin/main 并在生产运行：①云端 engine DingRTC 已部署（deploy/cloud/STATE.md
+> § "DingRTC SDK vendor"，dingrtc_pywrap.so 在 `/opt/isales/current/venv`）；②**§7 Windows binding
+> （tasks 显示 0/11）实际全 GREEN**——telephony origin/main `4748c0c/30a96de/ada5df5/0e6e015/c669afe/
+> 5e1ab5f` 全套 dingrtc_pywrap + WindowsDingRtcSession + 路由切换；③**§13.2 真拨号 e2e 已 PASS**
+> （telephony origin/main `176faee` 全栈真拨 13301035545 双向对话）。**§8 macOS 标 SUPERSEDED**：
+> macos DingRTC pyobjc 分支未合 main、被 Windows-edge pivot 取代（macOS 已退出 prod 路径），非阻塞。
+> 据此走归档（合 device-hardware / deployment-topology / service-communication 三个 delta 进 specs/）。
+
 ## 1. 准备：vendor SDK 下载 + 回退基线 + 文档骨架
 
 > **Session blocker**：§1.2-1.5 + §1.8 依赖 vendor SDK 在本机 / Windows / ECS 落位；用户负责下载。这些任务未完成前，§2-8 binding 实施全部 block（无 vendor 头文件 / framework 无法编译 / 无法 class-dump selector）。下个 session 接手第一件事：跑 `ls ~/codes/vendor/DingRTC_*` 验证 SDK 到位。

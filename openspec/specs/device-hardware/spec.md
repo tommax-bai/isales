@@ -388,79 +388,6 @@ modem-controller 在 Windows 上 SHALL 维护一份 USB GSM modem 白名单（�
 - **WHEN** 一个 COM 端口被识别为 GSM modem
 - **THEN** modem-controller SHALL 顺序发 `AT+CGMI`（厂商）/ `AT+CGMM`（型号）/ `AT+CGSN`（IMEI）/ `AT+CCID`（ICCID）等 AT 命令完成设备元数据登记；初始化失败（无响应 / 错误响应）SHALL 标记 device status = `error` 而非 `idle`，并通过 cloud-edge gRPC 上报 `HardwareAlert{kind="modem_init_failed"}`
 
-### Requirement: macOS 边缘 ARTC SDK 通过 PyObjC binding 接入（dev / QA 形态）
-
-边缘 isales-telephony 进程在 macOS 13+（x86_64 + Apple Silicon）上 SHALL 通过 `isales_telephony/audio_bridge/macos_artc_pyobjc.py`（项目内 PyObjC bridge）接入真 Aliyun RTC SDK；该实装与既有 "Windows 边缘 ARTC SDK 通过 pybind11 binding 接入"（来自 `windows-artc-pybind11`）pattern 对称，**并列**于既有 Windows backend，不替代 Windows 商用路径。
-
-本 Requirement 服务于 dev 同学在 mac 工作机上做策略层 + 工程层真 RTC 闭环演练（mac edge 与 Windows 商用 edge 等同地 join Aliyun RTC 房间，连真 cloud engine `121.89.85.150`，复用既有 A2 控制面 + 数据面）。**MUST NOT** 进入 v1.0 商用形态（仍是 Windows + 真 GSM modem + 真 Aliyun RTC，由 `arch-cloud-edge-split` + `windows-artc-pybind11` 联合交付）；**MUST NOT** 影响 A2 + windows-artc-pybind11 联合验收契约。
-
-PyObjC binding 与既有 `MacosRtcSession` mock loopback（`isales_telephony/audio_bridge/session.py`）并存。Mock loopback 保留作 CI / unit-test 同进程 fixture，**不**被本 Requirement 替代。
-
-#### Scenario: PyObjC + `objc.loadBundle` 加载 framework
-
-- **WHEN** 边缘进程在 darwin 平台启动且 `pyobjc-core` 与 `pyobjc-framework-Cocoa` 已安装（通过 `[macos-artc]` optional extras）且 `AliRTCSdk.framework` 解压在约定路径
-- **THEN** `MacosArtcPyObjCSession.__init__` SHALL 通过 `objc.loadBundle("AliRTCSdk", bundle_path=<framework path>)` 显式加载 framework
-- framework path 默认 SHALL 为 `~/codes/vendor/AliRTCSdk_macos/AliRTCSdk.framework`；env var `ISALES_MACOS_ARTC_FRAMEWORK_PATH` SHALL 允许 override 该默认值
-- framework 加载失败（路径不存在 / 不是 framework / 架构不兼容 / Obj-C class lookup 失败）SHALL 在 `__init__` 抛 `RtcError`，错误信息 SHALL 含具体诊断（缺失路径 / 缺失 class / Obj-C runtime error）
-
-#### Scenario: PyObjC NSObject 子类作 `AliRtcEngineDelegate`，audio-only 子集
-
-- **WHEN** binding 模块加载
-- **THEN** SHALL 定义 PyObjC NSObject 子类 `_AliRtcAudioDelegate` 实施 audio-only 子集 selector：
-  - `onJoinChannelResult:channel:elapsed:` — join 完成
-  - `onLeaveChannelResult:` — leave 完成
-  - `onError:` — SDK 错误
-  - `onSubscribeAudioFrame:` — 入站 PCM 帧（per-uid before-mixing）
-  - `onPushAudioFrameBufferFull:` — 出站反压
-  - `onConnectionLost` / `onConnectionRecovery` — 连接事件
-  - `onRemoteUserOnLineNotify:` / `onRemoteUserOffLineNotify:` — 远端 uid 事件
-- **MUST NOT** 实施 video / screenshare / 完整 `AliRtcEngineDelegate` 90+ event interface（v1.0 audio-only）
-
-#### Scenario: Cocoa thread → asyncio 跨线程桥
-
-- **WHEN** PyObjC delegate 回调在 Cocoa main / random SDK thread 触发
-- **THEN** delegate 实施 SHALL 通过 `loop.call_soon_threadsafe(handler, *args)` 投递到记录在 `__init__` 的 asyncio event loop；**MUST NOT** 在 Cocoa thread 直接调 asyncio API（`set_result` / `put_nowait` 等）
-- delegate 闭包 SHALL 不持有 PyObjC 对象引用（只传值），避免跨线程释放 race
-- `audio_frames()` 数据路径 SHALL 用 `asyncio.Queue` + drainer task，drainer 从 ring buffer / queue 拉帧 yield 到调用方
-
-#### Scenario: `MacosArtcPyObjCSession` 实施 `RtcSession` ABC，形状镜像 `WindowsRtcSession`
-
-- **WHEN** `MacosArtcPyObjCSession` 实例被使用
-- **THEN** SHALL 实施 `isales_common.audio.rtc.RtcSession` ABC 的 4 个 abstract API：`join(channel, token, uid, *, send_sample_rate=16000, send_channels=1)` / `leave()` / `is_joined` property / `audio_frames()` async iterator / `push_audio(pcm, *, timestamp_ms)`
-- `join()` SHALL 等 `onJoinChannelResult:` 回调（通过 `asyncio.Future`），5 秒超时抛 `RtcError`；result code 非 0 抛 `RtcError` 含 code 与 message
-- `leave()` SHALL 是 idempotent：二次 leave 不抛
-- `push_audio()` 失败 SHALL 翻 `RtcError`；SDK 报 buffer full SHALL 翻 `RtcPushBackpressure`
-- 失败模式（`RtcError` / `RtcNotJoined` / `RtcPushBackpressure`）与 `WindowsRtcSession` 一一对齐
-
-#### Scenario: 平台默认路由 darwin → PyObjC binding，fallback to mock
-
-- **WHEN** `audio_bridge/__init__.py::get_default_rtc_session_class()` 在 `sys.platform == "darwin"` 下被调用
-- **THEN** SHALL 优先 import `MacosArtcPyObjCSession` 并返回该类
-- **WHEN** import 失败（pyobjc / framework 缺失 / SDK 不在路径）
-- **THEN** SHALL 打 WARN log（含装包指引："pip install -e '.[macos-artc]' 并解压 SDK 到 ~/codes/vendor/AliRTCSdk_macos/"）并 fallback 返回 `MacosRtcSession` mock loopback；**MUST NOT** 抛硬错（fresh checkout 不应 crash）
-- **MUST NOT** 引入 `ISALES_EDGE_RTC_BACKEND` 类 env var 强制覆盖 platform 选择（与本 spec L402 既有约束 "platform 选择 MUST NOT 通过环境变量强制覆盖" 一致）
-
-#### Scenario: dev / QA 形态边界
-
-- **WHEN** v1.0 MVP 验收 / 客户预演 / 任何对外演示
-- **THEN** SHALL **NOT** 使用 macOS PyObjC binding 形态；唯一验收路径仍是 Windows 商用形态（Windows frozen exe + 真 Aliyun RTC join + 真 GSM modem + 拨真手机 → 听到 AI 开场白）
-- mac PyObjC binding 测出的延迟 / barge-in / VAD / 抗噪 SHALL 作为 dev 调参参考；策略机制（barge-in / 垫词 / handoff / goal partial）行为外推有效，绝对延迟数字外推到商用前 SHALL 在 Windows 商用形态再验证一次
-
-#### Scenario: vendor SDK 与依赖隔离
-
-- **WHEN** 商用 Windows PyInstaller 构建 / cloud Linux deploy
-- **THEN** `pyobjc-core` / `pyobjc-framework-Cocoa` / `AliRTCSdk.framework` SHALL **NOT** 被打入商用 frozen exe 或 cloud image
-- `pyobjc-core` / `pyobjc-framework-Cocoa` SHALL 仅在 `isales-telephony` pyproject `[project.optional-dependencies].macos-artc` 中声明；商用构建装 base + Windows-specific extras，不装 `[macos-artc]`
-- vendor `AliRTCSdk.framework` SHALL **NOT** 进任何 git 仓库；按 `reference_artc_sdk.md` 约定放 `~/codes/vendor/AliRTCSdk_macos/`，运行时 `objc.loadBundle(bundle_path=...)` 注入
-
-#### Scenario: 不影响既有 `MacosRtcSession` / `WindowsRtcSession`
-
-- **WHEN** 本 Requirement 实装上线
-- **THEN** `isales_telephony/audio_bridge/session.py::MacosRtcSession`（同进程 loopback mock，A2 / CI 测试用）SHALL 不被修改
-- `isales_telephony/audio_bridge/windows_rtc_session.py::WindowsRtcSession`（pybind11 真 Aliyun RTC，`windows-artc-pybind11` 实装）SHALL 不被修改
-- `RtcSession` ABC（`isales-common/isales_common/audio/rtc.py`）SHALL 不被修改
-- 既有 device-hardware Requirement "Windows 平台 backend" / "macOS 边缘形态保留"（来自 archive change） SHALL 不被修改
-
 ### Requirement: macOS dev-no-modem orchestrator 路径（mac 装不了 GSM modem 驱动的物理约束）
 
 macOS 边缘进程 SHALL 支持 **dev-no-modem 启动模式**：跳过真 GSM modem 拨号链路，由 cloud-side 主动 `Cloud2Edge.dial` 触发后 edge 直接走"已接通" CallSession 走 audio_bridge join + 真 Aliyun RTC 房间。本 Requirement 服务于 mac 上无法安装 USB GSM modem 驱动的物理约束，与 PyObjC binding 形成 dev 形态闭环。
@@ -512,25 +439,6 @@ isales-telephony 仓库 SHALL 新增 `audio-bridge` 模块，作为边缘进程�
 - **WHEN** audio-bridge 与 modem-controller 同进程跨 task 通信
 - **THEN** SHALL 通过 asyncio Queue / 环形 buffer 传递 PCM 帧 + 入会 / 离会指令；MUST NOT 共享可变全局状态；MUST NOT 通过文件系统 / Unix socket / 本地 HTTP 通信（同进程无需）
 
-### Requirement: 云端 engine 的 ARTC SDK 接入
-
-云端 isales-engine SHALL 在 `transport/aliyun_rtc.py` 中包装阿里 ARTC SDK for Linux Python，作为 engine session 的 RTC 入会与音频 IO 实现；MUST 暴露 asyncio-friendly 接口供 `audio_pipe` 与 engine session 主循环调用。
-
-#### Scenario: SDK 接入封装
-
-- **WHEN** engine session 启动（响应 scheduler 派发的 dial）
-- **THEN** engine SHALL 调用 `aliyun_rtc.RtcSession(channel, token, uid_engine).join()` 入会；接口 SHALL 暴露 `async def on_audio_frame()` 异步迭代器供消费上行 PCM；SHALL 暴露 `async def push_audio(pcm: bytes, timestamp: int)` 推下行 PCM；通话结束 `await rtc_session.leave()`
-
-#### Scenario: audio_pipe RTC backend
-
-- **WHEN** engine `audio_pipe` 选 capture / playback backend
-- **THEN** v1.0 云端 SHALL 默认选 `AliyunRTCCapture` / `AliyunRTCPlayback`；接口 MUST 与既有 ALSA / macOS backend 兼容（实现 capture-backend / playback-backend 抽象基类），便于本地开发 / 测试时切回本地 backend
-
-#### Scenario: SDK vendor 路径
-
-- **WHEN** 云端 ECS 部署
-- **THEN** SDK 压缩包 SHALL 解压到 `/opt/isales/current/vendor/aliyun-artc-linux-python/`；engine 进程 `sys.path` 或 `pip install -e file://...` 引入；MUST NOT 提交 vendor 二进制到 git 仓库；SHALL 通过 `deploy/cloud/scripts/install.sh` 中专门的 `install-artc-sdk` 步骤从内部 artifact 仓 / OSS 拉取压缩包
-
 ### Requirement: 边缘进程不直接读写云端 PG / Redis
 
 边缘 isales-telephony 进程 SHALL 不直接 TCP 连接云端阿里云 RDS / Redis；所有业务数据读 / 写 SHALL 通过 cloud-edge gRPC `Edge2Cloud.CallEvent` / `Edge2Cloud.HardwareAlert` 上报；边缘 SQLite 仅作离线 buffer + 本地设备元数据缓存。
@@ -547,6 +455,120 @@ isales-telephony 仓库 SHALL 新增 `audio-bridge` 模块，作为边缘进程�
 
 - **WHEN** isales-common alembic 迁移演进云内 PG schema
 - **THEN** 边缘 SQLite 表结构 MAY 落后云内 schema 一两个版本（在 backward-compatible 范围内）；MUST 由 isales-telephony 仓库自行维护边缘 SQLite 迁移脚本；MUST NOT 共用 isales-common alembic 的迁移（避免边缘进程崩在不识别的列上）
+
+### Requirement: 云端 isales-engine 通过项目内 pybind11 binding 接入 DingRTC 3.x Linux C++ SDK
+
+云端 isales-engine SHALL 在 `isales-engine/isales_engine/transport/dingrtc/` 目录下通过项目内 pybind11 binding（产物 `dingrtc_pywrap.so`）包装 DingRTC Linux C++ SDK 3.x，作为 engine session 的 RTC 入会与音频 IO 实现；MUST 暴露 asyncio-friendly 接口供 `audio_pipe` 与 engine session 主循环调用；MUST 实施 `isales_common.audio.rtc.RtcSession` ABC 的 4 个 abstract API（`join(channel, token, uid, *, send_sample_rate, send_channels)` / `leave()` / `is_joined` property / `audio_frames()` async iterator / `push_audio(pcm, *, timestamp_ms)`）。
+
+本 Requirement 取代既有 "云端 engine 的 ARTC SDK 接入"（来自 `arch-cloud-edge-split`，包装 `AliRTCSDK_Linux-7.10.2` Python wrapper + TCP sidecar IPC 模型）。诊断根因：既往 SDK 是 **ApsaraVideo Live 产品线**下的 ARTC SDK（域名 `alivc-demo-cms.alicdn.com`），与 ECS 配置的 **DingRTC 3.x AppId**（`o6dpsan9...`，域名 `dingrtc.oss-cn-zhangjiakou.aliyuncs.com`）不互通 → token 验证必然失败（[[project_dingrtc_migration_groundtruth]]）。
+
+#### Scenario: 项目内 pybind11 binding 编译产物
+
+- **WHEN** cloud Linux engine 部署 / CI 构建
+- **THEN** `transport/dingrtc/CMakeLists.txt` SHALL 编译 pybind11 binding，产物 SHALL 为 `dingrtc_pywrap.so`（Linux ELF shared object，CPython ABI 兼容）；编译命令 SHALL 通过 `pip install -e .` 触发（pyproject `[tool.scikit-build]` 或等价 build backend）；MUST NOT 提交 `.so` 二进制到 git 仓库（编译产物在 `.gitignore`）
+- 编译过程 SHALL 引用 DingRTC SDK 头文件（默认 `/opt/isales/vendor/DingRTC_Linux_SDK_3_9_0/include/`）与共享库（默认 `/opt/isales/vendor/DingRTC_Linux_SDK_3_9_0/lib/libDingRTC.so`）；vendor 路径 SHALL 通过环境变量 `ISALES_DINGRTC_LINUX_SDK_PATH` 允许 override
+
+#### Scenario: 入会用 RtcEngineAuthInfo 结构（DingRTC 3.x API）
+
+- **WHEN** `RtcSession.join(channel, token, uid, *, send_sample_rate=16000, send_channels=1)` 被调用
+- **THEN** binding SHALL 内部调用 `RtcEngine::Create(extras)` 创建 engine 实例 → `SetEngineEventListener(listener)` 注册回调 → 组装 `RtcEngineAuthInfo{channelId=channel, userId=uid, appId=<from credentials>, token=<token>, gslbServer="https://gslb.dingrtc.com"}` → `engine->JoinChannel(authInfo, userName=uid)`
+- token 字段 SHALL 直接喂 `isales_engine.transport.rtc_token` 产出（v3.0 binary 算法不变；rtc_token 模块 SHALL NOT 被本变更修改）
+- `join` SHALL 等 `OnJoinChannelResult` 回调（通过 main-loop `asyncio.Future`），10 秒超时 raise `RtcError`；result code 非 0 SHALL raise `RtcError(code, message)`
+
+#### Scenario: 外部音频源 push / 远端 PCM observer
+
+- **WHEN** session join 成功后第一次 `push_audio` 调用之前
+- **THEN** binding SHALL 调用 `engine->SetExternalAudioSource(true, sampleRate, channels)` 启用外部音频源（参数取 `join` 时传入的 `send_sample_rate` / `send_channels`）；SHALL `engine->PublishLocalAudioStream(true)` + `engine->PublishLocalVideoStream(false)`（audio-only 拓扑）
+- **WHEN** `RtcSession.push_audio(pcm, *, timestamp_ms)` 被调用
+- **THEN** binding SHALL 组装 `RtcEngineAudioFrame{type=PCM16, bytesPerSample=2, samplesPerSec=sampleRate, channels=channels, buffer=pcm, samples=len(pcm)//2//channels, timestamp=timestamp_ms}` → `engine->PushExternalAudioFrame(&frame)`；调用失败 SHALL raise `RtcError`；vendor 报 buffer full SHALL raise `RtcPushBackpressure`
+- 远端订阅 SHALL 走 `engine->SubscribeAllRemoteAudioStreams(true)`（仅混流模式；DingRTC Linux C++ SDK 不提供 per-uid PcmBeforMixing 订阅，v1.0 2-user channel 下混流 = 对方那一路，不构成 blocker）
+- binding SHALL 实施 `RtcEngineAudioFrameObserver::OnPlaybackAudioFrame(frame)` 回调，把 PCM 通过 `main_loop.call_soon_threadsafe(...)` marshal 到 `audio_frames()` AsyncIterator
+
+#### Scenario: 离会与销毁
+
+- **WHEN** `RtcSession.leave()` 被调用 或 进程退出
+- **THEN** binding SHALL 调用 `engine->LeaveChannel()` → `engine->SetEngineEventListener(nullptr)` → `RtcEngine::Destroy(engine)`；leave SHALL 是 idempotent（二次 leave 不抛）
+- 销毁后 engine 指针 SHALL 置 nullptr；后续任何 API 调用 SHALL raise `RtcNotJoined`
+
+#### Scenario: vendor 二进制不进 git，binding 源码进 git
+
+- **WHEN** 任何 commit / PR / CI 构建
+- **THEN** DingRTC SDK 共享库 / 头文件 / 文档 SHALL **NOT** 提交到任何 git 仓库；vendor 路径 SHALL 在 `.gitignore` 覆盖（默认 `/opt/isales/vendor/DingRTC_Linux_SDK_*/` glob）
+- `transport/dingrtc/` 下的 pybind11 binding 源码（`.cpp` / `.h` / `CMakeLists.txt` / `pyproject` 配置）SHALL 进 git；binding 编译产物（`*.so`）SHALL **NOT** 进 git
+
+### Requirement: macOS 边缘 DingRTC SDK 通过 PyObjC binding 接入（dev / QA 形态）
+
+边缘 isales-telephony 进程在 macOS 13+（x86_64 + Apple Silicon）上 SHALL 通过 `isales_telephony/audio_bridge/macos_dingrtc_pyobjc.py`（项目内 PyObjC bridge）接入真 DingRTC SDK macOS framework；本 Requirement 取代既有 "macOS 边缘 ARTC SDK 通过 PyObjC binding 接入"（loadBundle `AliRTCSdk.framework` 路径），将 vendor SDK 从 ApsaraVideo Live 产品线 ARTC SDK（`AliRTCSdk_7.8.10000-SNAPSHOT`）切换到 DingRTC 3.x（`DingRTC_macOS_SDK_3_9_0`）。
+
+形态边界（dev/QA only / MUST NOT 进商用 / 与既有 mock loopback 并存）与既有 spec 一致；本 Requirement 仅替换 vendor SDK 调用层。
+
+#### Scenario: PyObjC + `objc.loadBundle("DingRTC", ...)` 加载 framework
+
+- **WHEN** 边缘进程在 darwin 平台启动且 `pyobjc-core` 与 `pyobjc-framework-Cocoa` 已安装（通过 `[macos-artc]` optional extras，extras 名保持向后兼容）且 `DingRTC.framework` 解压在约定路径
+- **THEN** `MacosDingRtcPyObjCSession.__init__` SHALL 通过 `objc.loadBundle("DingRTC", bundle_path=<framework path>)` 显式加载 framework
+- framework path 默认 SHALL 为 `~/codes/vendor/DingRTC_macOS_SDK_3_9_0/DingRTC.framework`；env var `ISALES_MACOS_DINGRTC_FRAMEWORK_PATH` SHALL 允许 override 该默认值（既有 `ISALES_MACOS_ARTC_FRAMEWORK_PATH` SHALL 作 deprecated alias 保留一个 release 周期，读到时 WARN log 并 fallback 解析）
+- framework 加载失败（路径不存在 / 不是 framework / 架构不兼容 / Obj-C class lookup 失败）SHALL 在 `__init__` 抛 `RtcError`，错误信息 SHALL 含具体诊断（缺失路径 / 缺失 class / Obj-C runtime error）
+
+#### Scenario: PyObjC NSObject 子类作 DingRtc audio delegate，audio-only 子集
+
+- **WHEN** binding 模块加载
+- **THEN** SHALL 定义 PyObjC NSObject 子类 `_DingRtcAudioDelegate` 实施 audio-only 子集 selector（具体 selector 名由 PoC 阶段 `class-dump` framework `.tbd` 确认；约定按 DingRTC iOS SDK selector pattern 实施 `onJoinChannelResult:channel:elapsed:` / `onLeaveChannelResult:` / `onAudioFrame:` 类回调）
+- selector 实施 SHALL 把 vendor callback 通过 `main_loop.call_soon_threadsafe(...)` marshal 到 main loop；MUST NOT 在 Obj-C 回调线程内直接调 Python asyncio API
+
+#### Scenario: `MacosDingRtcPyObjCSession` 实施 `RtcSession` ABC，形状镜像 cloud 与 Windows session
+
+- **WHEN** `MacosDingRtcPyObjCSession` 实例被使用
+- **THEN** SHALL 实施 `isales_common.audio.rtc.RtcSession` ABC 的 4 个 abstract API；失败模式（`RtcError` / `RtcNotJoined` / `RtcPushBackpressure`）SHALL 与 cloud `DingRtcSession` / Windows `WindowsRtcSession` 一一对齐
+
+#### Scenario: 平台默认路由 darwin → DingRTC PyObjC binding，fallback to mock
+
+- **WHEN** `audio_bridge/__init__.py::get_default_rtc_session_class()` 在 `sys.platform == "darwin"` 下被调用
+- **THEN** SHALL 优先 import `MacosDingRtcPyObjCSession` 并返回该类
+- **WHEN** import 失败（pyobjc / framework 缺失 / SDK 不在路径）
+- **THEN** SHALL 打 WARN log（含装包指引："pip install -e '.[macos-artc]' 并解压 DingRTC SDK 到 ~/codes/vendor/DingRTC_macOS_SDK_3_9_0/"）并 fallback 返回 `MacosRtcSession` mock loopback；MUST NOT 抛硬错（fresh checkout 不应 crash）
+- MUST NOT 引入 `ISALES_EDGE_RTC_BACKEND` 类 env var 强制覆盖 platform 选择
+
+#### Scenario: vendor SDK 与依赖隔离
+
+- **WHEN** 商用 Windows PyInstaller 构建 / cloud Linux deploy
+- **THEN** `pyobjc-core` / `pyobjc-framework-Cocoa` / `DingRTC.framework` SHALL **NOT** 被打入商用 frozen exe 或 cloud image
+- `pyobjc-core` / `pyobjc-framework-Cocoa` SHALL 仅在 `isales-telephony` pyproject `[project.optional-dependencies].macos-artc` 中声明（extras 名保留 `macos-artc` 向后兼容）；商用构建装 base + Windows-specific extras，不装 `[macos-artc]`
+- vendor `DingRTC.framework` SHALL **NOT** 进任何 git 仓库；按 [[reference_artc_sdk]] 约定放 `~/codes/vendor/DingRTC_macOS_SDK_3_9_0/`，运行时 `objc.loadBundle(bundle_path=...)` 注入
+
+### Requirement: Windows 边缘 DingRTC SDK 通过项目内 pybind11 binding 接入（vendor 调用层切 DingRTC 3.x）
+
+边缘 isales-telephony 进程在 Windows 10 21H2+ / Windows 11（x64）上 SHALL 通过 `isales_telephony/audio_bridge/windows_rtc_session.py` + 项目内 pybind11 binding（产物 `dingrtc_pywrap.pyd`，源码 `isales-telephony/isales_telephony/audio_bridge/_dingrtc_pywrap_src/`）包装 DingRTC Windows SDK 3.x（`DingRTC.dll`），作为边缘 RTC 入会与音频 IO 实现。
+
+本 Requirement 取代既有 `windows-artc-pybind11` 实装中的 vendor 调用层（包装 `AliVCSDK_ARTC-7.6.0`），保留其 binding 框架（CMake / audio_observer / ring_buffer / engine_listener 通用层 ~80%）；vendor 调用层换 DingRTC 3.x API。
+
+#### Scenario: vendor 路径与 DLL 名
+
+- **WHEN** Windows edge 部署 / `build.ps1` PyInstaller 构建
+- **THEN** vendor SDK SHALL 解压在 `C:\Users\<user>\codes\vendor\DingRTC_Windows_SDK_3_9_0\`（或环境变量 `ISALES_DINGRTC_WINDOWS_SDK_PATH` 指定路径）
+- DLL 名 SHALL 为 `DingRTC.dll`（取代 `AliVCSDK_ARTC.dll` / `AliRTCSdk.dll`）；PyInstaller spec `binaries` 段 SHALL 显式包含 `DingRTC.dll` + 项目内 binding 产物 `dingrtc_pywrap.pyd`
+- pybind11 模块名 SHALL 为 `dingrtc_pywrap`（取代 `aliyun_artc_pywrap`）；PyInstaller `hiddenimports` 段同步更新
+
+#### Scenario: vendor 调用层 API 映射
+
+- **WHEN** binding 编译
+- **THEN** 头文件 include SHALL 改为 DingRTC 3.x 提供（`RtcEngine.h` / `RtcEngineAudioFrameObserver.h` / `RtcEngineEventListener.h`）；类名 SHALL 改为 `RtcEngine` / `RtcEngineAuthInfo` / `RtcEngineEventListener` / `RtcEngineAudioFrameObserver`；API 签名 SHALL 与 cloud Linux DingRTC binding 同（`Create` / `Destroy` / `SetEngineEventListener` / `JoinChannel(authInfo, userName)` / `LeaveChannel` / `SetExternalAudioSource(true, sampleRate, channels)` / `PushExternalAudioFrame(RtcEngineAudioFrame)` / `SubscribeAllRemoteAudioStreams(true)`）
+
+#### Scenario: binding 通用层（vendor 无关）保留
+
+- **WHEN** 本变更落地
+- **THEN** `windows-artc-pybind11` 既有 binding 框架的通用层 SHALL **NOT** 被重写：
+  - `CMakeLists.txt` build pipeline 骨架
+  - `audio_observer.cpp/h`（`OnPlaybackAudioFrame` callback 桥接）
+  - `ring_buffer.cpp/h`（capture / playback PCM 环形 buffer）
+  - `engine_listener.cpp/h`（engine 事件 callback 桥接）
+  - Python wrapper `WindowsRtcSession` 形状 + `RtcSession` ABC 实施
+- 仅 vendor 调用层（包含的头文件、类名、API 签名）SHALL 重写为 DingRTC 3.x
+
+#### Scenario: 三端 SDK 版本一致性 lint
+
+- **WHEN** CI 构建 / `make spec-validate` / 任何 PR 提交
+- **THEN** SHALL 强制三端 DingRTC SDK 版本号一致（`isales-engine` pyproject DingRTC Linux SDK 版本 + `isales-telephony` pyproject DingRTC Windows / macOS SDK 版本 + `deploy/cloud/STATE.md` + `isales-telephony/deploy/edge/windows/STATE.md` + `isales-telephony/deploy/edge/macos/RUNBOOK.md`，5 处对账）；版本不一致 SHALL 阻断 PR 合并
+- 任何升 minor SHALL 三端同 PR；MUST NOT 单端升
 
 ## Data Schema
 

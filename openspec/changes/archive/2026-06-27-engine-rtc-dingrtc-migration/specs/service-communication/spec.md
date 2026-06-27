@@ -39,3 +39,9 @@
 - **WHEN** 任一端调 `JoinChannel`
 - **THEN** `RtcEngineAuthInfo.gslbServer`（cloud）/ 等价 Windows / macOS API 字段 SHALL 默认为 `https://gslb.dingrtc.com`（DingRTC vendor 默认 GSLB endpoint）；MUST NOT 默认指向 `gw.rtn.aliyuncs.com`（ApsaraVideo Live 旧网关，与 DingRTC roomserver 不连通）
 - gslbServer 字段 SHALL 允许通过环境变量 / 配置 override，仅供专网 / privatelink 场景使用；commercial v1.0 不开放该 override
+
+## REMOVED Requirements
+
+### Requirement: 云-边媒体面（阿里 RTC PaaS）
+
+**Reason**: 被本 change ADDED 的「云-边媒体面通过 DingRTC 3.x PaaS（取代 ApsaraVideo Live ARTC SDK）」取代；旧 requirement 文本引用 ApsaraVideo Live ARTC SDK（`ARTC SDK for Linux Python / ARTC SDK for macOS Python`），选错产品线（与 ECS 配置的 DingRTC 3.x AppId 跨产品线不互通）。技术目标（同房间 PCM 双向流）不变，仅 SDK 选型修正。
