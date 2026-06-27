@@ -18,5 +18,5 @@
 - [x] 3.1 scp `sentence_splitter.py` 到 ECS `/opt/isales/current/isales-engine/.../sentence_splitter.py`（editable live import 路径）+ chown isales + 重启 engine；live import 实证 `MAX=120 SOFT=60 BOUND='，、；：,;:'`，日志 `isales_engine_started`+`credentials_loaded count=6` 无 traceback。 <!-- 2026-06-17 11:31 CST ECS 121.89.85.150 -->
 - [x] 3.2 `openspec validate engine-sentence-splitter-soft-boundary --strict` 通过。
 - [x] 3.3 commit + push（engine + meta）。 <!-- engine fa5617a；meta 见本提交 -->
-- [ ] 3.4 **真机听感**：长文本跨句是否更连贯、拦腰切是否消失（用户耳朵确认）。听完再决定是否上阶梯第 2 档 A（整轮单向合并）/ 第 3 档双向流式。
-- [ ] 3.5 全 task 完成 + 真机确认后 archive。
+- [ ] 3.4 **真机听感**（WAIVED 2026-06-27，用户批准归档）：长文本跨句是否更连贯、拦腰切是否消失（用户耳朵确认）。纯单文件、零回归、已部署上云 ~10 天；主观听感门不阻塞归档，留作后续阶梯（第 2 档 A 整轮单向 / 第 3 档双向流式）决策的触发条件。
+- [x] 3.5 全 task 完成后 archive。 <!-- 2026-06-27 用户批准归档（3.4 听感门 waive） -->
