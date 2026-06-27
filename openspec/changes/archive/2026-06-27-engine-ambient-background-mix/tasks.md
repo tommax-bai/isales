@@ -45,7 +45,13 @@
 - [x] 6.5 隔离性断言：启泵+推背景音后 inbound_q/vad_q 仍为空（入向零污染） <!-- engine ecf9e34 test_ambient_never_touches_inbound -->
 - [x] 6.6 engine 455 passed（+19 新）/api 21 campaign passed/web 90 passed/common 校验通过；`openspec validate --strict` 通过。两处 pre-existing fail（engine gate timeout / api redis-steal）已 stash 甄别与本变更无关 <!-- 见各仓测试输出 -->
 
-## 7. 部署 + 真机验收（DEFERRED — 同既往真机验收并入 pipeline-stream-realmachine-acceptance）
+## 7. 部署 + 真机验收（真机回声门 WAIVED 2026-06-27 — 用户批准归档）
+
+> 原计划把真机验收并入 `pipeline-stream-realmachine-acceptance`，但该聚合 tracker 已于
+> 2026-06-27 撤回（superseded：逐 change 在 STATE.md 各自冒烟取代了汇总表）。工程侧已 100%
+> 完成并于 2026-06-16 全栈部署上云；背景音为 opt-in（无 campaign 启用即零影响）。§7.2-7.4 的
+> 真机回声/听感门 WAIVE，不阻塞归档——真正启用前应先在白名单 campaign 跑一次 §7.3 回声实测，
+> 必要时下调 `ambient_gain` 或换无人声素材。
 
 - [x] 7.1 全栈部署 ECS：common scp+`alembic upgrade head`（d1e2f3a4b5c6→a2c4e6b8d0f2，两列已建实证）/ engine 5 文件（部署前 md5==main base 00b4c48 防覆盖分支）+重启 active / api schemas.py+重启 / web rebuild+scp+nginx reload（http200）/ 示例素材 `/opt/isales/ambient/office.wav`（16k mono RMS≈5000）+引擎内 get_ambient_loop 实证可加载。STATE.md 已更新 <!-- 见 deploy/cloud/STATE.md 2026-06-16 16:37 条 -->
   - 偏离：素材目录用引擎默认 `/opt/isales/ambient`（未设 ISALES_AMBIENT_DIR）；office.wav 是合成占位底噪，建议换真实办公室录音
